@@ -1,6 +1,6 @@
 # Plan: Study App Phase 1 MVP
 
-Status: **waiting for Bradley's approval.** No application code is written until this plan and a design concept are approved.
+Status: **approved 2026-10-11.** Bradley picked **Concept B, Sticker Notebook**. Open questions without an explicit answer use the defaults marked below; Bradley can change any of them.
 
 ## 1. Architecture
 
@@ -89,12 +89,12 @@ Polish pass, `docs/user-testing.md` (tester access, 20-minute task script, feedb
 
 Enforced server-side in `ai_usage`; the UI shows "7 of 10 left today". Cached results don't count.
 
-## 5. Open questions
+## 5. Decisions and open questions
 
-1. **Design concept.** Which of the three concepts in `docs/design/concepts.html` do you want? (My pick: A, Study Garden.)
-2. **Embeddings.** Claude has no embeddings API. I propose Supabase's free built-in `gte-small` model in an Edge Function (no extra service). Alternative: Voyage AI (paid, slightly better quality). OK to use the free option?
-3. **Sign-in methods.** Email magic link + Google. Add Microsoft (many universities use Outlook)?
-4. **App name.** Working name "StudyNest". Keep it or rename?
-5. **Free-tier numbers** in section 4: OK as a start?
-6. **Accounts.** To get past step 1's demo you'll need to supply: a Supabase project (URL + anon key + service-role key), an Anthropic API key, and a Vercel account. Google Calendar OAuth can wait until step 4.
-7. **Repository.** Code lives in github.com/BradleyTan/study-companion; each build step lands as a pull request.
+1. **Design concept:** B, Sticker Notebook (Bradley, 2026-10-11).
+2. **Embeddings:** default, Supabase's free built-in `gte-small` (no extra service).
+3. **Sign-in methods:** default, email magic link + Google. Microsoft can be added later.
+4. **App name:** default, keep the working name "StudyNest".
+5. **Free-tier numbers:** default, section 4 as written.
+6. **Accounts still needed from Bradley:** Supabase project (URL, anon key, service-role key), Anthropic API key, Vercel account. Google Calendar OAuth waits until step 4.
+7. **Repository:** github.com/BradleyTan/study-companion; each build step lands as a pull request.

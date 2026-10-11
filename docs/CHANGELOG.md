@@ -5,4 +5,4 @@
 - Added `CLAUDE.md` and `docs/PLAN.md` (architecture, data model, build steps, open questions).
 - Added three playable design concepts with generated sounds (`docs/design/concepts.html`).
 - Moved to the GitHub repo; each step is a pull request.
-- Waiting on Bradley: plan approval and concept choice.
+- Bradley picked Concept B (Sticker Notebook); plan approved with default answers to open questions.
