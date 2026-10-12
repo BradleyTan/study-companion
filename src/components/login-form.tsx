@@ -4,7 +4,7 @@ import { sendMagicLink, signInWithGoogle, startDemo } from "@/server/actions/aut
 import { useSound } from "./sound-provider";
 import { Button } from "./ui/button";
 
-export function LoginForm({ demo, initialError }: { demo: boolean; initialError?: string }) {
+export function LoginForm({ demo, google, initialError }: { demo: boolean; google: boolean; initialError?: string }) {
   const [email, setEmail] = useState("");
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(initialError ?? null);
@@ -55,8 +55,12 @@ export function LoginForm({ demo, initialError }: { demo: boolean; initialError?
         {error && <p id="login-error" role="alert" className="error-text">{error}</p>}
         <Button type="submit" variant="primary" disabled={pending} sound={null}>{pending ? "Sending…" : "Email me a sign-in link"}</Button>
       </form>
-      <div className="flex items-center gap-3 text-ink-soft" aria-hidden="true"><hr className="flex-1 border-ink-soft" />or<hr className="flex-1 border-ink-soft" /></div>
-      <form action={signInWithGoogle}><Button type="submit" className="w-full">Continue with Google</Button></form>
+      {google && (
+        <>
+          <div className="flex items-center gap-3 text-ink-soft" aria-hidden="true"><hr className="flex-1 border-ink-soft" />or<hr className="flex-1 border-ink-soft" /></div>
+          <form action={signInWithGoogle}><Button type="submit" className="w-full">Continue with Google</Button></form>
+        </>
+      )}
     </div>
   );
 }
