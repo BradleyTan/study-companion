@@ -9,6 +9,12 @@ export function supabaseConfig() {
   return url && key ? { url, key } : null;
 }
 
+// Google sign-in needs the Google provider switched on in Supabase (with a Google OAuth client),
+// so the button stays hidden until NEXT_PUBLIC_GOOGLE_SIGNIN=1 says that's done.
+export function googleSignInEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_GOOGLE_SIGNIN === "1";
+}
+
 export function isDemoMode(): boolean {
   if (supabaseConfig()) return false;
   return process.env.NODE_ENV !== "production" || process.env.DEMO_MODE === "1";

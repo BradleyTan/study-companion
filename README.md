@@ -19,7 +19,7 @@ StudyNest runs entirely on free plans: Supabase Free, Vercel Hobby, Groq and Clo
 
 1. Create a free project at [supabase.com](https://supabase.com).
 2. Apply the database migrations: `npx supabase link --project-ref <ref>` then `npx supabase db push`.
-3. In Supabase → Authentication → URL configuration, add your site URL and `<site>/auth/callback` as a redirect URL. To offer Google sign-in, enable the Google provider there.
+3. In Supabase → Authentication → URL configuration, add your site URL and `<site>/auth/callback` as a redirect URL. To offer Google sign-in, enable the Google provider there (it needs a free Google OAuth client), then set `NEXT_PUBLIC_GOOGLE_SIGNIN=1` in Vercel and redeploy. Until then the Google button is hidden.
 4. (Optional, needed from Step 3) Deploy the embeddings function: `npx supabase functions deploy embed`.
 5. Copy `.env.example` to `.env.local` and fill in the values. **Never commit `.env.local`.**
 6. On Vercel, import the repo and add the same environment variables.

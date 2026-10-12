@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-12 · Fixes after first deploy
+- Google sign-in button hidden until `NEXT_PUBLIC_GOOGLE_SIGNIN=1` (it showed a raw Supabase error while the provider was off).
+- `vercel.json` pins the Next.js framework.
+- Trigger functions can no longer be called through the API.
+
 ## 2026-10-11 · Step 1: sign-in, subjects, notes, uploads
 - Sticker Notebook design system, synthesised sound set, screen specs (`docs/design/`).
 - Sign-in with email magic link or Google (Supabase Auth); demo mode when Supabase isn't configured.
