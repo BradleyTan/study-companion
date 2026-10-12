@@ -45,7 +45,7 @@ Reviewer: security-engineer. Verdict: no critical/high findings; cleared to merg
 | No CSP / HSTS | Low | HSTS added; CSP is a follow-up |
 | Students could write processing fields (sources, chunks) | Low | Fixed: read/delete-only policies, RLS tests added |
 | `embed` function had no rate limit | Low | Fixed: server-only shared secret |
-| RLS tests run against a Supabase stub, not real Supabase | Low | Open: run against `supabase start` when the project exists |
+| RLS tests run against a Supabase stub, not real Supabase | Low | Fixed 2026-10-12: two-student checks re-run on the live project (rolled back afterwards); Supabase security advisor clean after revoking API access to trigger functions |
 | Account deletion had no re-authentication | Low | Fixed: sign-in within 10 minutes required |
 
 ## Residual risks / follow-ups
