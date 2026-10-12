@@ -1,0 +1,171 @@
+@import "tailwindcss";
+
+/* Sticker Notebook design tokens. See docs/design/design-system.md.
+   Light values on :root; dark under prefers-color-scheme (unless the student chose light)
+   and again under [data-theme="dark"] so the in-app toggle wins both ways. */
+:root {
+  --paper: #fffdf5;
+  --grid: #e7ecf7;
+  --card: #ffffff;
+  --ink: #1b1b2f;
+  --ink-soft: #4a4a63;
+  --shadow: #1b1b2f;
+  --highlight: #ffe45c;
+  --success: #7be0b0;
+  --danger: #ff9a8b;
+  --focus: #3d6bff;
+  --on-colour: #1b1b2f; /* text on highlight/success/danger/subject fills, both themes */
+  --rule: #dfe6f3;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #17172a; --grid: #25253d; --card: #222238; --ink: #f3efe0; --ink-soft: #c3bfd6;
+    --shadow: #05050c; --success: #3fbf87; --danger: #ff8a7a; --focus: #8fb8ff; --rule: #2e2e48;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #17172a; --grid: #25253d; --card: #222238; --ink: #f3efe0; --ink-soft: #c3bfd6;
+  --shadow: #05050c; --success: #3fbf87; --danger: #ff8a7a; --focus: #8fb8ff; --rule: #2e2e48;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-card: var(--card);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-highlight: var(--highlight);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-body), system-ui, sans-serif;
+  --font-display: var(--font-marker), "Comic Sans MS", cursive;
+}
+
+@layer base {
+html { background: var(--paper); }
+body {
+  background-color: var(--paper);
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+  color: var(--ink);
+  font-family: var(--font-body), system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.55;
+}
+h1, h2, h3 { text-wrap: balance; }
+.font-display { font-family: var(--font-marker), "Comic Sans MS", cursive; font-weight: 400; letter-spacing: 0.01em; }
+
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; border-radius: 6px; }
+
+}
+
+/* Component classes sit in the components layer so Tailwind utilities (hidden, p-*, etc.) can override them. */
+@layer components {
+/* ---- stickers ---- */
+.sticker {
+  background: var(--card);
+  border: 2.5px solid var(--ink);
+  border-radius: 8px;
+  box-shadow: 4px 4px 0 var(--shadow);
+}
+.sticker-flat { background: var(--card); border: 2.5px solid var(--ink); border-radius: 8px; }
+.tape {
+  position: absolute; top: -12px; left: 50%; width: 96px; height: 24px; translate: -50% 0; rotate: -3deg;
+  background: color-mix(in srgb, var(--highlight) 75%, transparent);
+  pointer-events: none;
+}
+
+/* ---- buttons ---- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+  min-height: 44px; padding: 0.5rem 1.1rem;
+  font-weight: 700; color: var(--ink); background: var(--card);
+  border: 2.5px solid var(--ink); border-radius: 8px; box-shadow: 3px 3px 0 var(--shadow);
+  cursor: pointer; user-select: none;
+  transition: transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+}
+.btn:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--shadow); }
+.btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--shadow); }
+.btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: 3px 3px 0 var(--shadow); }
+.btn-primary { background: var(--highlight); color: var(--on-colour); border-width: 3px; }
+.btn-danger { background: var(--danger); color: var(--on-colour); }
+.btn-ghost { background: transparent; box-shadow: none; border-color: transparent; }
+.btn-ghost:hover { box-shadow: none; transform: none; text-decoration: underline; text-underline-offset: 3px; }
+.btn-ghost:active { box-shadow: none; transform: none; }
+.btn-sm { min-height: 36px; padding: 0.25rem 0.75rem; font-size: 0.9rem; }
+.icon-btn { min-width: 44px; padding: 0.25rem; }
+.icon-btn[aria-pressed="true"] { background: var(--highlight); color: var(--on-colour); }
+
+/* ---- form controls ---- */
+.field { display: flex; flex-direction: column; gap: 0.35rem; }
+.field label, .label { font-weight: 700; font-size: 0.95rem; }
+.input {
+  min-height: 44px; width: 100%; padding: 0.5rem 0.75rem;
+  background: var(--card); color: var(--ink);
+  border: 2.5px solid var(--ink); border-radius: 8px;
+}
+.input[aria-invalid="true"] { border-color: #d6453a; box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 60%, transparent); }
+.error-text { color: var(--ink); background: var(--danger); color: var(--on-colour); padding: 0.25rem 0.5rem; border-radius: 6px; font-size: 0.9rem; font-weight: 700; }
+.hint { color: var(--ink-soft); font-size: 0.9rem; }
+
+/* ---- chips ---- */
+.chip {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  padding: 0.1rem 0.6rem; border: 2px solid var(--ink); border-radius: 999px;
+  font-size: 0.8rem; font-weight: 700; background: var(--card); color: var(--ink); white-space: nowrap;
+}
+.chip-ready { background: var(--success); color: var(--on-colour); }
+.chip-bad { background: var(--danger); color: var(--on-colour); }
+.chip-busy { background: var(--highlight); color: var(--on-colour); animation: pulse 1.2s ease-in-out infinite; }
+.on-colour { color: var(--on-colour); }
+
+/* ---- motion ---- */
+@keyframes pop { from { transform: scale(0.6) rotate(var(--r, 0deg)); opacity: 0; } }
+@keyframes pulse { 50% { opacity: 0.6; } }
+@keyframes shake { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+.pop-in { animation: pop 350ms cubic-bezier(.3, 1.8, .5, 1) both; }
+.shake { animation: shake 400ms; }
+.lift { transition: transform 200ms ease, box-shadow 200ms ease; }
+.lift:hover { transform: translateY(-3px) rotate(var(--r, 0deg)); box-shadow: 6px 6px 0 var(--shadow); }
+
+/* ---- dialog ---- */
+dialog.sheet {
+  margin: auto; padding: 0; max-width: min(520px, calc(100vw - 32px)); width: 100%;
+  background: var(--card); color: var(--ink);
+  border: 3px solid var(--ink); border-radius: 10px; box-shadow: 6px 6px 0 var(--shadow);
+}
+dialog.sheet::backdrop { background: rgb(27 27 47 / 0.45); }
+
+/* ---- note editor sheet ---- */
+.paper-sheet {
+  background-color: var(--card);
+  background-image: repeating-linear-gradient(transparent 0 31px, var(--rule) 31px 32px);
+  background-position: 0 14px;
+  border: 2.5px solid var(--ink); border-radius: 8px;
+}
+.tiptap { outline: none; min-height: 50vh; line-height: 32px; max-width: 70ch; }
+.tiptap:focus-visible { outline: none; }
+.tiptap p { margin: 0 0 0; }
+.tiptap h1, .tiptap h2, .tiptap h3 { font-weight: 700; line-height: 32px; margin: 0; }
+.tiptap h1 { font-size: 1.6rem; } .tiptap h2 { font-size: 1.3rem; } .tiptap h3 { font-size: 1.1rem; }
+.tiptap ul { list-style: disc; padding-left: 1.5rem; } .tiptap ol { list-style: decimal; padding-left: 1.5rem; }
+.tiptap blockquote { border-left: 4px solid var(--highlight); padding-left: 1rem; color: var(--ink-soft); }
+.tiptap code { background: var(--grid); padding: 0 0.3rem; border-radius: 4px; font-size: 0.9em; }
+.tiptap pre { background: var(--grid); padding: 0.5rem 0.75rem; border-radius: 6px; line-height: 1.5; overflow-x: auto; }
+.tiptap p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: var(--ink-soft); float: left; height: 0; pointer-events: none; }
+
+.prose-page { max-width: 65ch; }
+.prose-page h2 { font-size: 1.25rem; font-weight: 700; margin-top: 1.75rem; }
+.prose-page p, .prose-page li { margin-top: 0.5rem; }
+.prose-page ul { list-style: disc; padding-left: 1.25rem; }
+.prose-page a { text-decoration: underline; text-underline-offset: 3px; }
+
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .lift:hover { transform: none; }
+  [style*="--r"] { rotate: 0deg !important; }
+}

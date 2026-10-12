@@ -10,7 +10,7 @@ Browser (Next.js client, PWA)
   ▼
 Next.js server (Vercel)
   │  Server actions + route handlers: validation (zod), auth check, quotas
-  │  src/lib/ai  → Anthropic Claude API (key server-side only)
+  │  src/lib/ai  → Groq API, Cloudflare Workers AI fallback (keys server-side only, free plans)
   │  src/lib/extract → PDF/PPTX text extraction
   ▼
 Supabase
@@ -22,8 +22,8 @@ Supabase
 
 Key flows:
 - **Upload:** browser uploads to Storage with a signed upload URL → server action verifies type (magic bytes) and size → extracts text (`unpdf` for PDF, `jszip` + XML parse for PPTX) → splits into chunks with page/slide numbers → embeds chunks.
-- **Generate (cards, quiz, mindmap):** server collects a subject's chunks → checks the daily quota → hashes the input; returns cached output if present → calls Claude with the chunks wrapped as untrusted data → validates JSON against a zod schema → saves items, each pointing at its source `chunk_id` and character range.
-- **Ask your notes:** embed question → top-k chunks by cosine similarity, filtered to the subject and user → Claude answers only from those chunks with numbered citations → UI links each citation to the passage. If similarity is low, it says the notes don't cover it.
+- **Generate (cards, quiz, mindmap):** server collects a subject's chunks → checks the daily quota → hashes the input; returns cached output if present → calls the AI model (Groq) with the chunks wrapped as untrusted data → validates JSON against a zod schema → saves items, each pointing at its source `chunk_id` and character range.
+- **Ask your notes:** embed question → top-k chunks by cosine similarity, filtered to the subject and user → the model answers only from those chunks with numbered citations → UI links each citation to the passage. If similarity is low, it says the notes don't cover it.
 
 ## 2. Data model (Phase 1, with Phase 2 hooks)
 
@@ -52,7 +52,7 @@ All tables: `id uuid pk`, `user_id uuid not null`, `created_at`, `updated_at`, R
 
 ## 3. Build steps and tasks
 
-### Step 1: Auth, subjects, notes, uploads
+### Step 1: Auth, subjects, notes, uploads (built 2026-10-11, waiting for review)
 1. Designer: pick concept → design system (tokens, type, motion, sound set) → specs for sign-in, subjects home, subject page, note editor, upload, settings, privacy.
 2. Dev: scaffold Next.js + Tailwind + shadcn + Vitest + Playwright; PWA manifest; theme + sound provider (`useSound`, toggle, volume).
 3. Dev: Supabase migrations for profiles, subjects, notes, sources, chunks, ai_usage (with RLS).
@@ -66,7 +66,7 @@ All tables: `id uuid pk`, `user_id uuid not null`, `created_at`, `updated_at`, R
 11. Demo on Vercel preview → **stop for review.**
 
 ### Step 2: Flashcards, spaced repetition, mindmap, read-aloud
-Card generation (Haiku, cached, quota) with source quote per card; card editor; FSRS review session with flip animation, page-turn sound, confetti at the end; due-today counts; mindmap (React Flow) with nodes linking to passages; read-aloud for notes and cards. QA: FSRS interval tests, generation edge cases. Security: prompt-injection tests with hostile PDFs. **Stop for review.**
+Card generation (Groq `gpt-oss-20b`, cached, quota) with source quote per card; card editor; FSRS review session with flip animation, page-turn sound, confetti at the end; due-today counts; mindmap (React Flow) with nodes linking to passages; read-aloud for notes and cards. QA: FSRS interval tests, generation edge cases. Security: prompt-injection tests with hostile PDFs. **Stop for review.**
 
 ### Step 3: Quizzes, weak topics, ask-your-notes chat
 Quiz builder (MCQ / fill-in / mixed, N questions); feedback (celebration / gentle shake); weak-topic list per subject; re-mix of missed topics into new quizzes; chat with retrieval and clickable citations, refusing to answer beyond the notes. **Stop for review.**
@@ -77,24 +77,56 @@ Timer with custom durations, wall-clock based (accurate in background tabs), fil
 ### After step 4
 Polish pass, `docs/user-testing.md` (tester access, 20-minute task script, feedback form). Bradley runs the student test and decides on Phase 2.
 
-## 4. Proposed free-tier limits (for approval)
+## 3a. Implementation decisions (Step 1)
+
+- **Next.js 16** (current release). Cache Components is left off: nearly every page is per-student and dynamic, and the previous caching model is simpler to reason about for private data. Middleware is now called `proxy` (`src/proxy.ts`).
+- **Demo mode.** Without Supabase settings the app runs on an in-memory store (`src/server/repo/demo.ts`) behind the same `Repo` interface as Supabase. It powers local development and the e2e tests in CI without secrets. It's disabled in production builds unless `DEMO_MODE=1`.
+- **Uploads go straight from the browser to Supabase Storage** with a signed upload URL, because Vercel caps request bodies at 4.5 MB. The server then downloads the file, checks its real type from its bytes, extracts text and deletes anything it wouldn't accept.
+- **Own UI primitives instead of shadcn/ui** for Step 1 (button, dialog via native `<dialog>`, inputs). The sticker style replaces almost everything shadcn provides, so this kept the bundle small. Framer Motion arrives in Step 2 for card flips; Step 1 motion is CSS only.
+- **Sounds are synthesised** with the Web Audio API (no audio files, no licences, nothing to download).
+- **Zero cost (Bradley, 2026-10-11): everything must be free.** See section 3b.
+- **Embeddings** use an Edge Function (`supabase/functions/embed`) with Supabase's free `gte-small` model. Uploads call it best-effort; if it isn't deployed yet, nothing breaks. Chat needs it in Step 3.
+
+## 3b. Zero-cost stack
+
+Bradley's rule: the app must cost nothing to run. Every service below is on a free plan that needs no credit card, so there is no way for a bill to arrive. When a free allowance runs out, the feature pauses until the next day; it never charges.
+
+| Need | Service (free plan) | Free allowance | What happens at the limit |
+|---|---|---|---|
+| AI: flashcards, quizzes, mindmaps, chat | **Groq API** (open models `openai/gpt-oss-120b` for quizzes and chat, `openai/gpt-oss-20b` for flashcards and mindmaps) | Per model, for the whole app: about 1,000 requests and 200,000 tokens a day, 30 requests a minute | Groq returns "rate limited"; the app tries the fallback |
+| AI fallback | **Cloudflare Workers AI** | 10,000 "neurons" a day (roughly 280,000 output tokens on a small Llama model) | App shows "Today's free AI allowance is used up. Try again tomorrow." |
+| Embeddings for ask-your-notes | Supabase Edge Function with built-in `gte-small` | Inside Supabase's 500,000 function calls a month | Chat falls back to keyword search |
+| Database, sign-in, file storage | **Supabase Free** | 500 MB database, 1 GB files, 5 GB transfer a month, 50,000 monthly users. Paused after 7 days without activity (one click to wake) | Writes are blocked until space is freed; never billed |
+| Hosting | **Vercel Hobby** | Free for personal, non-commercial projects | If StudyNest ever charges students, it needs a paid plan (or another free host) |
+| Read-aloud | Browser's built-in voices (Web Speech API) | Unlimited | — |
+| Google Calendar sync | Google Calendar API | Free quota far above our use | — |
+| Sounds | Generated in the browser | Unlimited | — |
+
+**Why Groq and not the Claude API or Gemini:** the Claude API has no free plan. Gemini's free plan allows Google to use prompts to improve its products, which would break the privacy promise that students' notes aren't used for training. Groq doesn't keep API inputs by default (only short-lived abuse logs, up to 30 days, which can be switched off in its data controls), and Cloudflare commits not to train on prompts.
+
+**What this means in practice:** Groq's allowance is shared by every student. One flashcard or quiz generation uses roughly 4,000 to 8,000 tokens, so the whole app gets about 25 to 50 generations a day per model, plus caching (the same notes are never generated twice). That's comfortable for a pilot with a handful of students, not for hundreds. The per-student limits below are set so one student can't use up everyone's allowance.
+
+**Supabase free-plan care:** the project pauses after a week with no activity, so before a student test Bradley should open the app once to wake it. File storage is 1 GB for everyone, hence 100 MB per student.
+
+## 4. Free-tier limits per student
 
 | Action | Free limit per user per day |
 |---|---|
-| Flashcard generations | 10 |
-| Quiz generations | 5 |
-| Mindmap generations | 5 |
-| Chat questions | 30 |
-| Uploads | 20 files, 25 MB each, 500 MB total |
+| Flashcard generations | 5 |
+| Quiz generations | 3 |
+| Mindmap generations | 3 |
+| Chat questions | 20 |
+| Uploads | 20 files per 24 h, 25 MB each, 100 MB total (enforced from Step 1) |
 
-Enforced server-side in `ai_usage`; the UI shows "7 of 10 left today". Cached results don't count.
+Enforced server-side in `ai_usage`; the UI shows "3 of 5 left today". Cached results don't count. On top of this, an app-wide daily budget stops before Groq's limit so students get a friendly message rather than errors.
 
 ## 5. Decisions and open questions
 
 1. **Design concept:** B, Sticker Notebook (Bradley, 2026-10-11).
-2. **Embeddings:** default, Supabase's free built-in `gte-small` (no extra service).
+2. **Embeddings:** Supabase's free built-in `gte-small` (no extra service).
 3. **Sign-in methods:** default, email magic link + Google. Microsoft can be added later.
 4. **App name:** default, keep the working name "StudyNest".
 5. **Free-tier numbers:** default, section 4 as written.
-6. **Accounts still needed from Bradley:** Supabase project (URL, anon key, service-role key), Anthropic API key, Vercel account. Google Calendar OAuth waits until step 4.
+6. **Accounts still needed from Bradley (all free, no card):** Supabase project (URL, publishable key, secret key), Groq API key (from Step 2), Cloudflare account ID + Workers AI token (from Step 2, fallback), Vercel Hobby account. Google Calendar OAuth waits until step 4.
+8. **Zero cost:** Bradley, 2026-10-11: everything must be free. AI moved from the Claude API to Groq + Cloudflare free plans (section 3b).
 7. **Repository:** github.com/BradleyTan/study-companion; each build step lands as a pull request.
