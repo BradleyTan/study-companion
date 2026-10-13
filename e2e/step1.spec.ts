@@ -65,7 +65,11 @@ test("notes autosave and survive a reload", async ({ page }) => {
   await body.click();
   await page.keyboard.type("pH below 7 is acidic.");
   await page.keyboard.press("Enter");
-  await page.getByRole("button", { name: "Bold" }).click();
+  const bold = page.getByRole("button", { name: "Bold" });
+  await bold.click();
+  // Wait until bold is on and the cursor is back in the note before typing, or the first letters can land unbolded.
+  await expect(bold).toHaveAttribute("aria-pressed", "true");
+  await expect(body).toBeFocused();
   await page.keyboard.type("Neutral is 7.");
   await expect(page.getByTestId("save-state")).toHaveText("Saved ✓", { timeout: 10_000 });
   await expectNoA11yViolations(page);
