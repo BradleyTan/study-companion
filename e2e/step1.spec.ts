@@ -65,7 +65,11 @@ test("notes autosave and survive a reload", async ({ page }) => {
   await body.click();
   await page.keyboard.type("pH below 7 is acidic.");
   await page.keyboard.press("Enter");
-  await page.getByRole("button", { name: "Bold" }).click();
+  const bold = page.getByRole("button", { name: "Bold" });
+  await bold.click();
+  // Wait until bold is on and the cursor is back in the note before typing, or the first letters can land unbolded.
+  await expect(bold).toHaveAttribute("aria-pressed", "true");
+  await expect(body).toBeFocused();
   await page.keyboard.type("Neutral is 7.");
   await expect(page.getByTestId("save-state")).toHaveText("Saved ✓", { timeout: 10_000 });
   await expectNoA11yViolations(page);
@@ -159,4 +163,13 @@ test("delete account removes everything", async ({ page }) => {
   await expect(page.getByText("Your account and everything in it has been deleted.")).toBeVisible();
   await page.goto("/subjects");
   await expect(page).toHaveURL(/\/login$/);
+});
+
+test("a sign-in link that lands on the home page is passed on to the callback", async ({ request }) => {
+  const res = await request.get("/?code=abc123", { maxRedirects: 0 });
+  expect(res.status()).toBe(307);
+  const to = new URL(res.headers()["location"], "http://localhost");
+  expect(to.pathname).toBe("/auth/callback");
+  expect(to.searchParams.get("code")).toBe("abc123");
+  expect(to.searchParams.get("next")).toBe("/subjects");
 });
