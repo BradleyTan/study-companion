@@ -8,6 +8,18 @@ const DEMO_COOKIE = "studynest_demo_uid";
 // visitors on protected pages to /login. Pages still check the user themselves;
 // this is a fast first gate, not the only one.
 export async function proxy(request: NextRequest) {
+  // If Supabase falls back to the Site URL (redirect URL not on its allow-list), the sign-in
+  // link lands on "/?code=...". Hand that one-time code to the callback so sign-in still finishes.
+  const code = request.nextUrl.searchParams.get("code");
+  if (code && request.nextUrl.pathname !== "/auth/callback") {
+    const to = request.nextUrl.clone();
+    to.pathname = "/auth/callback";
+    to.search = "";
+    to.searchParams.set("code", code);
+    to.searchParams.set("next", "/subjects");
+    return NextResponse.redirect(to);
+  }
+
   let response = NextResponse.next({ request });
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;

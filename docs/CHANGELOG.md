@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-10-12 · Fixes after first deploy
+- Sign-in links that land on the home page (Supabase falling back to its Site URL) now finish signing in.
 - Google sign-in button hidden until `NEXT_PUBLIC_GOOGLE_SIGNIN=1` (it showed a raw Supabase error while the provider was off).
 - `vercel.json` pins the Next.js framework.
 - Trigger functions can no longer be called through the API.
