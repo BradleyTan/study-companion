@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { LoginForm } from "@/components/login-form";
-import { googleSignInEnabled, isDemoMode, supabaseConfig } from "@/lib/env";
+import { isDemoMode, supabaseConfig } from "@/lib/env";
+import { googleSignInEnabled } from "@/server/auth-providers";
 
 export const metadata: Metadata = { title: "Sign in" };
 
@@ -18,7 +19,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
         <span className="tape" aria-hidden="true" />
         <h1 className="font-display mb-5 text-4xl">Open your notebook</h1>
         {isDemoMode() || supabaseConfig() ? (
-          <LoginForm demo={isDemoMode()} google={googleSignInEnabled()} initialError={typeof error === "string" ? ERRORS[error] : undefined} />
+          <LoginForm demo={isDemoMode()} google={await googleSignInEnabled()} initialError={typeof error === "string" ? ERRORS[error] : undefined} />
         ) : (
           <p role="alert" className="error-text">Sign-in isn&apos;t set up yet. Add the Supabase settings described in the README.</p>
         )}
