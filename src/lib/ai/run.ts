@@ -20,7 +20,8 @@ export type AiTask<T> = {
 };
 
 export type AiOutcome<T> =
-  | { ok: true; value: T; model: string; inputTokens: number; outputTokens: number }
+  /** `raw` is the parsed reply before validation: what gets cached (and re-validated on reuse). */
+  | { ok: true; value: T; raw: unknown; model: string; inputTokens: number; outputTokens: number }
   | { ok: false; reason: "allowance" | "failed" };
 
 /**
@@ -31,8 +32,9 @@ export type AiOutcome<T> =
 export async function runAiTask<T>(task: AiTask<T>, budget: AiBudget): Promise<AiOutcome<T>> {
   const cfg = aiConfig();
   if (!cfg.groqKey) {
-    const value = task.parse(task.fake());
-    return value ? { ok: true, value, model: "local", inputTokens: 0, outputTokens: 0 } : { ok: false, reason: "failed" };
+    const raw = task.fake();
+    const value = task.parse(raw);
+    return value ? { ok: true, value, raw, model: "local", inputTokens: 0, outputTokens: 0 } : { ok: false, reason: "failed" };
   }
 
   const attempts: { provider: Provider; model: string; call: () => Promise<CallResult> }[] = [
@@ -49,8 +51,9 @@ export async function runAiTask<T>(task: AiTask<T>, budget: AiBudget): Promise<A
     try {
       const r = await a.call();
       await budget.addTokens(a.provider, a.model, r.inputTokens + r.outputTokens);
-      const value = task.parse(parseJsonReply(r.text));
-      if (value) return { ok: true, value, model: a.model, inputTokens: r.inputTokens, outputTokens: r.outputTokens };
+      const raw = parseJsonReply(r.text);
+      const value = task.parse(raw);
+      if (value) return { ok: true, value, raw, model: a.model, inputTokens: r.inputTokens, outputTokens: r.outputTokens };
       allOutOfAllowance = false; // answered, but with something unusable
     } catch (e) {
       if (!(e instanceof AiRateLimited)) allOutOfAllowance = false;
