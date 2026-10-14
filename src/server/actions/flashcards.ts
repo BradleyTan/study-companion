@@ -101,7 +101,8 @@ export async function makeFlashcards(raw: unknown): Promise<ActionResult<{ resul
   const mode = aiMode();
   const cached = await repo.getAiCache("flashcards", hash);
   if (cached && (cached.model !== "local" || mode === "local")) {
-    const existing = await repo.findFlashcardsByHash(hash);
+    // Only this subject's cards count: the same text can live in two subjects.
+    const existing = (await repo.findFlashcardsByHash(hash)).filter((c) => c.subjectId === subjectId);
     if (existing.length) return { ok: true, result: { status: "already", count: existing.length, quota: await quota() } };
     const cards = normaliseFlashcards(cached.output, passages, Math.min(count + 5, 25));
     if (cards && cards.length) {

@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { gradeCard, newSrs, type SrsState } from "@/lib/srs/scheduler";
 import { id as idSchema, reviewInput } from "@/lib/validation";
-import { dayContext, subjectDue, upcoming } from "../cards";
+import { allDue, upcoming } from "../cards";
 import { getRepo } from "../session";
 import { firstIssue, type ActionResult } from "./result";
 
@@ -23,6 +23,8 @@ export async function reviewCard(raw: unknown): Promise<ActionResult<{ srs: SrsS
   const saved = await repo.addCardReview({
     flashcardId, subjectId: card.subjectId, rating, prevState: card.srs.state, reviewedAt: now.toISOString(), srs: next, clientKey,
   });
+  // A key already used for another card: never copy that card's schedule onto this one.
+  if (saved.flashcardId !== flashcardId) return { ok: false, error: "That answer couldn't be saved." };
   // On a retried save `saved` is the first one, so the card keeps that schedule.
   await repo.setFlashcardSrs(flashcardId, saved.srs);
   revalidatePath(`/subjects/${card.subjectId}`);
@@ -62,12 +64,12 @@ export async function sessionOutlook(subjectId: string | null): Promise<ActionRe
   if (subjectId !== null && !idSchema.safeParse(subjectId).success) return { ok: false, error: "Subject not found." };
   const repo = await getRepo();
   const next = await upcoming(repo, subjectId);
-  const [subjects, ctx] = await Promise.all([repo.listSubjects(), dayContext(repo)]);
+  // Same split as the Subjects banner: the new-card allowance is shared across subjects.
+  const [subjects, due] = await Promise.all([repo.listSubjects(), allDue(repo)]);
   const others: SessionOutlook["others"] = [];
   for (const s of subjects) {
-    if (s.id === subjectId) continue;
-    const d = await subjectDue(repo, s.id, ctx);
-    if (d.total > 0) others.push({ id: s.id, name: s.name, due: d.total });
+    const n = due.bySubject.get(s.id) ?? 0;
+    if (s.id !== subjectId && n > 0) others.push({ id: s.id, name: s.name, due: n });
   }
   others.sort((a, b) => b.due - a.due);
   return { ok: true, outlook: { tomorrow: next.tomorrow, nextDueAt: next.nextDueAt, others } };

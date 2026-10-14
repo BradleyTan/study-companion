@@ -66,6 +66,9 @@ export function MindmapScreen({ subject, initial, quota: initialQuota, options, 
   const router = useRouter();
   const mounted = useRef(true);
   const lastNode = useRef<string | null>(null);
+  // Layout save state (see "saving positions" below).
+  const pending = useRef<{ id: string; x: number; y: number }[] | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const uid = useId();
 
   useEffect(() => () => { mounted.current = false; }, []);
@@ -103,6 +106,9 @@ export function MindmapScreen({ subject, initial, quota: initialQuota, options, 
   };
 
   async function generate(force: boolean) {
+    // Drop any unsaved or retrying layout save: node ids (n0, n1, …) repeat in the new map.
+    if (timer.current) clearTimeout(timer.current);
+    pending.current = null;
     setConfirm(false);
     setChoosing(false);
     setProblem(null);
@@ -140,8 +146,6 @@ export function MindmapScreen({ subject, initial, quota: initialQuota, options, 
   };
 
   // ---- saving positions (800 ms after the last move; retry with backoff) ----
-  const pending = useRef<{ id: string; x: number; y: number }[] | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const attempt = useRef(0);
   const retry = useRef<() => void>(() => {});
   const flush = useCallback(async () => {

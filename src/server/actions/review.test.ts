@@ -5,7 +5,7 @@ import type { Repo } from "../repo/types";
 let repo: Repo;
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 vi.mock("../session", () => ({ getRepo: async () => repo }));
-const { reviewCard, undoReview } = await import("./review");
+const { reviewCard, sessionOutlook, undoReview } = await import("./review");
 
 async function cardWithHistory() {
   repo = demoRepo(crypto.randomUUID());
@@ -61,4 +61,29 @@ describe("review actions (QA)", () => {
     expect((await reviewCard({ flashcardId: crypto.randomUUID(), rating: 5, clientKey: crypto.randomUUID() })).ok).toBe(false);
     expect((await undoReview(crypto.randomUUID(), "not-a-uuid")).ok).toBe(false);
   });
+
+  it("a client key already used for one card never copies its schedule onto another", async () => {
+    const a = await cardWithHistory();
+    const subjectId = (await repo.getFlashcard(a))!.subjectId;
+    const [b] = await repo.createFlashcards([{ subjectId, front: "Q2", back: "A2", origin: "manual" }]);
+    const key = crypto.randomUUID();
+    await reviewCard({ flashcardId: a, rating: 4, clientKey: key });
+    const r = await reviewCard({ flashcardId: b.id, rating: 4, clientKey: key });
+    expect(r.ok).toBe(false);
+    expect((await repo.getFlashcard(b.id))!.srs.state).toBe(0);
+  });
+
+  it("the end-of-session outlook shares the new-card allowance across subjects like the banner", async () => {
+    repo = demoRepo(crypto.randomUUID());
+    const ids: string[] = [];
+    for (const name of ["A", "B", "C"]) {
+      const s = await repo.createSubject({ name, colour: "mint", emoji: "📘" });
+      ids.push(s.id);
+      await repo.createFlashcards(Array.from({ length: 15 }, (_, i) => ({ subjectId: s.id, front: `${name}${i}`, back: "x", origin: "manual" as const })));
+    }
+    const r = await sessionOutlook(ids[0]);
+    const total = r.ok ? r.outlook.others.reduce((n, o) => n + o.due, 0) : -1;
+    expect(total).toBeLessThanOrEqual(20);
+  });
 });
+

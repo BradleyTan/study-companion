@@ -131,5 +131,16 @@ describe("flashcard generation quota (QA)", () => {
     expect(scanned.ok).toBe(false);
     expect(await used()).toBe(0);
   });
+
+  it("the same text in a second subject makes cards there (from the cache, free)", async () => {
+    const { subjectId, noteId } = await subjectWithNote();
+    expect((await makeFlashcards({ subjectId, source: { type: "note", id: noteId }, count: 10 })).ok).toBe(true);
+    const other = await repo.createSubject({ name: "Chem", colour: "sky", emoji: "⚗️" });
+    const copy = await addNote(other.id, "Osmosis");
+    const r = await makeFlashcards({ subjectId: other.id, source: { type: "note", id: copy }, count: 10 });
+    expect(r.ok && r.result.status).toBe("made");
+    expect((await repo.listFlashcards({ subjectId: other.id })).length).toBeGreaterThan(0);
+    expect(await used()).toBe(1);
+  });
 });
 
