@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-14 · Step 2 security review
+- Flashcards, reviews and mindmaps can only be written through the server now (students could write them directly with the public key and skip the card cap and validation).
+- Failed AI generations still give the go back, but tries per day are capped (15 flashcard, 9 mindmap), so a note that makes the model fail can't use up the whole app's free AI allowance.
+- The 50-subject and 500-notes-per-subject caps and the note size limit now hold in the database too.
+- Prompt delimiters can't be faked with look-alike characters, invisible characters or HTML entities; the subject name is defused too. AI text can't carry half an emoji or control characters into the database.
+- Privacy page: flashcards, review history, mindmaps and AI usage counts; read aloud and online voices.
+- Migration `20261014000002_step2_security_review.sql`; review in `docs/security/step-2-review.md`; hostile-input tests in `src/lib/ai/injection.test.ts` and `src/server/actions/security.test.ts`.
+
 ## 2026-10-14 · Step 2 QA fixes
 - A production build without an AI key says "AI isn't set up yet" for flashcards and mindmaps instead of making stand-in cards; stand-in output is never reused once real AI is set up.
 - Review: Undo removes only the grade it was for (a retried undo could delete an older review); a double tap on a grade no longer flips the next card; a reused client key can't copy one card's schedule onto another; "Review X · N due" shares the new-card allowance like the banner.
