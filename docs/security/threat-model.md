@@ -28,8 +28,8 @@ Every server action and route handler is a public endpoint. The browser only eve
 | T14 | Embedding function abused in a loop | Callable only with a server-held shared secret; pinned to one student's rows. | Done |
 | T15 | Account deleted from an unattended laptop | Deletion needs a sign-in within the last 10 minutes plus typing DELETE. | Done |
 | T16 | Sign-in links built from a spoofed Host header | `NEXT_PUBLIC_SITE_URL` required in production; Supabase redirect allow-list should list exact URLs only. | Done |
-| T10 | Prompt injection from uploaded PDFs | Extracted text will be passed to the AI model only inside delimited data blocks with instructions to treat it as data; outputs validated with zod. | Step 2 |
-| T11 | AI allowance abuse (one student uses up the shared free AI allowance) | Server-side daily quotas per student in `ai_usage` (students can read, not write, their rows), an app-wide daily budget below the free plan limit, cache by content hash. No paid plan or card is attached anywhere, so abuse can't create a bill. | Step 2 |
+| T10 | Prompt injection from uploaded PDFs | Extracted text will be passed to the AI model only inside delimited data blocks with instructions to treat it as data; outputs validated with zod. Built in Step 2: delimited passages, defused delimiters, model cites passage refs only and the server maps them to the student's own chunk ids, zod validation and quote checks. | Built, awaiting review |
+| T11 | AI allowance abuse (one student uses up the shared free AI allowance) | Server-side daily quotas per student in `ai_usage` (students can read, not write, their rows), an app-wide daily budget below the free plan limit, cache by content hash. No paid plan or card is attached anywhere, so abuse can't create a bill. Built in Step 2: atomic reserve/settle functions callable only by the server. | Built, awaiting review |
 | T12 | Google OAuth token theft | Encrypted at rest (Vault), least scopes, revocable. | Step 4 |
 | T13 | Dependency vulnerabilities | `npm audit --omit=dev --audit-level=high` in CI. | Done |
 

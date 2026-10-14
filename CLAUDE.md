@@ -26,12 +26,13 @@ docs/                   PLAN.md, CHANGELOG.md, design/, qa/, security/
 ```
 
 ## Running locally
-`npm run dev` with no `.env.local` runs **demo mode** (in-memory data). `npm test`, `npm run test:e2e`, `npm run test:db` (needs `DATABASE_URL`). Next.js 16 differs from older versions: read `node_modules/next/dist/docs/` before using an unfamiliar API.
+`npm run dev` with no `.env.local` runs **demo mode** (in-memory data). Without `GROQ_API_KEY` the AI features use a deterministic local generator. `npm test`, `npm run test:e2e`, `npm run test:db` (needs `DATABASE_URL`). Next.js 16 differs from older versions: read `node_modules/next/dist/docs/` before using an unfamiliar API.
 
 ## Conventions
 - TypeScript strict. Server actions validate input with zod. No `any`.
 - Data access only through `src/server/`; client components never call Supabase with elevated keys.
-- AI calls only in server code under `src/lib/ai/`; outputs validated with zod; cached by content hash.
+- AI calls only in server code under `src/lib/ai/`; outputs validated with zod; cached by content hash. Every generation goes through `runAiTask()` and reserves quota first (`repo.reserveAi`), then settles it (refunded on failure). The model cites passage refs, never ids; the server maps refs to the student's own chunk ids.
+- Links to a source passage (cards, mindmap topics, later quiz and chat citations) are built with `passageHref()` in `src/server/cards.ts`.
 - Every table has `user_id uuid not null references auth.users` and RLS `user_id = auth.uid()`.
 - Components use design tokens from `src/app/globals.css`; no hard-coded colours. Component classes live in `@layer components` so Tailwind utilities can override them.
 - All data access goes through the `Repo` interface (`src/server/repo/types.ts`), implemented for Supabase and demo mode. Get it with `getRepo()`.

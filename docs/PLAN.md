@@ -65,7 +65,7 @@ All tables: `id uuid pk`, `user_id uuid not null`, `created_at`, `updated_at`, R
 10. Security: threat model v1, RLS tests, upload validation review, `/security-review`.
 11. Demo on Vercel preview → **stop for review.**
 
-### Step 2: Flashcards, spaced repetition, mindmap, read-aloud
+### Step 2: Flashcards, spaced repetition, mindmap, read-aloud (built 2026-10-14, waiting for review)
 Card generation (Groq `gpt-oss-20b`, cached, quota) with source quote per card; card editor; FSRS review session with flip animation, page-turn sound, confetti at the end; due-today counts; mindmap (React Flow) with nodes linking to passages; read-aloud for notes and cards. QA: FSRS interval tests, generation edge cases. Security: prompt-injection tests with hostile PDFs. **Stop for review.**
 
 ### Step 3: Quizzes, weak topics, ask-your-notes chat
@@ -86,6 +86,18 @@ Polish pass, `docs/user-testing.md` (tester access, 20-minute task script, feedb
 - **Sounds are synthesised** with the Web Audio API (no audio files, no licences, nothing to download).
 - **Zero cost (Bradley, 2026-10-11): everything must be free.** See section 3b.
 - **Embeddings** use an Edge Function (`supabase/functions/embed`) with Supabase's free `gte-small` model. Uploads call it best-effort; if it isn't deployed yet, nothing breaks. Chat needs it in Step 3.
+
+## 3c. Implementation decisions (Step 2)
+
+- **AI calls** live in `src/lib/ai/` and run only on the server. `runAiTask` tries Groq (`openai/gpt-oss-20b`, JSON mode) and falls back to Cloudflare Workers AI (`@cf/meta/llama-3.1-8b-instruct-fast`, OpenAI-compatible endpoint) on a rate limit (429/413), outage or unusable reply. Without `GROQ_API_KEY` a deterministic local generator stands in (demo mode, CI, local development); it returns the same JSON shape, so it passes through the same validation.
+- **Prompt-injection defence:** student text goes in as numbered passages (`p1`, `p2`, …) inside delimited data blocks, with instructions to treat it as data; delimiter look-alikes in the text are defused. The model may only cite passage refs, which the server maps back to the student's own chunk ids, so a reply can never point at another student's passage. Every reply is validated with zod and normalised (lengths, counts, quotes must really appear in the passage, mindmap ≤ 40 nodes and depth ≤ 3).
+- **Cache:** raw model output is stored per student in `ai_cache` under a hash of the passage hashes, task and options (`inputHash`). On reuse it is validated again against the current passages, so stale links are impossible. Cached results cost no quota.
+- **Quotas:** a generation reserves a slot first (`ai_usage_reserve`, atomic, per student per local day using `profiles.timezone`), then settles it as used or refunds it on failure (`ai_usage_settle`). The app-wide daily budget per model (`ai_app_usage`, UTC day; Groq 900 requests and 180,000 tokens, Cloudflare 300 and 150,000) is reserved the same way. The quota functions are callable only with the server's secret key.
+- **Passages keep their ids when a note is edited:** re-chunking keeps the ids of passages whose text didn't change (`planChunkSync`), so cards and mindmap topics stay linked. Deleting a note or file clears the link, never the card ("Source deleted").
+- **FSRS** via `ts-fsrs` (request retention 0.9, no fuzz). 20 new cards a day per student. Each grade is logged in `card_reviews` with a client key so a double tap can't grade twice, and Undo restores the previous schedule from the log.
+- **Mindmap:** one per subject (`mindmaps`, unique per subject and student). The client lays out the tree radially with `d3-hierarchy`; dragged positions are saved into `graph_json`. "All sources" is sampled evenly when it is longer than one request allows (`MINDMAP_MAX_CHARS`); a hand-picked selection over the limit is refused with "Untick a few".
+- **Read aloud:** one speech controller for the whole app (only one thing reads at a time), sentences split with `Intl.Segmenter`, prefs (speed, voice) per device in `localStorage`. UI sounds are skipped while it speaks.
+- **New libraries (all free, open source):** `ts-fsrs` (MIT), `framer-motion` (MIT), `@xyflow/react` (MIT; its attribution link stays visible), `d3-hierarchy` (ISC).
 
 ## 3b. Zero-cost stack
 

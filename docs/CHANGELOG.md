@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-10-14 · Step 2: flashcards, spaced repetition, mindmap, read aloud
+- Make flashcards from a note or a lecture file (10, 15 or 20 cards; up to 20 pages of a file at a time). Each card keeps the quote it came from and links back to it. Edit, delete (with Undo) and add cards by hand.
+- Review sessions with FSRS spaced repetition (`ts-fsrs`): flip, Again/Hard/Good/Easy with the next interval on each button, keyboard shortcuts, Undo, confetti at the end, 20 new cards a day. Due-today counts on the Subjects page, subject tiles and the subject page.
+- Mindmap per subject (React Flow): radial layout, drag or arrow keys to move topics (saved), Map/Outline views, passage panel for each topic, Regenerate, Reset layout, Choose sources.
+- Read aloud with the browser's own voices: note editor player bar (speed, voice), speaker buttons on cards, review and mindmap passages.
+- Source passage links: notes scroll to and mark the passage; new read-only page for lecture files with the text page by page.
+- AI on the free Groq API with Cloudflare Workers AI as fallback, server-side only; JSON validated with zod; results cached by a hash of the source text; per-student daily limits (flashcards 5, mindmaps 3) and an app-wide daily budget; a deterministic local generator when no AI key is set (demo mode, CI).
+- Migration `20261014000001_step2_flashcards_mindmaps.sql`: `flashcards`, `card_reviews`, `mindmaps`, `ai_app_usage`, quota functions callable only by the server; RLS tests extended.
+- New `cheer` sound for the end of a review session.
+
 ## 2026-10-14 · Google button follows Supabase
 - "Continue with Google" now shows only while the Google provider is switched on in Supabase (checked live, cached for a minute), replacing the `NEXT_PUBLIC_GOOGLE_SIGNIN` flag that could get out of step.
 
