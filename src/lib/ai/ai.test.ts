@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { inputHash } from "./cache";
 import { fakeFlashcards, fakeMindmap } from "./fake";
 import { defuse, fitPassages, flashcardMessages, mindmapMessages, passagesBlock } from "./prompts";
-import { parseJsonReply } from "./providers";
+import { aiMode, parseJsonReply } from "./providers";
 import { runAiTask, type AiBudget } from "./run";
 import { MINDMAP_MAX_NODES, mindmapGraph, normaliseFlashcards, normaliseMindmap, positionsInput, resolvePassage } from "./schemas";
 import { flashcardTask, mindmapTask, toPassages } from "./tasks";
@@ -218,6 +218,36 @@ describe("runAiTask provider chain", () => {
     const r = await runAiTask(flashcardTask(passages, 10), budget());
     expect(r.ok && r.model).toBe("local");
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("never uses the fake generator in a production build without a key", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("DEMO_MODE", "");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
+    expect(aiMode()).toBe("off");
+    expect(await runAiTask(flashcardTask(passages, 10), budget())).toEqual({ ok: false, reason: "not_configured" });
+    expect(await runAiTask(mindmapTask(passages, "Biology"), budget())).toEqual({ ok: false, reason: "not_configured" });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    // Without Supabase in production the app isn't usable either; still no fake output.
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "");
+    expect(aiMode()).toBe("off");
+  });
+
+  it("uses the fake generator only in demo mode or outside production", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "");
+    vi.stubEnv("DEMO_MODE", "1");
+    expect(aiMode()).toBe("local");
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("DEMO_MODE", "");
+    expect(aiMode()).toBe("local");
+    vi.stubEnv("GROQ_API_KEY", "gsk_test");
+    vi.stubEnv("NODE_ENV", "production");
+    expect(aiMode()).toBe("live");
   });
 
   it("calls Groq in JSON mode and validates the reply", async () => {

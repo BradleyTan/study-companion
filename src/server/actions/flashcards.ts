@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { inputHash } from "@/lib/ai/cache";
 import { fitPassages } from "@/lib/ai/prompts";
+import { aiMode } from "@/lib/ai/providers";
 import { runAiTask } from "@/lib/ai/run";
 import { normaliseFlashcards } from "@/lib/ai/schemas";
 import { flashcardTask, FLASHCARDS_MAX_CHARS, MIN_SOURCE_CHARS, toPassages, type CardCount } from "@/lib/ai/tasks";
@@ -45,7 +46,9 @@ export type MakeResult =
   | { status: "limit"; quota: Quota }
   | { status: "allowance"; quota: Quota }
   | { status: "already"; count: number; quota: Quota }
-  | { status: "failed"; quota: Quota };
+  | { status: "failed"; quota: Quota }
+  /** Production build without an AI key. */
+  | { status: "not_configured"; quota: Quota };
 
 async function sourceChunks(repo: Repo, subjectId: string, source: { type: "note"; id: string } | { type: "file"; id: string; fromPage: number; toPage: number }) {
   if (source.type === "note") {
@@ -94,9 +97,10 @@ export async function makeFlashcards(raw: unknown): Promise<ActionResult<{ resul
   const link = { noteId: found.noteId, sourceId: found.sourceId };
   const ctx = await dayContext(repo);
 
-  // Same text, same options: never pay twice.
+  // Same text, same options: never pay twice. (Never reuse the fake generator's output for real AI.)
+  const mode = aiMode();
   const cached = await repo.getAiCache("flashcards", hash);
-  if (cached) {
+  if (cached && (cached.model !== "local" || mode === "local")) {
     const existing = await repo.findFlashcardsByHash(hash);
     if (existing.length) return { ok: true, result: { status: "already", count: existing.length, quota: await quota() } };
     const cards = normaliseFlashcards(cached.output, passages, Math.min(count + 5, 25));
@@ -107,13 +111,14 @@ export async function makeFlashcards(raw: unknown): Promise<ActionResult<{ resul
     }
   }
 
+  if (mode === "off") return { ok: true, result: { status: "not_configured", quota: await quota() } };
   const day = await studentDay(repo);
   if (!(await repo.reserveAi(day, "flashcards", DAILY_LIMITS.flashcards))) return { ok: true, result: { status: "limit", quota: await quota() } };
   let ok = false;
   let tokens = { input: 0, output: 0 };
   try {
     const out = await runAiTask(flashcardTask(passages, count as CardCount), appBudget(repo));
-    if (!out.ok) return { ok: true, result: { status: out.reason === "allowance" ? "allowance" : "failed", quota: await quota() } };
+    if (!out.ok) return { ok: true, result: { status: out.reason, quota: await quota() } };
     tokens = { input: out.inputTokens, output: out.outputTokens };
     const saved = await repo.createFlashcards(cardsToSave(out.value, picked, subjectId, hash, link));
     if (!saved.length) return { ok: true, result: { status: "failed", quota: await quota() } };

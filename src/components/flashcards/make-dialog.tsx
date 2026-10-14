@@ -258,6 +258,7 @@ export function MakeFlashcardsDialog({ subjectId, subjectName, open, onClose, pr
       allowance: { emoji: "🌙", text: "Today's free AI allowance is used up. Try again tomorrow. Your notes and cards are safe." },
       already: { emoji: "📚", text: "You already made cards from this version of the note. Change the note or pick another source." },
       failed: { emoji: "🌀", text: "The card maker got muddled. Try again. This one didn't use up a go." },
+      not_configured: { emoji: "🔌", text: "AI isn't set up yet, so flashcards can't be made right now. You can still add cards by hand." },
     }[r.status];
     body = (
       <div className="flex flex-col gap-4">
@@ -265,10 +266,10 @@ export function MakeFlashcardsDialog({ subjectId, subjectName, open, onClose, pr
           <span className="text-3xl" aria-hidden="true">{msg.emoji}</span>
           <p>{msg.text}</p>
         </div>
-        {r.status !== "already" && <div><QuotaChip quota={r.quota} /></div>}
+        {r.status !== "already" && r.status !== "not_configured" && <div><QuotaChip quota={r.quota} /></div>}
         <div className="flex flex-wrap justify-end gap-2">
           {r.status === "too_short" && <Button variant="primary" onClick={() => { setShowList(true); setPhase({ kind: "choose" }); }}>Pick another source</Button>}
-          {r.status === "limit" && onAddByHand && <Button variant="primary" onClick={() => { close(); onAddByHand(); }}>Add a card by hand</Button>}
+          {(r.status === "limit" || r.status === "not_configured") && onAddByHand && <Button variant="primary" onClick={() => { close(); onAddByHand(); }}>Add a card by hand</Button>}
           {r.status === "already" && (
             <>
               <Button onClick={() => { setShowList(true); setPhase({ kind: "choose" }); }}>Pick another source</Button>
@@ -276,7 +277,7 @@ export function MakeFlashcardsDialog({ subjectId, subjectName, open, onClose, pr
             </>
           )}
           {r.status === "failed" && <Button variant="primary" onClick={() => void generate()} disabled={!choice}>Try again</Button>}
-          {(r.status === "limit" || r.status === "allowance") && <Button onClick={close}>Close</Button>}
+          {(r.status === "limit" || r.status === "allowance" || r.status === "not_configured") && <Button onClick={close}>Close</Button>}
         </div>
       </div>
     );

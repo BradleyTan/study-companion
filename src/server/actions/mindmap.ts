@@ -1,5 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
+import { aiMode } from "@/lib/ai/providers";
 import { runAiTask } from "@/lib/ai/run";
 import { mindmapGraph, normaliseMindmap, positionsInput } from "@/lib/ai/schemas";
 import { MIN_MINDMAP_CHARS, MINDMAP_MAX_CHARS, mindmapTask, toPassages } from "@/lib/ai/tasks";
@@ -16,7 +17,7 @@ const MAX_CACHE_BYTES = 200_000;
 
 export type MindmapResult =
   | { status: "made"; view: MindmapView; quota: Quota }
-  | { status: "too_short" | "too_long" | "limit" | "allowance" | "failed"; quota: Quota };
+  | { status: "too_short" | "too_long" | "limit" | "allowance" | "failed" | "not_configured"; quota: Quota };
 
 /**
  * Makes (or remakes) the subject's mindmap. Without `force`, the same notes reuse the
@@ -38,9 +39,11 @@ export async function makeMindmap(raw: unknown): Promise<ActionResult<{ result: 
   if (!selection.all && input.totalChars > MINDMAP_MAX_CHARS) return { ok: true, result: { status: "too_long", quota: await quota() } };
   const passages = toPassages(input.picked);
 
+  // Never reuse the fake generator's output once real AI is set up.
+  const mode = aiMode();
   if (!force) {
     const cached = await repo.getAiCache("mindmap", input.hash);
-    const graph = cached ? normaliseMindmap(cached.output, passages, subject.name) : null;
+    const graph = cached && (cached.model !== "local" || mode === "local") ? normaliseMindmap(cached.output, passages, subject.name) : null;
     if (graph) {
       const map = await repo.saveMindmap(subjectId, { graph, inputHash: input.hash, sources: input.sources });
       revalidatePath(`/subjects/${subjectId}`);
@@ -48,6 +51,7 @@ export async function makeMindmap(raw: unknown): Promise<ActionResult<{ result: 
     }
   }
 
+  if (mode === "off") return { ok: true, result: { status: "not_configured", quota: await quota() } };
   const day = await studentDay(repo);
   if (!(await repo.reserveAi(day, "mindmap", DAILY_LIMITS.mindmap))) return { ok: true, result: { status: "limit", quota: await quota() } };
   let ok = false;

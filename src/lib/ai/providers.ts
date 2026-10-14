@@ -2,6 +2,7 @@ import "server-only";
 // Free AI providers, called only from the server with keys from the environment.
 // Groq (OpenAI-compatible chat API, free plan) first; Cloudflare Workers AI (free plan)
 // as the fallback. No paid service, no card attached: at a limit they answer 429.
+import { isDemoMode } from "@/lib/env";
 import type { ChatMessage } from "./types";
 
 export const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
@@ -23,6 +24,16 @@ export function aiConfig() {
   const cfAccount = process.env.CLOUDFLARE_ACCOUNT_ID || null;
   const cfToken = process.env.CLOUDFLARE_AI_TOKEN || null;
   return { groqKey, cloudflare: cfAccount && cfToken ? { account: cfAccount, token: cfToken } : null };
+}
+
+/**
+ * "live": a real provider is configured. "local": no key, but this is demo mode or not a
+ * production build, so the deterministic fake generator stands in. "off": a production
+ * build without a key: students get "AI isn't set up yet", never fake cards.
+ */
+export function aiMode(): "live" | "local" | "off" {
+  if (aiConfig().groqKey) return "live";
+  return isDemoMode() || process.env.NODE_ENV !== "production" ? "local" : "off";
 }
 
 type OpenAiReply = {

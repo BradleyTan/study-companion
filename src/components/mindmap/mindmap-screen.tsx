@@ -34,6 +34,7 @@ const MESSAGES: Record<Problem, string> = {
   limit: "", // depends on the limit; see limitText
   allowance: "Today's free AI allowance is used up. Try again tomorrow. Your notes are safe.",
   failed: "The map maker got tangled up. Try again. This one didn't use up a go.",
+  not_configured: "AI isn't set up yet, so mindmaps can't be made right now. Your notes are safe.",
 };
 const limitText = (q: Quota) => `You've made ${q.limit} mindmaps today. More tomorrow! Your current map is still here.`;
 

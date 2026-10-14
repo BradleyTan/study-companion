@@ -1,5 +1,5 @@
 import "server-only";
-import { AiRateLimited, aiConfig, callCloudflare, callGroq, CLOUDFLARE_MODEL, parseJsonReply, type CallResult, type Provider } from "./providers";
+import { AiRateLimited, aiConfig, aiMode, callCloudflare, callGroq, CLOUDFLARE_MODEL, parseJsonReply, type CallResult, type Provider } from "./providers";
 import type { ChatMessage } from "./types";
 
 /** App-wide budget hooks (implemented on top of the database by the caller). */
@@ -22,16 +22,18 @@ export type AiTask<T> = {
 export type AiOutcome<T> =
   /** `raw` is the parsed reply before validation: what gets cached (and re-validated on reuse). */
   | { ok: true; value: T; raw: unknown; model: string; inputTokens: number; outputTokens: number }
-  | { ok: false; reason: "allowance" | "failed" };
+  | { ok: false; reason: "allowance" | "failed" | "not_configured" };
 
 /**
  * Runs one generation: Groq, then Cloudflare when Groq is rate limited, down or returns
- * something unusable. Without GROQ_API_KEY it uses the local fake generator.
+ * something unusable. Without GROQ_API_KEY it uses the local fake generator in demo mode and
+ * outside production, and reports "not_configured" in a production build.
  * "allowance" = every provider tried was out of free allowance; "failed" = anything else.
  */
 export async function runAiTask<T>(task: AiTask<T>, budget: AiBudget): Promise<AiOutcome<T>> {
   const cfg = aiConfig();
   if (!cfg.groqKey) {
+    if (aiMode() === "off") return { ok: false, reason: "not_configured" };
     const raw = task.fake();
     const value = task.parse(raw);
     return value ? { ok: true, value, raw, model: "local", inputTokens: 0, outputTokens: 0 } : { ok: false, reason: "failed" };
