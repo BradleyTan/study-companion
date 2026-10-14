@@ -62,3 +62,33 @@ export function chunkPages(pages: string[], opts: { paged: boolean } = { paged: 
 export function sha256(s: string): string {
   return createHash("sha256").update(s).digest("hex");
 }
+
+export type StoredChunk = { id: string; ordinal: number; page: number | null; contentHash: string };
+export type ChunkSync = {
+  /** Existing passages that stay (same text); `ordinal` is their new position. */
+  keep: { id: string; ordinal: number }[];
+  insert: Chunk[];
+  remove: string[];
+};
+
+/**
+ * Plans how to bring stored passages in line with freshly chunked text while keeping the
+ * ids of passages whose text didn't change, so flashcards and mindmap nodes that point
+ * at them stay linked when the student edits another part of the note.
+ */
+export function planChunkSync(existing: StoredChunk[], next: Chunk[]): ChunkSync {
+  const pool = new Map<string, StoredChunk[]>();
+  for (const c of [...existing].sort((a, b) => a.ordinal - b.ordinal)) {
+    const k = `${c.page ?? ""}|${c.contentHash}`;
+    pool.set(k, [...(pool.get(k) ?? []), c]);
+  }
+  const keep: ChunkSync["keep"] = [];
+  const insert: Chunk[] = [];
+  for (const c of next) {
+    const match = pool.get(`${c.page ?? ""}|${c.contentHash}`)?.shift();
+    if (match) keep.push({ id: match.id, ordinal: c.ordinal });
+    else insert.push(c);
+  }
+  const kept = new Set(keep.map((k) => k.id));
+  return { keep, insert, remove: existing.filter((c) => !kept.has(c.id)).map((c) => c.id) };
+}
