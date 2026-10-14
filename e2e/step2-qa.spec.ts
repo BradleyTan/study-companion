@@ -185,3 +185,56 @@ test.describe("at 375 px on a touch screen", () => {
     expect(await smallTargets(page)).toEqual([]);
   });
 });
+
+/** Fake speechSynthesis: `voices` = how many voices the device has; null = no Web Speech at all. */
+async function stubSpeech(page: Page, voices: number | null) {
+  await page.addInitScript((n) => {
+    const w = window as unknown as Record<string, unknown>;
+    if (n === null) { delete w.speechSynthesis; delete w.SpeechSynthesisUtterance; Object.defineProperty(window, "speechSynthesis", { value: undefined, configurable: true }); return; }
+    const spoken: string[] = [];
+    let current: { onend?: () => void } | null = null;
+    w.__spoken = spoken;
+    w.__finishSentence = () => { const u = current; current = null; u?.onend?.(); };
+    class Utterance { text: string; rate = 1; lang = ""; voice: unknown = null; onend?: () => void; onerror?: () => void; constructor(t: string) { this.text = t; } }
+    const list = Array.from({ length: n }, (_, i) => ({ name: `Voice ${i}`, lang: "en-GB", voiceURI: `v${i}`, localService: true, default: i === 0 }));
+    const synth = {
+      speaking: false, paused: false, pending: false, getVoices: () => list,
+      speak: (u: Utterance) => { spoken.push(u.text); current = u; }, cancel: () => { current = null; },
+      pause: () => {}, resume: () => {}, addEventListener: () => {}, removeEventListener: () => {},
+    };
+    Object.defineProperty(window, "speechSynthesis", { value: synth, configurable: true });
+    Object.defineProperty(window, "SpeechSynthesisUtterance", { value: Utterance, configurable: true });
+  }, voices);
+}
+
+test("read aloud: Resume starts the paused sentence again", async ({ page }) => {
+  await stubSpeech(page, 1);
+  await subjectWithNote(page, "Latin", "Verbs");
+  await page.getByRole("button", { name: "Read aloud" }).click();
+  const bar = page.getByRole("region", { name: "Read aloud" });
+  await page.keyboard.press("Control+Home");
+  await bar.getByRole("button", { name: "▶ Play" }).click();
+  await page.evaluate(() => (window as unknown as { __finishSentence: () => void }).__finishSentence());
+  await expect(bar.getByTestId("read-aloud-status")).toHaveText(/Reading sentence 2 of/);
+  await bar.getByRole("button", { name: "❚❚ Pause" }).click();
+  await bar.getByRole("button", { name: "▶ Play" }).click();
+  await expect(bar.getByTestId("read-aloud-status")).toHaveText(/Reading sentence 2 of/);
+  const spoken = await page.evaluate(() => (window as unknown as { __spoken: string[] }).__spoken);
+  expect(spoken).toHaveLength(3);
+  expect(spoken[2]).toBe(spoken[1]);
+});
+
+for (const [name, voices, text] of [
+  ["no voices installed", 0, "Your device has no reading voices installed."],
+  ["no Web Speech at all", null, "Read aloud isn't available in this browser."],
+] as const) {
+  test(`read aloud with ${name} explains why and can't start`, async ({ page }) => {
+    await stubSpeech(page, voices);
+    await subjectWithNote(page, "Music", "Scales");
+    await page.getByRole("button", { name: "Read aloud" }).click();
+    const bar = page.getByRole("region", { name: "Read aloud" });
+    await expect(bar.getByTestId("read-aloud-status")).toContainText(text, { timeout: 5000 });
+    await expect(bar.getByRole("button", { name: "▶ Play" })).toBeDisabled();
+    await expectNoA11yViolations(page);
+  });
+}

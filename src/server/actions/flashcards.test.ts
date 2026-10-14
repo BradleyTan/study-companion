@@ -91,4 +91,45 @@ describe("flashcard generation quota (QA)", () => {
     const r = await makeFlashcards({ subjectId: other.subjectId, source: { type: "note", id: noteId }, count: 10 });
     expect(r.ok).toBe(false);
   });
+
+  it("empty notes and a single sentence are too short and cost nothing", async () => {
+    const { subjectId } = await subjectWithNote();
+    const { id: empty } = await repo.createNote(subjectId);
+    const one = await repo.createNote(subjectId);
+    await repo.updateNote(one.id, { title: "One", contentJson: {}, contentText: "Osmosis moves water." });
+    for (const id of [empty, one.id]) {
+      const r = await makeFlashcards({ subjectId, source: { type: "note", id }, count: 10 });
+      expect(r.ok && r.result.status).toBe("too_short");
+    }
+    const m = await makeMindmap({ subjectId, selection: { all: false, noteIds: [one.id], sourceIds: [] }, force: false });
+    expect(m.ok && m.result.status).toBe("too_short");
+    expect(await used()).toBe(0);
+  });
+
+  it("non-English notes make cards whose quotes are real sentences from the note", async () => {
+    repo = demoRepo(crypto.randomUUID());
+    const subject = await repo.createSubject({ name: "Deutsch", colour: "mint", emoji: "🇩🇪" });
+    const { id } = await repo.createNote(subject.id);
+    const text = Array.from({ length: 8 }, (_, i) => `Die Mitochondrien Nummer ${i + 1} erzeugen Energie für die Zelle durch Zellatmung. 細胞は生命の基本単位です。`).join(" ");
+    await repo.updateNote(id, { title: "Zellbiologie", contentJson: {}, contentText: text });
+    const r = await makeFlashcards({ subjectId: subject.id, source: { type: "note", id }, count: 10 });
+    expect(r.ok && r.result.status).toBe("made");
+    if (r.ok && r.result.status === "made") {
+      for (const c of r.result.cards) expect(`Zellbiologie ${text}`.replace(/\s+/g, " ")).toContain(c.quote!.replace(/\s+/g, " "));
+    }
+  });
+
+  it("refuses page ranges over 20 pages and files that aren't ready", async () => {
+    const { subjectId } = await subjectWithNote();
+    const big = await makeFlashcards({ subjectId, source: { type: "file", id: crypto.randomUUID(), fromPage: 1, toPage: 21 }, count: 10 });
+    expect(big.ok).toBe(false);
+    const backwards = await makeFlashcards({ subjectId, source: { type: "file", id: crypto.randomUUID(), fromPage: 5, toPage: 2 }, count: 10 });
+    expect(backwards.ok).toBe(false);
+    const src = await repo.createSource({ id: crypto.randomUUID(), subjectId, fileName: "scan.pdf", kind: "pdf", sizeBytes: 10, storagePath: "x/scan.pdf" });
+    await repo.updateSource(src.id, { extractStatus: "no_text", pageCount: 200 });
+    const scanned = await makeFlashcards({ subjectId, source: { type: "file", id: src.id, fromPage: 1, toPage: 20 }, count: 10 });
+    expect(scanned.ok).toBe(false);
+    expect(await used()).toBe(0);
+  });
 });
+
