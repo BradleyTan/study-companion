@@ -72,7 +72,7 @@ Card generation (Groq `gpt-oss-20b`, cached, quota) with source quote per card; 
 Quiz builder (MCQ / fill-in / mixed, N questions); feedback (celebration / gentle shake); weak-topic list per subject; re-mix of missed topics into new quizzes; chat with retrieval and clickable citations, refusing to answer beyond the notes. **Stop for review.**
 
 ### Step 4: Pomodoro, timetable, Google Calendar
-Timer with custom durations, wall-clock based (accurate in background tabs), filling/draining ring, chime, focus mode, sessions logged per subject; weekly timetable with drag to create; optional two-way Google Calendar sync (separate "Study" calendar, conflict rule: last edit wins with a visible notice). **Stop for review.**
+Timer with custom durations, wall-clock based (accurate in background tabs), filling/draining ring, chime, focus mode, sessions logged per subject; weekly timetable with drag to create; a private calendar link (.ics feed) students add to Google, Apple or Outlook Calendar, plus import of the university timetable file (.ics). Full two-way Google sync was dropped (Bradley, 2026-10-14): without a paid verified domain Google caps it at 100 users with weekly re-logins. **Stop for review.**
 
 ### After step 4
 Polish pass, `docs/user-testing.md` (tester access, 20-minute task script, feedback form). Bradley runs the student test and decides on Phase 2.
@@ -99,7 +99,7 @@ Bradley's rule: the app must cost nothing to run. Every service below is on a fr
 | Database, sign-in, file storage | **Supabase Free** | 500 MB database, 1 GB files, 5 GB transfer a month, 50,000 monthly users. Paused after 7 days without activity (one click to wake) | Writes are blocked until space is freed; never billed |
 | Hosting | **Vercel Hobby** | Free for personal, non-commercial projects | If StudyNest ever charges students, it needs a paid plan (or another free host) |
 | Read-aloud | Browser's built-in voices (Web Speech API) | Unlimited | — |
-| Google Calendar sync | Google Calendar API | Free quota far above our use | — |
+| Calendar | Private .ics feed served by the app (no Google API) | Unlimited | — |
 | Sounds | Generated in the browser | Unlimited | — |
 
 **Why Groq and not the Claude API or Gemini:** the Claude API has no free plan. Gemini's free plan allows Google to use prompts to improve its products, which would break the privacy promise that students' notes aren't used for training. Groq doesn't keep API inputs by default (only short-lived abuse logs, up to 30 days, which can be switched off in its data controls), and Cloudflare commits not to train on prompts.
@@ -127,6 +127,7 @@ Enforced server-side in `ai_usage`; the UI shows "3 of 5 left today". Cached res
 3. **Sign-in methods:** default, email magic link + Google. Microsoft can be added later.
 4. **App name:** default, keep the working name "StudyNest".
 5. **Free-tier numbers:** default, section 4 as written.
-6. **Accounts still needed from Bradley (all free, no card):** Supabase project (URL, publishable key, secret key), Groq API key (from Step 2), Cloudflare account ID + Workers AI token (from Step 2, fallback), Vercel Hobby account. Google Calendar OAuth waits until step 4.
+6. **Accounts still needed from Bradley (all free, no card):** Supabase project (URL, publishable key, secret key), Groq API key (from Step 2), Cloudflare account ID + Workers AI token (from Step 2, fallback), Vercel Hobby account. No Google Calendar OAuth needed (calendar link instead).
 8. **Zero cost:** Bradley, 2026-10-11: everything must be free. AI moved from the Claude API to Groq + Cloudflare free plans (section 3b).
+9. **Calendar (Bradley, 2026-10-14):** calendar link (.ics) instead of two-way Google sync.
 7. **Repository:** github.com/BradleyTan/study-companion; each build step lands as a pull request.

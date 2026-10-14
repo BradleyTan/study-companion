@@ -43,7 +43,7 @@ docs/                   PLAN.md, CHANGELOG.md, design/, qa/, security/
 1. Auth + subject containers + typed notes + source uploads (with text extraction)
 2. Flashcards (AI, source passages, editable) + spaced repetition + mindmap + read-aloud
 3. Quizzes (MCQ, fill-in, mixed) + wrong-answer tracking + weak topics + ask-your-notes chat with citations
-4. Pomodoro timer + timetable + Google Calendar sync
+4. Pomodoro timer + timetable + calendar link (.ics feed and uni timetable import; no Google OAuth)
 Then: polish pass and `docs/user-testing.md` student test kit.
 
 ## Team flow
