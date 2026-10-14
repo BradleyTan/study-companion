@@ -49,3 +49,33 @@ Eight pastels, each paired with ink text: sky `#8fb8ff`, sun `#ffe45c`, coral `#
 - Touch targets ≥ 44 px.
 - All icons have labels; emoji used as content get `role="img"` + `aria-label`.
 - Everything works with sound off.
+
+## Step 2 additions
+
+### New tokens (add to `src/app/globals.css`, both themes)
+| Token | Light | Dark | Use |
+|---|---|---|---|
+| `--subject` | set inline per page/card from `SUBJECT_COLOURS[subject.colour]` | same | subject tape, root node, quote border, tile fills |
+| `--grade-again` | `var(--danger)` | `var(--danger)` | review "Again" |
+| `--grade-hard` | `#ffc48f` (peach) | `#ffc48f` | review "Hard" |
+| `--grade-good` | `var(--success)` | `var(--success)` | review "Good" |
+| `--grade-easy` | `#8fb8ff` (sky) | `#8fb8ff` | review "Easy" |
+| `--mark` | `var(--highlight)` | `var(--highlight)` | passage and read-aloud highlight; text inside is always `--on-colour` |
+
+All fills above carry `--on-colour` text (≥ 7:1 in both themes) and an ink outline. A subject colour is never used for text on paper.
+
+### Motion
+- Card flip: `rotateY` 180°, 420 ms, `cubic-bezier(.3,1.3,.5,1)`, perspective 1200 px. Reduced motion / focus mode: 150 ms crossfade.
+- Next card: out 200 ms (24 px left + fade), in 250 ms spring from the stack.
+- Panel / bottom sheet: 250 ms ease-out slide; reduced motion: no slide, fade 120 ms.
+- Confetti: 40 pieces, 1.2 s, Framer Motion, in-house (no library). Off under reduced motion and in focus mode (a static star sticker instead).
+- Loading loops (card shuffle, branch drawing, chip pulse) stop under reduced motion and in focus mode; text still shows.
+
+### Focus mode (applies from Step 4, specs in Step 2 already honour it)
+While the Pomodoro timer runs: only `chime` plays, decorative motion follows reduced-motion rules, confetti is off. Read-aloud still works because the student asked for it.
+
+### New components
+`FlipCard`, `GradeButton`, `QuotaChip` ("3 of 5 left today"), `SourceQuote` (quote + passage link), `ProgressBar`, `BottomSheet` (phone) / `SidePanel` (≥ 640 px), `Confetti`, `ReadAloudBar`, `StudyToolTile`, `DueBanner`. All built on the existing sticker primitives and tokens.
+
+### Breakpoints used by Step 2 specs
+Phone < 640 px (designed at 375), tablet 640–899, laptop ≥ 900 (matches the 900 px split already used on the subject page).
