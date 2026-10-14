@@ -84,6 +84,8 @@ export type CardReview = {
   rating: Rating;
   prevState: SrsStateNum;
   reviewedAt: string;
+  /** The review screen's key for this grade (makes retried saves and undos idempotent). */
+  clientKey: string | null;
   /** Card schedule after this review. */
   srs: SrsState;
 };

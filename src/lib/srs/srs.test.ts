@@ -167,3 +167,25 @@ describe("in-session queue", () => {
     expect(pickNext([{ id: "x", availableAt: t + 5 * MIN }, { id: "y", availableAt: t + MIN }], NOW)).toBe(1);
   });
 });
+
+describe("time zones: across a whole year (QA)", () => {
+  // Odd offsets, half-hour DST (Lord Howe), the date line, southern-hemisphere DST.
+  const zones = ["Pacific/Kiritimati", "Pacific/Pago_Pago", "Pacific/Chatham", "Australia/Lord_Howe", "Asia/Kathmandu", "America/St_Johns", "America/Sao_Paulo", "Europe/London", "America/Los_Angeles", "Africa/Casablanca"];
+  it("today's bounds always contain now and step to the next local date", () => {
+    for (const tz of zones) {
+      for (let t = Date.UTC(2026, 0, 1); t < Date.UTC(2027, 0, 1); t += 3_600_000 * 29) {
+        const now = new Date(t);
+        const { start, end } = localDayBounds(tz, now);
+        const today = localDayKey(tz, now);
+        expect(start.getTime()).toBeLessThanOrEqual(t);
+        expect(end.getTime()).toBeGreaterThan(t);
+        expect(localDayKey(tz, start)).toBe(today);
+        expect(localDayKey(tz, new Date(end.getTime() - 1))).toBe(today);
+        expect(localDayKey(tz, end)).not.toBe(today);
+        const hours = (end.getTime() - start.getTime()) / 3_600_000;
+        expect(hours).toBeGreaterThanOrEqual(23);
+        expect(hours).toBeLessThanOrEqual(25);
+      }
+    }
+  }, 30_000);
+});

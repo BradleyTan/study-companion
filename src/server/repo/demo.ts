@@ -58,8 +58,8 @@ export function demoRepo(userId: string): Repo {
   };
   const myChunks = () => [...store.chunks.values()].flat().filter((c) => c.userId === userId);
   const stripReview = (r: Owned<CardReview & { clientKey: string | null }>): CardReview => {
-    const { userId: u, clientKey: k, ...rest } = r;
-    void u; void k;
+    const { userId: u, ...rest } = r;
+    void u;
     return clone(rest);
   };
   const toChunkRows = (subjectId: string, link: { noteId?: string; sourceId?: string }, chunks: Chunk[]): Owned<ChunkRow>[] =>

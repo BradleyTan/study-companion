@@ -21,8 +21,8 @@ import { Dialog } from "../ui/dialog";
 import { subjectStyle } from "../ui/subject-style";
 import { Confetti } from "./confetti";
 
-type Op = { kind: "grade"; key: string; cardId: string; rating: Rating } | { kind: "undo"; cardId: string };
-type HistoryEntry = { cardId: string; rating: Rating; prevSrs: SrsState; prevQueue: QueueItem[] };
+type Op = { kind: "grade"; key: string; cardId: string; rating: Rating } | { kind: "undo"; key: string; cardId: string };
+type HistoryEntry = { key: string; cardId: string; rating: Rating; prevSrs: SrsState; prevQueue: QueueItem[] };
 
 const short = (s: string) => (s.length > 120 ? `${s.slice(0, 119)}…` : s);
 
@@ -99,7 +99,7 @@ export function ReviewSession({ subject, subjects, initialQueue, initialOutlook,
     setPending((n) => n + 1);
     opChain.current = opChain.current.then(async () => {
       for (let attempt = 0; ; attempt++) {
-        const res = await (op.kind === "grade" ? reviewCard({ flashcardId: op.cardId, rating: op.rating, clientKey: op.key }) : undoReview(op.cardId)).catch(() => null);
+        const res = await (op.kind === "grade" ? reviewCard({ flashcardId: op.cardId, rating: op.rating, clientKey: op.key }) : undoReview(op.cardId, op.key)).catch(() => null);
         if (res) {
           // Deleted elsewhere / nothing to undo: skip silently.
           if (res.ok) setCards((m) => { const c = m.get(op.cardId); if (!c) return m; const n = new Map(m); n.set(op.cardId, { ...c, srs: res.srs }); return n; });
@@ -161,10 +161,11 @@ export function ReviewSession({ subject, subjects, initialQueue, initialOutlook,
     const last = nextQueue.length === 0;
     play(last ? "cheer" : "click");
     speech.stopIf(owner);
-    setHistory((h) => [...h, { cardId: card.id, rating, prevSrs: card.srs, prevQueue: queue }]);
+    const key = crypto.randomUUID();
+    setHistory((h) => [...h, { key, cardId: card.id, rating, prevSrs: card.srs, prevQueue: queue }]);
     setCards((m) => new Map(m).set(card.id, { ...card, srs: next }));
     setQueue(nextQueue);
-    runOp({ kind: "grade", key: crypto.randomUUID(), cardId: card.id, rating });
+    runOp({ kind: "grade", key, cardId: card.id, rating });
     setFlipped(false);
     if (last) { setCurrentId(null); setEnded("complete"); setAnnounce(`Session complete. You reviewed ${new Set([...history.map((h) => h.cardId), card.id]).size} cards.`); return; }
     const i = pickNext(nextQueue, t);
@@ -186,7 +187,7 @@ export function ReviewSession({ subject, subjects, initialQueue, initialOutlook,
     setCurrentId(last.cardId);
     setFlipped(false);
     setEnded(null);
-    runOp({ kind: "undo", cardId: last.cardId });
+    runOp({ kind: "undo", key: last.key, cardId: last.cardId });
     setAnnounce(`Undone. Question: ${short(cards.get(last.cardId)!.front)}`);
     requestAnimationFrame(() => showRef.current?.focus());
   }, [history, play, runOp, cards, owner]);

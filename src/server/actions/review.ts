@@ -1,5 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { gradeCard, newSrs, type SrsState } from "@/lib/srs/scheduler";
 import { id as idSchema, reviewInput } from "@/lib/validation";
 import { dayContext, subjectDue, upcoming } from "../cards";
@@ -28,14 +29,20 @@ export async function reviewCard(raw: unknown): Promise<ActionResult<{ srs: SrsS
   return { ok: true, srs: saved.srs };
 }
 
-/** Undo: removes the card's last review and restores the schedule from before it. */
-export async function undoReview(flashcardId: string): Promise<ActionResult<{ srs: SrsState }>> {
+/**
+ * Undo: removes the card's last review and restores the schedule from before it. With
+ * `clientKey` (the grade being undone) it only removes that review, so a retried undo, or
+ * undoing a grade that never saved, can't delete an older review as well.
+ */
+export async function undoReview(flashcardId: string, clientKey?: string): Promise<ActionResult<{ srs: SrsState }>> {
   if (!idSchema.safeParse(flashcardId).success) return { ok: false, error: "Card not found." };
+  if (clientKey !== undefined && !z.uuid().safeParse(clientKey).success) return { ok: false, error: "Nothing to undo." };
   const repo = await getRepo();
   const card = await repo.getFlashcard(flashcardId);
   if (!card) return { ok: false, error: "Card not found." };
   const [last, previous] = await repo.latestReviews(flashcardId, 2);
   if (!last) return { ok: false, error: "Nothing to undo." };
+  if (clientKey && last.clientKey !== clientKey) return { ok: true, srs: card.srs }; // already undone
   await repo.deleteCardReview(last.id);
   const restored = previous ? previous.srs : newSrs(new Date(card.createdAt));
   await repo.setFlashcardSrs(flashcardId, restored);

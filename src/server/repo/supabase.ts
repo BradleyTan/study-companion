@@ -92,6 +92,7 @@ const toReview = (r: Row): CardReview => ({
   rating: r.rating as Rating,
   prevState: r.prev_state as SrsStateNum,
   reviewedAt: new Date(r.reviewed_at as string).toISOString(),
+  clientKey: (r.client_key as string | null) ?? null,
   srs: { ...toSrs(r), lastReviewAt: new Date(r.reviewed_at as string).toISOString() },
 });
 const toMindmap = (r: Row): Mindmap => ({
