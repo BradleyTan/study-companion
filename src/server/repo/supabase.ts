@@ -318,18 +318,18 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
         // Stable order within a batch: the first card is the newest. New cards are due straight away.
         created_at: new Date(t - i).toISOString(), due_at: new Date(t - i).toISOString(),
       }));
-      const { data, error } = await db.from("flashcards").insert(rows).select("*");
+      const { data, error } = await admin().from("flashcards").insert(rows).select("*");
       fail(error, "createFlashcards");
       return (data ?? []).map(toFlashcard).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     },
     async updateFlashcardText(id, input) {
-      fail((await db.from("flashcards").update({ front: input.front, back: input.back, edited: true }).eq("id", id)).error, "updateFlashcardText");
+      fail((await admin().from("flashcards").update({ front: input.front, back: input.back, edited: true }).eq("id", id).eq("user_id", userId)).error, "updateFlashcardText");
     },
     async setFlashcardDeleted(id, deleted) {
-      fail((await db.from("flashcards").update({ deleted_at: deleted ? new Date().toISOString() : null }).eq("id", id)).error, "setFlashcardDeleted");
+      fail((await admin().from("flashcards").update({ deleted_at: deleted ? new Date().toISOString() : null }).eq("id", id).eq("user_id", userId)).error, "setFlashcardDeleted");
     },
     async setFlashcardSrs(id, srs) {
-      fail((await db.from("flashcards").update({ ...srsRow(srs), last_review_at: srs.lastReviewAt }).eq("id", id)).error, "setFlashcardSrs");
+      fail((await admin().from("flashcards").update({ ...srsRow(srs), last_review_at: srs.lastReviewAt }).eq("id", id).eq("user_id", userId)).error, "setFlashcardSrs");
     },
 
     async addCardReview(input) {
@@ -337,10 +337,10 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
         user_id: userId, flashcard_id: input.flashcardId, subject_id: input.subjectId, client_key: input.clientKey,
         rating: input.rating, prev_state: input.prevState, reviewed_at: input.reviewedAt, ...srsRow(input.srs),
       };
-      const { data, error } = await db.from("card_reviews").insert(row).select("*").single();
+      const { data, error } = await admin().from("card_reviews").insert(row).select("*").single();
       if (error && (error as { code?: string }).code === "23505" && input.clientKey) {
         // Already saved by an earlier try whose answer got lost.
-        const dup = await db.from("card_reviews").select("*").eq("client_key", input.clientKey).single();
+        const dup = await db.from("card_reviews").select("*").eq("client_key", input.clientKey).eq("user_id", userId).single();
         fail(dup.error, "addCardReview");
         return toReview(dup.data);
       }
@@ -353,7 +353,7 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
       return (data ?? []).map(toReview);
     },
     async deleteCardReview(id) {
-      fail((await db.from("card_reviews").delete().eq("id", id)).error, "deleteCardReview");
+      fail((await admin().from("card_reviews").delete().eq("id", id).eq("user_id", userId)).error, "deleteCardReview");
     },
     async countIntroducedSince(sinceIso) {
       const { count, error } = await db.from("card_reviews").select("id", { count: "exact", head: true }).eq("prev_state", 0).gte("reviewed_at", sinceIso);
@@ -374,7 +374,7 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
     },
     async saveMindmap(subjectId, input) {
       const t = new Date().toISOString();
-      const { data, error } = await db
+      const { data, error } = await admin()
         .from("mindmaps")
         .upsert({ user_id: userId, subject_id: subjectId, graph_json: input.graph, input_hash: input.inputHash, sources_json: input.sources, created_at: t }, { onConflict: "subject_id,user_id" })
         .select("*")
@@ -383,7 +383,7 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
       return toMindmap(data);
     },
     async updateMindmapGraph(subjectId, graph) {
-      fail((await db.from("mindmaps").update({ graph_json: graph }).eq("subject_id", subjectId)).error, "updateMindmapGraph");
+      fail((await admin().from("mindmaps").update({ graph_json: graph }).eq("subject_id", subjectId).eq("user_id", userId)).error, "updateMindmapGraph");
     },
 
     async aiUsageCount(day, kind) {
@@ -391,8 +391,8 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
       fail(error, "aiUsageCount");
       return (data?.count as number | undefined) ?? 0;
     },
-    async reserveAi(day, kind, limit) {
-      const { data, error } = await admin().rpc("ai_usage_reserve", { p_user_id: userId, p_day: day, p_kind: kind, p_limit: limit });
+    async reserveAi(day, kind, limit, maxAttempts) {
+      const { data, error } = await admin().rpc("ai_usage_reserve", { p_user_id: userId, p_day: day, p_kind: kind, p_limit: limit, p_max_attempts: maxAttempts });
       fail(error, "reserveAi");
       return data !== null;
     },

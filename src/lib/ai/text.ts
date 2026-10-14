@@ -2,11 +2,15 @@
 
 export const collapse = (s: string) => s.replace(/\s+/g, " ").trim();
 
-/** Cut to `max` characters at a word boundary when possible. */
+/** Half an emoji (a lone surrogate) or a control character: Postgres refuses the first. */
+const UNSAFE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]|[\u0000-\u001f\u007f]/g;
+
+/** Cut to `max` characters at a word boundary when possible, never through an emoji. */
 export function clip(s: string, max: number): string {
-  const t = collapse(s);
+  const t = collapse(s.replace(UNSAFE, " "));
   if (t.length <= max) return t;
-  const cut = t.slice(0, max);
+  let cut = t.slice(0, max);
+  if (/[\uD800-\uDBFF]$/.test(cut)) cut = cut.slice(0, -1);
   const sp = cut.lastIndexOf(" ");
   return (sp > max * 0.6 ? cut.slice(0, sp) : cut).trim();
 }

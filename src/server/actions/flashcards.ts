@@ -7,7 +7,7 @@ import { runAiTask } from "@/lib/ai/run";
 import { normaliseFlashcards } from "@/lib/ai/schemas";
 import { flashcardTask, FLASHCARDS_MAX_CHARS, MIN_SOURCE_CHARS, toPassages, type CardCount } from "@/lib/ai/tasks";
 import type { GeneratedCard } from "@/lib/ai/types";
-import { DAILY_LIMITS, type Quota } from "@/lib/limits/ai";
+import { DAILY_ATTEMPTS, DAILY_LIMITS, type Quota } from "@/lib/limits/ai";
 import { editCardInput, id as idSchema, makeFlashcardsInput, newCardInput } from "@/lib/validation";
 import { appBudget, quotaFor, studentDay } from "../ai";
 import { dayContext, toDeckCards, type DeckCard } from "../cards";
@@ -114,7 +114,7 @@ export async function makeFlashcards(raw: unknown): Promise<ActionResult<{ resul
 
   if (mode === "off") return { ok: true, result: { status: "not_configured", quota: await quota() } };
   const day = await studentDay(repo);
-  if (!(await repo.reserveAi(day, "flashcards", DAILY_LIMITS.flashcards))) return { ok: true, result: { status: "limit", quota: await quota() } };
+  if (!(await repo.reserveAi(day, "flashcards", DAILY_LIMITS.flashcards, DAILY_ATTEMPTS.flashcards))) return { ok: true, result: { status: "limit", quota: await quota() } };
   let ok = false;
   let tokens = { input: 0, output: 0 };
   try {

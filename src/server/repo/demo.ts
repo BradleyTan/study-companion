@@ -19,7 +19,7 @@ type Store = {
   flashcards: Map<string, Owned<Flashcard>>;
   reviews: Map<string, Owned<CardReview & { clientKey: string | null }>>;
   mindmaps: Map<string, Owned<Mindmap>>; // by subject id
-  aiUsage: Map<string, { count: number; inputTokens: number; outputTokens: number }>; // user|day|kind
+  aiUsage: Map<string, { count: number; attempts?: number; inputTokens: number; outputTokens: number }>; // user|day|kind
   appUsage: Map<string, { requests: number; tokens: number }>; // day|model
   aiCache: Map<string, { model: string; output: unknown }>; // user|kind|hash
 };
@@ -274,11 +274,12 @@ export function demoRepo(userId: string): Repo {
     async aiUsageCount(day, kind) {
       return store.aiUsage.get(`${userId}|${day}|${kind}`)?.count ?? 0;
     },
-    async reserveAi(day, kind, limit) {
+    async reserveAi(day, kind, limit, maxAttempts) {
       const key = `${userId}|${day}|${kind}`;
-      const row = store.aiUsage.get(key) ?? { count: 0, inputTokens: 0, outputTokens: 0 };
-      if (row.count >= limit) return false;
-      store.aiUsage.set(key, { ...row, count: row.count + 1 });
+      const row = store.aiUsage.get(key) ?? { count: 0, attempts: 0, inputTokens: 0, outputTokens: 0 };
+      const attempts = row.attempts ?? 0;
+      if (row.count >= limit || attempts >= maxAttempts) return false;
+      store.aiUsage.set(key, { ...row, count: row.count + 1, attempts: attempts + 1 });
       return true;
     },
     async settleAi(day, kind, ok, inputTokens, outputTokens) {

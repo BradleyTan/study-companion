@@ -5,11 +5,25 @@ import type { ChatMessage, Passage } from "./types";
 
 export const PROMPT_VERSION = 1;
 
-/** Stops a passage from closing its own block or opening a fake one. */
+// Characters that render as nothing (zero-width, bidi controls, fillers, variation selectors).
+const INVISIBLE = /[\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0]/g;
+const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
+// <passage>, </passages …>, and the same written as HTML entities.
+const TAG = "(?:<|&lt;?|&#0*60;?|&#x0*3c;?)\\s*\\\\?\\/?\\s*passages?\\b[^>]*(?:>|&gt;?)?";
+const OPEN_CLOSE = /<|&lt;?|&#0*60;?|&#x0*3c;?|>|&gt;?/gi;
+
+/**
+ * Stops a passage from closing its own block or opening a fake one. Disguised delimiters
+ * count too: when the text only spells a delimiter after folding look-alikes (full-width or
+ * small "<", full-width letters) and removing invisible characters, the folded text is sent
+ * instead, so the delimiter is defused like a plain one. Other text is left as written
+ * (folding everything would break quote checks on PDF ligatures like "ﬁ").
+ */
 export function defuse(text: string): string {
-  return text
-    .replace(/<\s*\/?\s*passages?\b[^>]*>?/gi, (m) => m.replace(/</g, "‹").replace(/>/g, "›"))
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "");
+  let t = text.replace(CONTROL, "");
+  const folded = t.normalize("NFKC").replace(INVISIBLE, "");
+  if (folded !== t && new RegExp(TAG, "i").test(folded)) t = folded;
+  return t.replace(new RegExp(TAG, "gi"), (m) => m.replace(OPEN_CLOSE, (c) => (c.startsWith(">") || c.toLowerCase().startsWith("&g") ? "›" : "‹")));
 }
 
 export function passagesBlock(passages: Passage[]): string {
@@ -55,7 +69,7 @@ export function mindmapMessages(passages: Passage[], subjectName: string): ChatM
     {
       role: "user",
       // The subject name is the student's own text too, so it's quoted as data.
-      content: `Subject name (data): ${JSON.stringify(subjectName.slice(0, 60))}\n\n${passagesBlock(passages)}\n\nMake the mindmap for the passages above.`,
+      content: `Subject name (data): ${JSON.stringify(defuse(subjectName.slice(0, 60)))}\n\n${passagesBlock(passages)}\n\nMake the mindmap for the passages above.`,
     },
   ];
 }

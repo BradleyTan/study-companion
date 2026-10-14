@@ -177,8 +177,11 @@ export interface Repo {
 
   /** Successful generations of this kind on this (local) day. */
   aiUsageCount(day: string, kind: AiKind): Promise<number>;
-  /** Atomically takes one go if under `limit`; false when the limit is used. */
-  reserveAi(day: string, kind: AiKind, limit: number): Promise<boolean>;
+  /**
+   * Atomically takes one go if under `limit` and under `maxAttempts` tries today (failed tries
+   * give the go back but still count as tries); false when either is used up.
+   */
+  reserveAi(day: string, kind: AiKind, limit: number, maxAttempts: number): Promise<boolean>;
   /** Gives the go back when the generation failed; records tokens. */
   settleAi(day: string, kind: AiKind, ok: boolean, inputTokens: number, outputTokens: number): Promise<void>;
   /** App-wide budget shared by every student (not per student). */

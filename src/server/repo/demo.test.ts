@@ -77,13 +77,23 @@ describe("demo repo: AI quota", () => {
   it("reserves up to the limit, refunds failures and keeps students apart", async () => {
     const a = demoRepo(crypto.randomUUID());
     const b = demoRepo(crypto.randomUUID());
-    expect(await a.reserveAi("2026-10-14", "mindmap", 2)).toBe(true);
-    expect(await a.reserveAi("2026-10-14", "mindmap", 2)).toBe(true);
-    expect(await a.reserveAi("2026-10-14", "mindmap", 2)).toBe(false);
+    expect(await a.reserveAi("2026-10-14", "mindmap", 2, 10)).toBe(true);
+    expect(await a.reserveAi("2026-10-14", "mindmap", 2, 10)).toBe(true);
+    expect(await a.reserveAi("2026-10-14", "mindmap", 2, 10)).toBe(false);
     await a.settleAi("2026-10-14", "mindmap", false, 0, 0);
     expect(await a.aiUsageCount("2026-10-14", "mindmap")).toBe(1);
     expect(await a.aiUsageCount("2026-10-15", "mindmap")).toBe(0);
     expect(await b.aiUsageCount("2026-10-14", "mindmap")).toBe(0);
+  });
+
+  it("caps tries, failed ones included", async () => {
+    const a = demoRepo(crypto.randomUUID());
+    for (let i = 0; i < 3; i++) {
+      expect(await a.reserveAi("2026-10-14", "flashcards", 5, 3)).toBe(true);
+      await a.settleAi("2026-10-14", "flashcards", false, 0, 0);
+    }
+    expect(await a.reserveAi("2026-10-14", "flashcards", 5, 3)).toBe(false);
+    expect(await a.aiUsageCount("2026-10-14", "flashcards")).toBe(0);
   });
 
   it("caches per student", async () => {
