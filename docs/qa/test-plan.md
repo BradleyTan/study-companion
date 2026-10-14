@@ -10,6 +10,11 @@ Rules
 - Every feature adds unit tests for its pure logic and at least one e2e journey on both viewports.
 - Every screen gets an axe check in light mode; settings is also checked in dark.
 - Every new table gets cross-student tests in `supabase/tests/10_rls.sql`.
-- Mobile: assert no horizontal scroll on each new screen at 412 px.
+- Mobile: assert no horizontal scroll on each new screen at 412 px, and at 375 px with touch emulation assert every control is at least 44 × 44 px (`smallTargets` in `e2e/step2-qa.spec.ts`).
+- From Step 2: new screens are also checked with axe in dark mode with reduced motion.
+- Server actions with quota, idempotency or ownership rules get action-level Vitest tests against the demo repo (`src/server/actions/*.test.ts`, `getRepo` mocked).
+- AI features: the local stand-in generator runs only in demo mode, tests and `npm run dev`; a production build without a key must say "AI isn't set up yet" (unit-tested).
 
-Standing checklist for later steps (from the QA brief): FSRS interval maths, generation edge cases (empty notes, huge PDFs, scanned PDFs, non-English, prompt-injection text), timer accuracy in background tabs, calendar sync conflicts.
+Standing checklist for later steps (from the QA brief): FSRS interval maths, due-today across time zones, generation edge cases (empty notes, huge PDFs, scanned PDFs, non-English, prompt-injection text), double taps and retried requests (idempotency), timer accuracy in background tabs, calendar sync conflicts.
+
+Sign-offs: `docs/qa/step-1.md`, `docs/qa/step-2.md`.

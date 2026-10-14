@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-14 · Step 2 QA fixes
+- A production build without an AI key says "AI isn't set up yet" for flashcards and mindmaps instead of making stand-in cards; stand-in output is never reused once real AI is set up.
+- Review: Undo removes only the grade it was for (a retried undo could delete an older review); a double tap on a grade no longer flips the next card; a reused client key can't copy one card's schedule onto another; "Review X · N due" shares the new-card allowance like the banner.
+- Same notes in two subjects: making cards in the second no longer says "already made".
+- Mindmap: regenerating while a layout save was pending no longer moves the new map's nodes.
+- Touch targets: small buttons, back links, the logo and the note title are 44 px on phones.
+- QA sign-off `docs/qa/step-2.md`; new tests in `e2e/step2-qa.spec.ts` and `src/server/actions/*.test.ts`.
+
 ## 2026-10-14 · Step 2: flashcards, spaced repetition, mindmap, read aloud
 - Make flashcards from a note or a lecture file (10, 15 or 20 cards; up to 20 pages of a file at a time). Each card keeps the quote it came from and links back to it. Edit, delete (with Undo) and add cards by hand.
 - Review sessions with FSRS spaced repetition (`ts-fsrs`): flip, Again/Hard/Good/Easy with the next interval on each button, keyboard shortcuts, Undo, confetti at the end, 20 new cards a day. Due-today counts on the Subjects page, subject tiles and the subject page.

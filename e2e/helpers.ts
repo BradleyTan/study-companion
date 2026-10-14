@@ -21,6 +21,8 @@ export async function createSubject(page: Page, name: string, opts: { emoji?: st
 }
 
 export async function expectNoA11yViolations(page: Page) {
+  // After an autosave the route refreshes and Next swaps <title>; wait for it (fails if a page has none).
+  await expect(page).toHaveTitle(/\S/);
   const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   const summary = results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`);
   expect(summary).toEqual([]);
