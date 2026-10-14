@@ -2,6 +2,7 @@
 -- Fails loudly (ON_ERROR_STOP) on the first broken expectation.
 grant select, insert, update, delete on all tables in schema public to authenticated;
 grant select on all tables in schema public to anon;  -- prove RLS (not grants) blocks anon too
+grant all on all tables in schema public to service_role; -- Supabase grants this by default
 
 insert into auth.users (id, email) values
   ('aaaaaaaa-0000-0000-0000-000000000001', 'a@uni.test'),
@@ -91,6 +92,120 @@ do $$ begin
 exception when foreign_key_violation then null; end $$;
 
 
+-- ===== Step 2: flashcards, reviews, mindmaps, AI quota
+-- server adds a passage for A's note
+reset role;
+insert into public.chunks (id, user_id, subject_id, note_id, ordinal, text, content_hash)
+  values ('5a000000-0000-0000-0000-0000000000c1', 'aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000a1', 1, 'ATP is the energy currency of the cell', 'h2');
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+insert into public.flashcards (id, subject_id, note_id, chunk_id, front, back, source_quote, origin)
+  values ('5a000000-0000-0000-0000-0000000000f1', '5a000000-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000a1', '5a000000-0000-0000-0000-0000000000c1', 'What is ATP?', 'The energy currency of the cell', 'ATP is the energy currency', 'ai');
+insert into public.card_reviews (flashcard_id, subject_id, rating, prev_state, srs_state, due_at, stability, difficulty)
+  values ('5a000000-0000-0000-0000-0000000000f1', '5a000000-0000-0000-0000-000000000001', 3, 0, 1, now() + interval '10 minutes', 2.3, 5.1);
+insert into public.mindmaps (subject_id, graph_json, input_hash) values ('5a000000-0000-0000-0000-000000000001', '{"version":1,"nodes":[]}', 'h');
+select pg_temp.check((select count(*) from public.flashcards) = 1, 'A sees own flashcard');
+select pg_temp.check((select count(*) from public.card_reviews) = 1, 'A sees own review');
+select pg_temp.check((select count(*) from public.mindmaps) = 1, 'A sees own mindmap');
+update public.flashcards set back = 'Energy currency', edited = true where id = '5a000000-0000-0000-0000-0000000000f1';
+select pg_temp.check((select edited from public.flashcards where id = '5a000000-0000-0000-0000-0000000000f1'), 'A edits own flashcard');
+do $$ begin
+  insert into public.flashcards (subject_id, front, back) values ('5a000000-0000-0000-0000-000000000001', '', 'x');
+  raise exception 'RLS TEST FAILED: empty card front accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.mindmaps (subject_id, graph_json, input_hash) values ('5a000000-0000-0000-0000-000000000001', '{}', 'again');
+  raise exception 'RLS TEST FAILED: second mindmap for one subject accepted';
+exception when unique_violation then null; end $$;
+-- Quotas and the app-wide budget are server-only.
+do $$ begin
+  insert into public.ai_usage (kind, count) values ('flashcards', 0);
+  raise exception 'RLS TEST FAILED: student wrote ai_usage';
+exception when insufficient_privilege then null; end $$;
+do $$ begin
+  update public.ai_usage set count = 0;
+  insert into public.ai_cache (kind, input_hash, model, output_json) values ('flashcards', 'x', 'm', '{}');
+  raise exception 'RLS TEST FAILED: student wrote ai_cache';
+exception when insufficient_privilege then null; end $$;
+-- (the test grants table privileges to everyone above, so this proves RLS alone blocks it)
+do $$ begin
+  insert into public.ai_app_usage (day, model) values (current_date, 'm');
+  raise exception 'RLS TEST FAILED: student wrote ai_app_usage';
+exception when insufficient_privilege then null; end $$;
+do $$ begin
+  perform public.ai_usage_reserve('aaaaaaaa-0000-0000-0000-000000000001', current_date, 'flashcards', 1000);
+  raise exception 'RLS TEST FAILED: student called ai_usage_reserve';
+exception when insufficient_privilege then null; end $$;
+do $$ begin
+  perform public.ai_usage_settle('aaaaaaaa-0000-0000-0000-000000000001', current_date, 'flashcards', false, 0, 0);
+  raise exception 'RLS TEST FAILED: student called ai_usage_settle';
+exception when insufficient_privilege then null; end $$;
+do $$ begin
+  perform public.ai_app_reserve(current_date, 'm', 1000, 1000);
+  raise exception 'RLS TEST FAILED: student called ai_app_reserve';
+exception when insufficient_privilege then null; end $$;
+
+-- B: none of A's Step 2 rows are visible or changeable
+set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
+select pg_temp.check((select count(*) from public.flashcards) = 0, 'B cannot see A flashcards');
+select pg_temp.check((select count(*) from public.card_reviews) = 0, 'B cannot see A reviews');
+select pg_temp.check((select count(*) from public.mindmaps) = 0, 'B cannot see A mindmaps');
+update public.flashcards set front = 'hacked';
+update public.mindmaps set graph_json = '{"hacked":true}';
+delete from public.card_reviews;
+delete from public.flashcards;
+insert into public.subjects (id, name, colour, emoji) values ('5b000000-0000-0000-0000-000000000001', 'B subject', 'mint', '🧪');
+do $$ begin
+  insert into public.flashcards (subject_id, front, back) values ('5a000000-0000-0000-0000-000000000001', 'q', 'a');
+  raise exception 'RLS TEST FAILED: B added a card to A subject';
+exception when foreign_key_violation then null; end $$;
+do $$ begin
+  insert into public.flashcards (subject_id, chunk_id, front, back) values ('5b000000-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000c1', 'q', 'a');
+  raise exception 'RLS TEST FAILED: B linked a card to A passage';
+exception when foreign_key_violation then null; end $$;
+do $$ begin
+  insert into public.flashcards (subject_id, note_id, front, back) values ('5b000000-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000a1', 'q', 'a');
+  raise exception 'RLS TEST FAILED: B linked a card to A note';
+exception when foreign_key_violation then null; end $$;
+do $$ begin
+  insert into public.card_reviews (flashcard_id, subject_id, rating, prev_state, srs_state, due_at, stability, difficulty)
+    values ('5a000000-0000-0000-0000-0000000000f1', '5b000000-0000-0000-0000-000000000001', 1, 0, 1, now(), 1, 1);
+  raise exception 'RLS TEST FAILED: B reviewed A card';
+exception when foreign_key_violation then null; end $$;
+do $$ begin
+  insert into public.mindmaps (subject_id, graph_json, input_hash) values ('5a000000-0000-0000-0000-000000000001', '{}', 'x');
+  raise exception 'RLS TEST FAILED: B made a mindmap in A subject';
+exception when foreign_key_violation then null; end $$;
+do $$ begin
+  insert into public.flashcards (user_id, subject_id, front, back) values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'q', 'a');
+  raise exception 'RLS TEST FAILED: B inserted a card owned by A';
+exception when insufficient_privilege then null; end $$;
+delete from public.subjects where id = '5b000000-0000-0000-0000-000000000001';
+
+-- server: quota reservations are atomic and capped; failed generations give the go back
+reset role;
+set role service_role;
+select pg_temp.check(public.ai_usage_reserve('aaaaaaaa-0000-0000-0000-000000000001', '2026-10-14', 'flashcards', 2) = 1, 'first reservation');
+select pg_temp.check(public.ai_usage_reserve('aaaaaaaa-0000-0000-0000-000000000001', '2026-10-14', 'flashcards', 2) = 2, 'second reservation');
+select pg_temp.check(public.ai_usage_reserve('aaaaaaaa-0000-0000-0000-000000000001', '2026-10-14', 'flashcards', 2) is null, 'third reservation refused at limit');
+select public.ai_usage_settle('aaaaaaaa-0000-0000-0000-000000000001', '2026-10-14', 'flashcards', false, 100, 0);
+select pg_temp.check((select count from public.ai_usage where user_id = 'aaaaaaaa-0000-0000-0000-000000000001' and kind = 'flashcards') = 1, 'failed generation refunded');
+select pg_temp.check((select input_tokens from public.ai_usage where user_id = 'aaaaaaaa-0000-0000-0000-000000000001' and kind = 'flashcards') = 100, 'tokens tracked');
+select pg_temp.check(public.ai_usage_reserve('bbbbbbbb-0000-0000-0000-000000000002', '2026-10-14', 'flashcards', 2) = 1, 'quota is per student');
+select pg_temp.check(public.ai_usage_reserve('aaaaaaaa-0000-0000-0000-000000000001', '2026-10-14', 'mindmap', 0) is null, 'zero limit refuses');
+select pg_temp.check(public.ai_app_reserve('2026-10-14', 'm', 2, 1000), 'app budget 1');
+select pg_temp.check(public.ai_app_reserve('2026-10-14', 'm', 2, 1000), 'app budget 2');
+select pg_temp.check(not public.ai_app_reserve('2026-10-14', 'm', 2, 1000), 'app budget request cap');
+select public.ai_app_add_tokens('2026-10-14', 'n', 5);
+select pg_temp.check(public.ai_app_reserve('2026-10-14', 'n', 10, 1000), 'app budget other model');
+select public.ai_app_add_tokens('2026-10-14', 'n', 1000);
+select pg_temp.check(not public.ai_app_reserve('2026-10-14', 'n', 10, 1000), 'app budget token cap');
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
+select pg_temp.check((select count(*) from public.ai_usage) = 1, 'B sees only own usage');
+
+
 -- ===== anon sees nothing
 reset request.jwt.claim.sub;
 set role anon;
@@ -102,10 +217,18 @@ set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
 select pg_temp.check((select title from public.notes) = 'Cells', 'A note unchanged by B');
 select pg_temp.check((select count(*) from public.subjects) = 1, 'A subject not deleted by B');
 select pg_temp.check((select count(*) from storage.objects) = 1, 'A file not deleted by B');
+select pg_temp.check((select front from public.flashcards where id = '5a000000-0000-0000-0000-0000000000f1') = 'What is ATP?', 'A card unchanged by B');
+select pg_temp.check((select count(*) from public.card_reviews) = 1, 'A review not deleted by B');
+select pg_temp.check((select graph_json from public.mindmaps) = '{"version":1,"nodes":[]}'::jsonb, 'A mindmap unchanged by B');
+
+-- deleting the note keeps the card and its quote, clearing the links
+delete from public.notes where id = '5a000000-0000-0000-0000-0000000000a1';
+select pg_temp.check((select note_id is null and chunk_id is null and source_quote is not null from public.flashcards where id = '5a000000-0000-0000-0000-0000000000f1'), 'card survives note delete');
 
 -- deleting a subject cascades to notes, sources, chunks
 delete from public.subjects where id = '5a000000-0000-0000-0000-000000000001';
-select pg_temp.check((select count(*) from public.notes) + (select count(*) from public.sources) + (select count(*) from public.chunks) = 0, 'subject delete cascades');
+select pg_temp.check((select count(*) from public.notes) + (select count(*) from public.sources) + (select count(*) from public.chunks)
+  + (select count(*) from public.flashcards) + (select count(*) from public.card_reviews) + (select count(*) from public.mindmaps) = 0, 'subject delete cascades');
 
 reset role;
 -- deleting a user removes their profile
