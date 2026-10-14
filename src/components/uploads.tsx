@@ -6,14 +6,16 @@ import { formatBytes } from "@/lib/time";
 import { MAX_UPLOAD_BYTES } from "@/lib/validation";
 import { deleteSource, getDownloadUrl, processUpload, startUpload, uploadDemoFile } from "@/server/actions/sources";
 import type { Source } from "@/server/repo/types";
+import { MakeFlashcardsDialog } from "./flashcards/make-dialog";
 import { useSound } from "./sound-provider";
 import { Button } from "./ui/button";
+import { RowMenu } from "./ui/row-menu";
 
 type Pending = { key: string; name: string; phase: "uploading" | "reading"; error?: string };
 
 const ACCEPT = ".pdf,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
-export function Uploads({ subjectId, sources, supabase }: { subjectId: string; sources: Source[]; supabase: { url: string; key: string } | null }) {
+export function Uploads({ subjectId, subjectName, sources, supabase }: { subjectId: string; subjectName: string; sources: Source[]; supabase: { url: string; key: string } | null }) {
   const [pending, setPending] = useState<Pending[]>([]);
   const [drag, setDrag] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -91,7 +93,7 @@ export function Uploads({ subjectId, sources, supabase }: { subjectId: string; s
             )}
           </li>
         ))}
-        {sources.map((s) => <SourceRow key={s.id} source={s} />)}
+        {sources.map((s) => <SourceRow key={s.id} source={s} subjectName={subjectName} />)}
       </ul>
       {sources.length === 0 && pending.length === 0 && <p className="hint">No lecture files yet. Upload slides or PDFs from your lecturer.</p>}
     </div>
@@ -108,12 +110,21 @@ function statusChip(s: Source) {
   }
 }
 
-function SourceRow({ source }: { source: Source }) {
+function SourceRow({ source, subjectName }: { source: Source; subjectName: string }) {
   const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [making, setMaking] = useState(false);
+  const [everMade, setEverMade] = useState(false);
   const [pending, start] = useTransition();
   const { play } = useSound();
   const router = useRouter();
+  const ready = source.extractStatus === "ready";
+  const download = () => start(async () => {
+    const res = await getDownloadUrl(source.id);
+    if (res.ok) window.location.assign(res.url);
+    else { setError(res.error); play("boop"); }
+  });
+  const make = () => { setEverMade(true); setMaking(true); };
   return (
     <li className="sticker-flat flex flex-wrap items-center gap-2 p-3">
       <span className="chip">{source.kind.toUpperCase()}</span>
@@ -123,34 +134,39 @@ function SourceRow({ source }: { source: Source }) {
       </span>
       {statusChip(source)}
       {source.extractStatus === "no_text" && <span className="hint basis-full">Handwritten and scanned files will be supported later.</span>}
-      <div className="flex gap-1">
-        {confirm ? (
-          <>
-            <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>Keep</Button>
-            <Button
-              size="sm" variant="danger" sound="tear" disabled={pending}
-              onClick={() => start(async () => { await deleteSource(source.id); router.refresh(); })}
-            >
-              Delete file
-            </Button>
-          </>
-        ) : (
-          <>
-            <Button
-              size="sm"
-              onClick={() => start(async () => {
-                const res = await getDownloadUrl(source.id);
-                if (res.ok) window.location.assign(res.url);
-                else { setError(res.error); play("boop"); }
-              })}
-            >
-              Download
-            </Button>
+      {confirm ? (
+        <div className="flex basis-full flex-wrap items-center justify-end gap-2">
+          <span className="hint">Flashcards made from it stay in your deck, with their quotes.</span>
+          <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>Keep</Button>
+          <Button
+            size="sm" variant="danger" sound="tear" disabled={pending}
+            onClick={() => start(async () => { await deleteSource(source.id); router.refresh(); })}
+          >
+            Delete file
+          </Button>
+        </div>
+      ) : (
+        <>
+          <div className="hidden gap-1 sm:flex">
+            <Button size="sm" onClick={download}>Download</Button>
+            {ready && <Button size="sm" onClick={make} aria-label={`Make flashcards from ${source.fileName}`}>Make flashcards</Button>}
             <Button size="sm" variant="ghost" onClick={() => setConfirm(true)} aria-label={`Delete ${source.fileName}`}>Delete</Button>
-          </>
-        )}
-      </div>
+          </div>
+          <RowMenu
+            className="sm:hidden"
+            label={`More for ${source.fileName}`}
+            items={[
+              { label: "Download", onSelect: download },
+              ...(ready ? [{ label: "Make flashcards", onSelect: make }] : []),
+              { label: "Delete", onSelect: () => setConfirm(true), danger: true },
+            ]}
+          />
+        </>
+      )}
       {error && <p role="alert" className="error-text basis-full">{error}</p>}
+      {everMade && (
+        <MakeFlashcardsDialog subjectId={source.subjectId} subjectName={subjectName} open={making} onClose={() => setMaking(false)} preset={{ type: "file", id: source.id }} />
+      )}
     </li>
   );
 }

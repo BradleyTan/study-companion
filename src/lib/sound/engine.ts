@@ -1,7 +1,7 @@
 // All sounds are synthesised with the Web Audio API: no files, nothing to license.
 // See docs/design/sounds.md.
 
-export type SoundName = "click" | "pop" | "boop" | "flip" | "chime" | "tear";
+export type SoundName = "click" | "pop" | "boop" | "flip" | "chime" | "tear" | "cheer";
 
 let ctx: AudioContext | null = null;
 const lastPlayed = new Map<SoundName, number>();
@@ -64,6 +64,8 @@ export function playSound(name: SoundName, volume: number, now = performance.now
     case "boop": tone(c, 320, 210, 0.18, "sine", sine); break;
     case "flip": noise(c, 0.12, 2750, sine * 1.4); break;
     case "tear": noise(c, 0.14, 4000, sine * 1.2, 900); break;
+    // C6-E6-G6, 110 ms each, 70 ms apart (sounds.md)
+    case "cheer": [1047, 1319, 1568].forEach((f, i) => tone(c, f, f * 1.001, 0.11, "sine", sine, i * 0.07)); break;
     case "chime": [880, 1320, 1760].forEach((f, i) => tone(c, f, f * 0.999, 1.4, "sine", sine * 0.7, i * 0.12)); break;
   }
   return true;

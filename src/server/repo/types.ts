@@ -165,6 +165,8 @@ export interface Repo {
   deleteCardReview(id: string): Promise<void>;
   /** New cards met (first review) since this instant: counts towards the daily new-card allowance. */
   countIntroducedSince(sinceIso: string): Promise<number>;
+  /** Any grades since this instant (for "All caught up for today"). */
+  countReviewsSince(sinceIso: string): Promise<number>;
 
   getMindmap(subjectId: string): Promise<Mindmap | null>;
   /** Creates or replaces the subject's map (a regenerate resets createdAt). */

@@ -87,9 +87,10 @@ export async function subjectDue(repo: Repo, subjectId: string, ctx?: DayContext
 }
 
 /** Banner and subject chips on the Subjects page. */
-export async function allDue(repo: Repo): Promise<{ total: number; bySubject: Map<string, number> }> {
+export async function allDue(repo: Repo): Promise<{ total: number; bySubject: Map<string, number>; reviewedToday: boolean; day: string }> {
   const ctx = await dayContext(repo);
-  return dueBySubject((await repo.listFlashcards()).map(toSchedule), ctx.dayEnd, ctx.allowanceLeft);
+  const [cards, reviewed] = await Promise.all([repo.listFlashcards(), repo.countReviewsSince(ctx.dayStart.toISOString())]);
+  return { ...dueBySubject(cards.map(toSchedule), ctx.dayEnd, ctx.allowanceLeft), reviewedToday: reviewed > 0, day: ctx.dayStart.toISOString() };
 }
 
 /** The cards for a review session, in order. */

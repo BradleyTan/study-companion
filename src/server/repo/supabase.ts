@@ -360,6 +360,12 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
       return count ?? 0;
     },
 
+    async countReviewsSince(sinceIso) {
+      const { count, error } = await db.from("card_reviews").select("id", { count: "exact", head: true }).gte("reviewed_at", sinceIso);
+      fail(error, "countReviewsSince");
+      return count ?? 0;
+    },
+
     async getMindmap(subjectId) {
       const { data, error } = await db.from("mindmaps").select("*").eq("subject_id", subjectId).maybeSingle();
       fail(error, "getMindmap");

@@ -250,6 +250,10 @@ export function demoRepo(userId: string): Repo {
       return [...store.reviews.values()].filter((r) => r.userId === userId && r.prevState === 0 && r.reviewedAt >= sinceIso).length;
     },
 
+    async countReviewsSince(sinceIso) {
+      return [...store.reviews.values()].filter((r) => r.userId === userId && r.reviewedAt >= sinceIso).length;
+    },
+
     async getMindmap(subjectId) {
       const m = own(store.mindmaps.get(subjectId));
       return m ? strip(m) : null;

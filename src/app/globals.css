@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* React Flow's own styles sit in the components layer so our mindmap rules below win. */
+@import "@xyflow/react/dist/style.css" layer(components);
 
 /* Sticker Notebook design tokens. See docs/design/design-system.md.
    Light values on :root; dark under prefers-color-scheme (unless the student chose light)
@@ -16,6 +18,13 @@
   --focus: #3d6bff;
   --on-colour: #1b1b2f; /* text on highlight/success/danger/subject fills, both themes */
   --rule: #dfe6f3;
+  /* Step 2 */
+  --subject: #8fb8ff; /* set inline per page/card from the subject colour */
+  --grade-again: var(--danger);
+  --grade-hard: #ffc48f;
+  --grade-good: var(--success);
+  --grade-easy: #8fb8ff;
+  --mark: var(--highlight);
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -164,7 +173,84 @@ dialog.sheet::backdrop { background: rgb(27 27 47 / 0.45); }
 
 }
 
+/* ---- Step 2 ---- */
+@layer components {
+.washi { position: absolute; top: -8px; left: 14px; width: 72px; height: 16px; rotate: -3deg; pointer-events: none;
+  background: color-mix(in srgb, var(--subject) 80%, transparent); border: 1.5px solid color-mix(in srgb, var(--ink) 25%, transparent); }
+mark, .mark { background: var(--mark); color: var(--on-colour); border-radius: 2px; padding: 0 1px; }
+.mark-fade { animation: mark-fade 600ms ease 3.4s forwards; }
+@keyframes mark-fade { to { background: transparent; color: inherit; } }
+.quote-block { border-left: 4px solid var(--subject); padding-left: 0.75rem; color: var(--ink-soft); font-style: italic; }
+.clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+@keyframes glow { 0%, 70% { box-shadow: 0 0 0 6px var(--highlight), 4px 4px 0 var(--shadow); } }
+.glow { animation: glow 1.5s ease-out; }
+.chip-due { background: var(--highlight); color: var(--on-colour); }
+.chip-limit { background: var(--danger); color: var(--on-colour); }
+.skeleton { background: var(--grid); border-radius: 8px; animation: pulse 1.2s ease-in-out infinite; }
+
+/* segmented radio (card count, Map | Outline) */
+.seg { display: inline-flex; border: 2.5px solid var(--ink); border-radius: 8px; overflow: hidden; background: var(--card); }
+.seg > label, .seg > button { min-height: 44px; min-width: 44px; padding: 0.4rem 0.9rem; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; cursor: pointer; color: var(--ink); background: transparent; }
+.seg > * + * { border-left: 2.5px solid var(--ink); }
+.seg > label:has(input:checked), .seg > button[aria-pressed="true"] { background: var(--highlight); color: var(--on-colour); }
+.seg > label:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: -5px; }
+
+/* study tool tiles */
+.tile { position: relative; display: flex; flex-direction: column; justify-content: center; gap: 0.15rem; min-height: 96px; padding: 0.9rem 1rem;
+  background: var(--card); border: 2.5px solid var(--ink); border-radius: 8px; box-shadow: 4px 4px 0 var(--shadow); rotate: var(--r, 0deg); }
+.tile-review { background: var(--highlight); color: var(--on-colour); }
+
+/* grade buttons */
+.grade { position: relative; flex-direction: column; gap: 0; min-height: 64px; color: var(--on-colour); line-height: 1.2; }
+.grade-1 { background: var(--grade-again); } .grade-2 { background: var(--grade-hard); }
+.grade-3 { background: var(--grade-good); } .grade-4 { background: var(--grade-easy); }
+.keycap { position: absolute; top: 4px; left: 6px; font-size: 0.7rem; font-weight: 700; border: 1.5px solid currentColor; border-radius: 4px; padding: 0 4px; line-height: 1.3; }
+@media (hover: none) { .keycap { display: none; } }
+
+/* flip card */
+.flip-scene { perspective: 1200px; }
+.flip-face { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.stack-edge { position: absolute; inset: 0; background: var(--card); border: 2.5px solid var(--ink); border-radius: 10px; pointer-events: none; }
+
+/* generating animations */
+@keyframes shuffle { 0%, 100% { transform: translateY(0) rotate(var(--r, 0deg)); } 33% { transform: translateY(-4px) rotate(calc(var(--r, 0deg) + 2deg)); } 66% { transform: translateY(0) rotate(calc(var(--r, 0deg) - 2deg)); } }
+.shuffle { animation: shuffle 1.2s ease-in-out infinite; }
+@keyframes draw { from { stroke-dashoffset: 120; } to { stroke-dashoffset: 0; } }
+.draw-branch { stroke-dasharray: 8 6; animation: draw 1.6s linear infinite; }
+
+/* side panel / bottom sheet */
+.panel { background: var(--card); color: var(--ink); border: 3px solid var(--ink); box-shadow: 6px 6px 0 var(--shadow); }
+dialog.bottom-sheet { margin: auto 0 0; padding: 0; width: 100%; max-width: 100%; max-height: 60dvh; height: 60dvh; border: 3px solid var(--ink); border-bottom: 0; border-radius: 14px 14px 0 0; background: var(--card); color: var(--ink); }
+dialog.bottom-sheet::backdrop { background: rgb(27 27 47 / 0.35); }
+dialog.side-panel { margin: 0 0 0 auto; padding: 0; width: 360px; max-width: 100vw; height: 100dvh; max-height: 100dvh; border: 3px solid var(--ink); border-right: 0; background: var(--card); color: var(--ink); }
+dialog.side-panel::backdrop { background: transparent; }
+
+/* mindmap */
+.mindmap-frame { position: relative; height: max(420px, calc(100dvh - 240px)); border: 2.5px solid var(--ink); border-radius: 8px; overflow: hidden; background: var(--paper); }
+@media (max-width: 639px) { .mindmap-frame { margin-inline: -16px; border-left: 0; border-right: 0; border-radius: 0; } }
+.mm-node { background: var(--card); color: var(--ink); border: 2px solid var(--ink); border-radius: 8px; padding: 0.4rem 0.6rem; font-size: 14px; max-width: 200px; overflow-wrap: anywhere; cursor: pointer; }
+.mm-node.mm-1 { border-width: 2.5px; border-left: 6px solid var(--subject); font-size: 16px; font-weight: 700; max-width: 220px; box-shadow: 3px 3px 0 var(--shadow); }
+.mm-node.mm-root { background: var(--subject); color: var(--on-colour); border-width: 3px; font-family: var(--font-marker), cursive; font-size: 20px; box-shadow: 4px 4px 0 var(--shadow); rotate: -1deg; max-width: 260px; }
+.react-flow__node.selected .mm-node, .react-flow__node:focus-visible .mm-node { outline: 3px solid var(--focus); outline-offset: 2px; box-shadow: 6px 6px 0 var(--shadow); }
+.react-flow__node:focus-visible { outline: none; }
+.react-flow__edge-path { stroke: var(--ink); stroke-width: 2; }
+.react-flow__controls { box-shadow: none; }
+.react-flow__controls-button { width: 44px; height: 44px; background: var(--card); color: var(--ink); border: 2.5px solid var(--ink); border-radius: 8px; margin-top: 6px; box-shadow: 3px 3px 0 var(--shadow); }
+.react-flow__controls-button svg { fill: currentColor; max-width: 16px; max-height: 16px; }
+.react-flow__attribution { background: color-mix(in srgb, var(--paper) 85%, transparent); }
+.react-flow__attribution a { color: var(--ink); }
+.react-flow__handle { opacity: 0; pointer-events: none; }
+.mm-in { animation: mm-in 250ms ease-out both; }
+@keyframes mm-in { from { opacity: 0; transform: scale(0.6); } }
+.mm-dim { opacity: 0.45; pointer-events: none; }
+dialog.side-panel[open]:not(:modal) { position: fixed; inset: 0 0 0 auto; z-index: 40; box-shadow: -6px 0 0 var(--shadow); }
+.sheet-handle { width: 48px; height: 5px; border-radius: 3px; background: var(--ink-soft); margin: 8px auto 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .mm-node.mm-root { rotate: 0deg; }
+  .tile { rotate: 0deg; }
+  .mark-fade { animation: none !important; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .lift:hover { transform: none; }
   [style*="--r"] { rotate: 0deg !important; }

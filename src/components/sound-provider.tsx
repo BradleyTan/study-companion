@@ -1,10 +1,15 @@
 "use client";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { updateSettings } from "@/server/actions/settings";
+import { speech } from "./read-aloud/speech";
 import { playSound, type SoundName } from "@/lib/sound/engine";
 
 type SoundPrefs = { soundOn: boolean; volume: number };
 type Ctx = SoundPrefs & {
-  play: (name: SoundName) => void;
+  /** `duringSpeech`: the read-aloud controls' own click still plays while speech is playing. */
+  play: (name: SoundName, opts?: { duringSpeech?: boolean }) => void;
+  /** Speech wins (sounds.md): while read-aloud speaks, other UI sounds are skipped. */
+  setSpeaking: (on: boolean) => void;
   setPrefs: (p: Partial<SoundPrefs>) => void;
   /** Focus mode (Pomodoro, Step 4): only the timer chime plays. */
   focusMode: boolean;
@@ -26,6 +31,8 @@ function readStored(): SoundPrefs {
 export function SoundProvider({ children }: { children: ReactNode }) {
   const [prefs, setPrefsState] = useState<SoundPrefs>(DEFAULTS);
   const [focusMode, setFocusMode] = useState(false);
+  const speaking = useRef(false);
+  const setSpeaking = useCallback((on: boolean) => { speaking.current = on; }, []);
 
   // Read this device's saved prefs after mount (localStorage isn't available during SSR).
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -40,15 +47,19 @@ export function SoundProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const play = useCallback(
-    (name: SoundName) => {
+    (name: SoundName, opts?: { duringSpeech?: boolean }) => {
       if (!prefs.soundOn) return;
       if (focusMode && name !== "chime") return;
+      if (speaking.current && !(opts?.duringSpeech && name === "click")) return;
       playSound(name, prefs.volume);
     },
     [prefs, focusMode],
   );
 
-  const value = useMemo(() => ({ ...prefs, play, setPrefs, focusMode, setFocusMode }), [prefs, play, setPrefs, focusMode]);
+  // Speech wins: while read-aloud speaks, other sounds are skipped; its failure gets one boop.
+  useEffect(() => speech.bind(setSpeaking, () => play("boop")), [setSpeaking, play]);
+
+  const value = useMemo(() => ({ ...prefs, play, setPrefs, focusMode, setFocusMode, setSpeaking }), [prefs, play, setPrefs, focusMode, setSpeaking]);
   return <SoundContext value={value}>{children}</SoundContext>;
 }
 
@@ -59,12 +70,18 @@ export function useSound(): Ctx {
 }
 
 /** Applies the signed-in student's saved sound and theme once on load (profile wins over this device). */
-export function ProfileSync({ soundOn, volume, theme }: SoundPrefs & { theme: "system" | "light" | "dark" }) {
+export function ProfileSync({ soundOn, volume, theme, timezone }: SoundPrefs & { theme: "system" | "light" | "dark"; timezone?: string }) {
   const { setPrefs } = useSound();
   useEffect(() => {
     setPrefs({ soundOn, volume });
     applyTheme(theme);
   }, [soundOn, volume, theme, setPrefs]);
+  // "Due today" and daily limits reset at the student's local midnight, so keep the time zone current.
+  useEffect(() => {
+    let tz: string | undefined;
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch {}
+    if (tz && timezone && tz !== timezone) void updateSettings({ timezone: tz }).catch(() => {});
+  }, [timezone]);
   return null;
 }
 
