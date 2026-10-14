@@ -50,7 +50,7 @@ export default async function SourcePageView({ params, searchParams }: PageProps
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
-        <Link href={`/subjects/${subject.id}`} className="font-bold underline-offset-4 hover:underline">← {subject.name}</Link>
+        <Link href={`/subjects/${subject.id}`} className="inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline">← {subject.name}</Link>
         <span className="chip on-colour" style={{ background: SUBJECT_COLOURS[subject.colour] }}>
           <span role="img" aria-label={subject.name}>{subject.emoji}</span> {subject.name}
         </span>

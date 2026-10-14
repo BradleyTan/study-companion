@@ -16,7 +16,7 @@ export function SubjectHeader({ subject }: { subject: Subject }) {
   const [pending, start] = useTransition();
   return (
     <div className="flex flex-col gap-3">
-      <Link href="/subjects" className="w-fit font-bold underline-offset-4 hover:underline">← All subjects</Link>
+      <Link href="/subjects" className="w-fit inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline">← All subjects</Link>
       <div className="sticker on-colour flex flex-wrap items-center gap-4 p-5" style={{ background: SUBJECT_COLOURS[subject.colour] }}>
         <span className="text-5xl" role="img" aria-hidden="true">{subject.emoji}</span>
         <h1 className="font-display min-w-0 flex-1 break-words text-4xl">{subject.name}</h1>

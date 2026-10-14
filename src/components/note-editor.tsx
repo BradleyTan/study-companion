@@ -172,7 +172,7 @@ export function NoteEditor(props: {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
-        <Link href={`/subjects/${subject.id}`} className="font-bold underline-offset-4 hover:underline">← Back to {subject.name}</Link>
+        <Link href={`/subjects/${subject.id}`} className="inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline">← Back to {subject.name}</Link>
         <span className="chip on-colour" style={{ background: SUBJECT_COLOURS[subject.colour] }}>{subject.emoji} {subject.name}</span>
         <Button size="sm" className="order-last w-full sm:order-none sm:w-auto" disabled={preparing} onClick={() => void openMake()}>
           <span aria-hidden="true">🗂️</span> {preparing ? "Saving your note first…" : "Make flashcards"}
@@ -195,7 +195,7 @@ export function NoteEditor(props: {
       <input
         id="note-title" value={title} maxLength={200} placeholder="Untitled note"
         onChange={(e) => { setTitle(e.target.value); titleRef.current = e.target.value; schedule(); }}
-        className="w-full rounded-md border-2 border-transparent bg-transparent px-1 text-3xl font-bold focus:border-ink focus:bg-card"
+        className="min-h-11 w-full rounded-md border-2 border-transparent bg-transparent px-1 text-3xl font-bold focus:border-ink focus:bg-card"
       />
       <Toolbar editor={editor} readOpen={readOpen} onRead={() => setReadOpen((o) => { if (o) speech.stopIf(speechOwner); return !o; })} />
       {readOpen && (

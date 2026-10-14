@@ -104,6 +104,8 @@ h1, h2, h3 { text-wrap: balance; }
 .btn-ghost:hover { box-shadow: none; transform: none; text-decoration: underline; text-underline-offset: 3px; }
 .btn-ghost:active { box-shadow: none; transform: none; }
 .btn-sm { min-height: 36px; padding: 0.25rem 0.75rem; font-size: 0.9rem; }
+/* Touch screens: every button is a 44 px target (design-system.md), small ones included. */
+@media (pointer: coarse) { .btn-sm { min-height: 44px; } }
 .icon-btn { min-width: 44px; padding: 0.25rem; }
 .icon-btn[aria-pressed="true"] { background: var(--highlight); color: var(--on-colour); }
 

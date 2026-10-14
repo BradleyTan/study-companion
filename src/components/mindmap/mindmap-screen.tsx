@@ -228,7 +228,7 @@ export function MindmapScreen({ subject, initial, quota: initialQuota, options, 
     <div className="flex flex-col gap-4" style={subjectStyle(subject.colour)}>
       <p className="sr-only" role="status" aria-live="polite">{announce}</p>
       <header className="flex flex-col gap-3">
-        <Link href={`/subjects/${subject.id}`} className="self-start font-bold underline-offset-4 hover:underline">← {subject.name}</Link>
+        <Link href={`/subjects/${subject.id}`} className="self-start inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline">← {subject.name}</Link>
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-0 flex-1">
             <h1 className="font-display text-3xl">Mindmap</h1>

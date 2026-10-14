@@ -66,6 +66,8 @@ export function ReviewSession({ subject, subjects, initialQueue, initialOutlook,
   const [now, setNow] = useState(() => Date.now());
   const [startedAt] = useState(() => Date.now());
   const opChain = useRef<Promise<void>>(Promise.resolve());
+  /** When the last grade landed: "Show answer" appears under the finger, so a double tap mustn't flip the next card. */
+  const gradedAt = useRef(-Infinity);
   const showRef = useRef<HTMLButtonElement>(null);
   const goodRef = useRef<HTMLButtonElement>(null);
   const reduced = useReducedMotion();
@@ -153,8 +155,12 @@ export function ReviewSession({ subject, subjects, initialQueue, initialOutlook,
     requestAnimationFrame(() => goodRef.current?.focus());
   }, [card, flipped, play, autoRead, speakSide, owner]);
 
+  /** Taps only (keyboard clicks have detail 0): ignore the second half of a double tap on a grade. */
+  const tapFlip = (e: React.MouseEvent) => { if (e.detail > 0 && performance.now() - gradedAt.current < 400) return; flip(); };
+
   const grade = useCallback((rating: Rating) => {
     if (!card || !flipped) return;
+    gradedAt.current = performance.now();
     const t = new Date();
     const next = gradeCard(card.srs, rating, t);
     const nextQueue = requeue(queue, card.id, next.dueAt, t);
@@ -375,7 +381,7 @@ export function ReviewSession({ subject, subjects, initialQueue, initialOutlook,
                 className={faceClass} style={{ transform: "rotateY(0deg)" }}
                 animate={calm ? { opacity: flipped ? 0 : 1 } : undefined} transition={{ duration: 0.15 }}
                 inert={flipped} aria-hidden={flipped}
-                onClick={(e) => { if (!(e.target as HTMLElement).closest("button, a")) flip(); }}
+                onClick={(e) => { if (!(e.target as HTMLElement).closest("button, a")) tapFlip(e); }}
               >
                 <span className="washi" aria-hidden="true" />
                 <span className="absolute left-3 top-1 text-xl" role="img" aria-label={cardSubject.name}>{cardSubject.emoji}</span>
@@ -412,7 +418,7 @@ export function ReviewSession({ subject, subjects, initialQueue, initialOutlook,
 
       <div className="mx-auto flex w-full flex-col gap-2 sm:w-[560px] lg:w-[640px]">
         {!flipped ? (
-          <Button ref={showRef} variant="primary" sound={null} className="min-h-[64px] w-full text-lg" aria-label={`Show answer. Question: ${short(card.front)}`} onClick={flip}>
+          <Button ref={showRef} variant="primary" sound={null} className="min-h-[64px] w-full text-lg" aria-label={`Show answer. Question: ${short(card.front)}`} onClick={tapFlip}>
             Show answer
           </Button>
         ) : (

@@ -14,7 +14,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       <ProfileSync {...profile} />
       <header className="sticky top-[env(safe-area-inset-top,0px)] z-30 border-b-[2.5px] border-ink bg-paper">
         <nav aria-label="Main" className="mx-auto flex max-w-6xl flex-wrap items-center gap-2 px-4 py-2">
-          <Link href="/subjects" className="font-display -rotate-2 rounded-md bg-highlight px-2 py-0.5 text-xl text-[var(--on-colour)]">
+          <Link href="/subjects" className="font-display inline-flex min-h-11 -rotate-2 items-center rounded-md bg-highlight px-2 py-0.5 text-xl text-[var(--on-colour)]">
             StudyNest
           </Link>
           {user.demo && <span className="chip ml-1 hidden sm:inline-flex">Demo mode</span>}
