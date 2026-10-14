@@ -2,7 +2,8 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { googleSignInEnabled, isDemoMode } from "@/lib/env";
+import { isDemoMode } from "@/lib/env";
+import { googleSignInEnabled } from "@/server/auth-providers";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { DEMO_COOKIE } from "../session";
 import type { ActionResult } from "./result";
@@ -33,7 +34,7 @@ export async function sendMagicLink(raw: string): Promise<ActionResult> {
 }
 
 export async function signInWithGoogle(): Promise<void> {
-  if (!googleSignInEnabled()) redirect("/login");
+  if (!(await googleSignInEnabled())) redirect("/login");
   const db = await createSupabaseServerClient();
   const { data, error } = await db.auth.signInWithOAuth({
     provider: "google",

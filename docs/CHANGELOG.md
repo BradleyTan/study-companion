@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-10-14 · Google button follows Supabase
+- "Continue with Google" now shows only while the Google provider is switched on in Supabase (checked live, cached for a minute), replacing the `NEXT_PUBLIC_GOOGLE_SIGNIN` flag that could get out of step.
+
 ## 2026-10-12 · Fixes after first deploy
 - Sign-in links that land on the home page (Supabase falling back to its Site URL) now finish signing in.
 - Google sign-in button hidden until `NEXT_PUBLIC_GOOGLE_SIGNIN=1` (it showed a raw Supabase error while the provider was off).
