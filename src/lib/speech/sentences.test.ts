@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findLoose } from "@/lib/text/find";
+import { findLoose, findPassage } from "@/lib/text/find";
 import { groupVoices, parsePrefs, pickVoice, splitSentences } from "./sentences";
 
 describe("splitSentences", () => {
@@ -50,5 +50,20 @@ describe("findLoose", () => {
     expect(hay.slice(r!.start, r!.end)).toBe("The  Mitochondria\nmake ATP");
     expect(findLoose(hay, "chloroplast")).toBeNull();
     expect(findLoose(hay, "   ")).toBeNull();
+  });
+});
+
+describe("findPassage", () => {
+  const hay = "Mitochondria make ATP for the cell.\nRibosomes build proteins from amino acids.\nOther text.";
+  it("finds a passage whose first line is the note title", () => {
+    const r = findPassage(hay, "Cell structure\n\nMitochondria make ATP for the cell.\nRibosomes build proteins from amino acids.");
+    expect(r && hay.slice(r.start, r.end)).toBe("Mitochondria make ATP for the cell.\nRibosomes build proteins from amino acids.");
+  });
+  it("still finds the part of a passage that survived an edit", () => {
+    const r = findPassage(hay, "Gone paragraph that was deleted.\nRibosomes build proteins from amino acids.");
+    expect(r && hay.slice(r.start, r.end)).toBe("Ribosomes build proteins from amino acids.");
+  });
+  it("returns null when nothing matches", () => {
+    expect(findPassage(hay, "Something else entirely here.")).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-import { createSubject, expectNoA11yViolations, expectNoHorizontalScroll, startDemo } from "./helpers";
+import { createSubject, expectNoA11yViolations, expectNoHorizontalScroll, rowAction, startDemo } from "./helpers";
 
 const fixture = (name: string) => path.join(__dirname, "fixtures", name);
 
@@ -104,7 +104,7 @@ test("uploads: PDF text is read, fakes are rejected, scans are flagged", async (
   await expectNoHorizontalScroll(page);
 
   // Delete one file
-  await page.getByRole("button", { name: "Delete lecture.pdf" }).click();
+  await rowAction(page, "lecture.pdf", "Delete", "Delete lecture.pdf");
   await page.getByRole("button", { name: "Delete file" }).click();
   await expect(page.getByText("Ready · 3 pages")).toBeHidden();
 });

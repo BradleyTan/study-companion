@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { splitSentences } from "@/lib/speech/sentences";
 import { SUBJECT_COLOURS, type SubjectColour } from "@/lib/subjects";
-import { findLoose } from "@/lib/text/find";
+import { findLoose, findPassage } from "@/lib/text/find";
 import { deleteNote, saveNote } from "@/server/actions/notes";
 import { flatten, highlightKey, Highlights } from "./editor/highlights";
 import { MakeFlashcardsDialog } from "./flashcards/make-dialog";
@@ -92,9 +92,9 @@ export function NoteEditor(props: {
   useEffect(() => {
     if (!editor || !passage) return;
     const flat = flatten(editor.state.doc);
-    const candidates = [passage.quote, passage.text, passage.text?.split(/(?<=[.!?])\s/)[0]].filter((x): x is string => !!x && x.trim().length > 0);
-    let range: { start: number; end: number } | null = null;
-    for (const c of candidates) { range = findLoose(flat.text, c); if (range) break; }
+    // The card's quote first, then the passage it came from.
+    let range = passage.quote ? findLoose(flat.text, passage.quote) : null;
+    if (!range && passage.text) range = findPassage(flat.text, passage.text);
     if (!range) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setPassageMissing(true);

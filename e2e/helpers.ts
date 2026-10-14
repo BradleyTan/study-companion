@@ -30,3 +30,15 @@ export async function expectNoHorizontalScroll(page: Page) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 }
+
+/** Row actions are buttons from 640 px and live in a "More for …" menu on phones. */
+export async function rowAction(page: Page, item: string, action: string, desktopName: string) {
+  const menu = page.getByRole("button", { name: `More for ${item}` });
+  if (await menu.isVisible()) {
+    await menu.click();
+    const list = page.locator(`[id="${await menu.getAttribute("aria-controls")}"]`);
+    await list.getByRole("button", { name: action, exact: true }).click();
+  } else {
+    await page.getByRole("button", { name: desktopName }).click();
+  }
+}
