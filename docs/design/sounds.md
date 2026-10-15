@@ -7,9 +7,10 @@ All sounds are **synthesised in the browser with the Web Audio API** (`src/lib/s
 | `click` | every button / control | square-ish blip 1125→810 Hz | 50 ms |
 | `pop` | success: subject created, upload ready, correct answer | two rising blips | 160 ms |
 | `boop` | gentle error / wrong answer | sine 320→210 Hz | 180 ms |
-| `flip` | card flip, opening a note | band-passed noise burst | 120 ms |
+| `flip` | card flip (the page-turn) in review, opening a note | band-passed noise burst | 120 ms |
 | `chime` | Pomodoro ends (Step 4) | three soft sines | 1.4 s |
 | `tear` | delete confirmed | short filtered noise sweep down | 140 ms |
+| `cheer` | Step 2: review session finished (replaces the last grade's `click`) | three rising sine notes 1047 → 1319 → 1568 Hz (C6-E6-G6), 110 ms each, starting 70 ms apart, gain like `boop` | 250 ms |
 
 Rules:
 - Default **on**, volume **0.35**. Toggle and slider in Settings, saved per user (profile) and mirrored to `localStorage` for instant start.
@@ -17,3 +18,6 @@ Rules:
 - Audio starts only after the first user gesture (browser rule); nothing autoplays.
 - Focus mode (Step 4) plays only `chime`.
 - Sound never carries meaning alone: every sound has a visible state change with it.
+- **One sound per action** (Step 2): a single user action never plays two sounds (e.g. the last review grade plays `cheer` instead of `click`). Long-running work (AI generation, saving layouts) is silent; only its result sounds.
+- **Speech wins** (Step 2): while read-aloud is speaking, the provider skips every sound except `click` on the read-aloud controls themselves, so effects never talk over the voice.
+- Step 2 usage: flashcards `pop` (cards made / card saved), `tear` (card deleted), `boop` (limits, too little text, AI failed); review `flip`, `click` per grade, `cheer` at the end, never `boop` for "Again"; mindmap `click` on node, `pop` on new map; read-aloud `click` on its controls.

@@ -1,8 +1,8 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { chunkPages } from "@/lib/extract/chunk";
 import { id as idSchema, noteUpdate } from "@/lib/validation";
+import { syncNoteChunks } from "../passages";
 import { getRepo } from "../session";
 import { firstIssue, type ActionResult } from "./result";
 
@@ -26,9 +26,9 @@ export async function saveNote(raw: unknown): Promise<ActionResult<{ updatedAt: 
   const note = await repo.getNote(parsed.data.id);
   if (!note) return { ok: false, error: "This note was deleted." };
   const { updatedAt } = await repo.updateNote(parsed.data.id, parsed.data);
-  // Keep the searchable passages in step with the note (used by AI features in Steps 2–3).
-  const text = [parsed.data.title, parsed.data.contentText].filter(Boolean).join("\n\n");
-  await repo.replaceNoteChunks(note.id, note.subjectId, chunkPages([text], { paged: false }));
+  // Keep the passages in step with the note; unchanged passages keep their ids, so
+  // flashcards and mindmap nodes made from them stay linked.
+  await syncNoteChunks(repo, { id: note.id, subjectId: note.subjectId, title: parsed.data.title, contentText: parsed.data.contentText });
   revalidatePath(`/subjects/${note.subjectId}`);
   return { ok: true, updatedAt };
 }

@@ -11,14 +11,16 @@ export default function PrivacyPage() {
       <Link href="/" className="font-bold underline-offset-4 hover:underline">← StudyNest</Link>
       <article className="sticker prose-page mt-4 p-6 sm:p-8">
         <h1 className="font-display text-4xl">How we look after your notes</h1>
-        <p className="hint">Last updated 11 October 2026</p>
+        <p className="hint">Last updated 14 October 2026</p>
 
         <h2>What we store</h2>
         <ul>
           <li>Your email address, so you can sign in.</li>
           <li>Your subjects, notes and the lecture files you upload, plus the text we read out of those files.</li>
           <li>Your settings, like sound and theme.</li>
-          <li>Later features will add your flashcards, quiz answers, study sessions and timetable. We&apos;ll update this page when they arrive.</li>
+          <li>Your flashcards, the grades you give them when you review (to schedule the next review), and your mindmaps.</li>
+          <li>How many AI flashcards and mindmaps you made each day (for the daily limit), and a copy of what the AI sent back, so the same text never uses up your allowance twice.</li>
+          <li>Later features will add your quiz answers, study sessions and timetable. We&apos;ll update this page when they arrive.</li>
         </ul>
 
         <h2>Where it&apos;s stored</h2>
@@ -32,6 +34,12 @@ export default function PrivacyPage() {
           When you ask for flashcards, quizzes, mindmaps or answers from your notes, the relevant passages are sent to Groq, which runs the AI
           model (or to Cloudflare if Groq is busy). Neither keeps your text to train models; Groq may hold it for up to 30 days only to
           investigate abuse. We chose these providers because they don&apos;t use your notes for training. AI only runs when you ask for it.
+        </p>
+        <h2>Read aloud</h2>
+        <p>
+          Read aloud uses the voices built into your device, so by default the text never leaves it. Some browsers also offer online
+          voices; these are marked &ldquo;(online)&rdquo; in the voice list, and if you pick one your browser sends the text to its maker
+          (for example Google, Microsoft or Apple) to be spoken. StudyNest never sends it anywhere for read aloud.
         </p>
 
         <h2>Keeping it safe</h2>

@@ -2,7 +2,7 @@
 
 A study app for university students: notes and lecture files per subject, then AI flashcards, quizzes, an ask-your-notes chat, a Pomodoro timer and a timetable. Built step by step; see `docs/PLAN.md`.
 
-**Status:** Step 1 of 4 (sign-in, subjects, notes, lecture-file uploads).
+**Status:** Step 2 of 4 (Step 1 plus AI flashcards, spaced-repetition review, mindmaps and read aloud).
 
 ## Run it locally in 1 minute (demo mode)
 
@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000 and choose **Try the demo**. Without Supabase settings the app runs in demo mode: data lives in memory and resets when the server restarts.
+Open http://localhost:3000 and choose **Try the demo**. Without Supabase settings the app runs in demo mode: data lives in memory and resets when the server restarts. Without `GROQ_API_KEY`, flashcards and mindmaps come from a simple local generator (no network, same output every time), so everything works offline.
 
 ## Connect real accounts (all free, no card)
 
@@ -19,10 +19,11 @@ StudyNest runs entirely on free plans: Supabase Free, Vercel Hobby, Groq and Clo
 
 1. Create a free project at [supabase.com](https://supabase.com).
 2. Apply the database migrations: `npx supabase link --project-ref <ref>` then `npx supabase db push`.
-3. In Supabase → Authentication → URL configuration, add your site URL and `<site>/auth/callback` as a redirect URL. To offer Google sign-in, enable the Google provider in Supabase → Authentication → Sign In / Providers (it needs a free Google OAuth client). The "Continue with Google" button appears by itself within a minute once the provider is on, and stays hidden while it is off.
+3. In Supabase → Authentication → URL configuration, add your site URL and `<site>/auth/callback` as a redirect URL. To sign in on Vercel preview deploys too, also add `https://<project>-git-*-<team>.vercel.app/auth/callback` (previews send sign-in links to their own branch URL). To offer Google sign-in, enable the Google provider in Supabase → Authentication → Sign In / Providers (it needs a free Google OAuth client). The "Continue with Google" button appears by itself within a minute once the provider is on, and stays hidden while it is off.
 4. (Optional, needed from Step 3) Deploy the embeddings function: `npx supabase functions deploy embed`.
-5. Copy `.env.example` to `.env.local` and fill in the values. **Never commit `.env.local`.**
-6. On Vercel, import the repo and add the same environment variables.
+5. For AI flashcards and mindmaps, create a free Groq API key at [console.groq.com/keys](https://console.groq.com/keys) (`GROQ_API_KEY`). Optional fallback for when Groq is busy: a free Cloudflare account ID and a Workers AI API token (`CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AI_TOKEN`). Neither needs a card; when a free allowance runs out the app says "try again tomorrow" instead of charging.
+6. Copy `.env.example` to `.env.local` and fill in the values. **Never commit `.env.local`.**
+7. On Vercel, import the repo and add the same environment variables.
 
 ## Scripts
 

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
-import { CHUNK_MAX, chunkPages, normaliseText } from "./chunk";
+import { CHUNK_MAX, chunkPages, normaliseText, planChunkSync, sha256 } from "./chunk";
 import { detectFileKind } from "./detect";
 import { extractFile } from "./index";
 import { decodeXml, extractPptx, slideXmlToText } from "./pptx";
@@ -116,5 +116,29 @@ describe("extractFile", () => {
   it("reads a pptx", async () => {
     const r = await extractFile(await makePptx([["Contracts"], ["Offer and acceptance make an agreement."]]), "law.pptx");
     expect(r).toMatchObject({ status: "ready", kind: "pptx", pageCount: 2 });
+  });
+});
+
+describe("planChunkSync", () => {
+  const stored = (id: string, ordinal: number, text: string) => ({ id, ordinal, page: null, contentHash: sha256(text) });
+  const fresh = (ordinal: number, text: string) => ({ ordinal, page: null, text, contentHash: sha256(text) });
+
+  it("keeps unchanged passages (with new positions), inserts new ones, removes gone ones", () => {
+    const plan = planChunkSync(
+      [stored("a", 0, "Intro"), stored("b", 1, "Cells"), stored("c", 2, "Old ending")],
+      [fresh(0, "New first paragraph"), fresh(1, "Intro"), fresh(2, "Cells")],
+    );
+    expect(plan.keep).toEqual([{ id: "a", ordinal: 1 }, { id: "b", ordinal: 2 }]);
+    expect(plan.insert.map((c) => c.text)).toEqual(["New first paragraph"]);
+    expect(plan.remove).toEqual(["c"]);
+  });
+
+  it("handles repeated text one-to-one and does nothing when nothing changed", () => {
+    const plan = planChunkSync([stored("a", 0, "Same"), stored("b", 1, "Same")], [fresh(0, "Same"), fresh(1, "Same"), fresh(2, "Same")]);
+    expect(plan.keep.map((k) => k.id)).toEqual(["a", "b"]);
+    expect(plan.insert).toHaveLength(1);
+    expect(plan.remove).toEqual([]);
+    const same = planChunkSync([stored("a", 0, "x")], [fresh(0, "x")]);
+    expect(same).toEqual({ keep: [{ id: "a", ordinal: 0 }], insert: [], remove: [] });
   });
 });

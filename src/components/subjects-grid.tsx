@@ -9,7 +9,7 @@ import { Button } from "./ui/button";
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
-export function SubjectsGrid({ subjects }: { subjects: Subject[] }) {
+export function SubjectsGrid({ subjects, due = {} }: { subjects: Subject[]; due?: Record<string, number> }) {
   const [open, setOpen] = useState(false);
   const { play } = useSound();
 
@@ -41,7 +41,10 @@ export function SubjectsGrid({ subjects }: { subjects: Subject[] }) {
               <span className="text-4xl" role="img" aria-hidden="true">{s.emoji}</span>
               <span>
                 <span className="block text-xl font-bold">{s.name}</span>
-                <span className="text-sm font-bold opacity-80">{plural(s.noteCount, "note")} · {plural(s.sourceCount, "file")}</span>
+                <span className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-bold opacity-80">{plural(s.noteCount, "note")} · {plural(s.sourceCount, "file")}</span>
+                  {!!due[s.id] && <span className="chip chip-due">{due[s.id]} due</span>}
+                </span>
               </span>
             </Link>
           </li>
