@@ -7,6 +7,7 @@
 - One shared fit rule (`src/lib/page-range.ts`) for the dialog's hints and the server's answer. `loadMakeOptions` sends per-page character counts (never text); `makeFlashcards` takes a file with or without a page range and returns the range, coverage, page count and next range.
 - e2e: `e2e/step2-pages.spec.ts` with a 12-page fixture (`e2e/fixtures/long-lecture.pdf`, made by `make-long-lecture.mjs`).
 - Security review: the dialog's per-page counts are now summed in the database (`source_page_chars`, migration `20261015000001_source_page_chars.sql`) instead of reading every passage of every file on each open. Review addendum in `docs/security/step-2-review.md`.
+- QA: with one go left the hint under Next reads "Uses your last go for today." Fixed an e2e helper race that made mobile tests fail intermittently under load. More e2e in `e2e/step2-pages-qa.spec.ts` (PPTX, short files, invalid ranges, quota running out mid-series, already made, blocked storage, 375 px, dark mode). Sign-off in `docs/qa/step-2-page-series.md`.
 
 ## 2026-10-15 · Sign in on preview deploys
 - Sign-in links sent from a Vercel preview now open that preview, not the live site, so new steps can be tried before merge. Needs the preview URL pattern in Supabase's redirect list (README).

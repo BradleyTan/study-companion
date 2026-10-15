@@ -60,7 +60,6 @@ function writeLastPage(sourceId: string, page: number) {
 const filePages = (f: FileOption) => Math.max(1, f.pageCount ?? 0, f.pageChars?.length ?? 0);
 const unitOf = (f: FileOption | undefined): PageUnit => (f?.kind === "pptx" ? "slide" : "page");
 const isLong = (f: FileOption | undefined): f is FileOption => !!f && f.status === "ready" && !f.fitsOneSet;
-const goes = (n: number) => `${n} ${n === 1 ? "go" : "goes"}`;
 
 /**
  * "Make flashcards" (flashcards.md): choose a source → generating → result, with the
@@ -297,7 +296,7 @@ export function MakeFlashcardsDialog({ subjectId, subjectName, open, onClose, pr
         <Button variant="primary" className="w-full sm:w-auto" aria-label={`Make the next set: ${pagesSpoken(next, series.unit)}`} onClick={() => goNext(next)}>
           Next: {pagesText(next, series.unit)}
         </Button>
-        <p className="hint">Uses 1 of your {goes(left)} left today.</p>
+        <p className="hint">{left === 1 ? "Uses your last go for today." : `Uses 1 of your ${left} goes left today.`}</p>
       </div>
     );
   };
