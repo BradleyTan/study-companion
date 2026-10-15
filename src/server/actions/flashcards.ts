@@ -6,9 +6,10 @@ import { aiMode } from "@/lib/ai/providers";
 import { runAiTask } from "@/lib/ai/run";
 import { normaliseFlashcards } from "@/lib/ai/schemas";
 import { flashcardTask, FLASHCARDS_MAX_CHARS, MIN_SOURCE_CHARS, toPassages, type CardCount } from "@/lib/ai/tasks";
+import { fitsOneSet, isCovered, nextRange, pageStats, type PageRange, type PageStats } from "@/lib/page-range";
 import type { GeneratedCard } from "@/lib/ai/types";
 import { DAILY_ATTEMPTS, DAILY_LIMITS, type Quota } from "@/lib/limits/ai";
-import { editCardInput, id as idSchema, makeFlashcardsInput, newCardInput } from "@/lib/validation";
+import { editCardInput, id as idSchema, MAX_CARD_PAGES, makeFlashcardsInput, newCardInput, type MakeFlashcardsInput } from "@/lib/validation";
 import { appBudget, quotaFor, studentDay } from "../ai";
 import { dayContext, toDeckCards, type DeckCard } from "../cards";
 import { syncNoteChunks } from "../passages";
@@ -22,7 +23,15 @@ const MAX_CACHE_BYTES = 200_000;
 
 export type MakeOptions = {
   notes: { id: string; title: string; chars: number; updatedAt: string }[];
-  files: { id: string; name: string; kind: "pdf" | "pptx"; pageCount: number | null; status: string }[];
+  files: {
+    id: string; name: string; kind: "pdf" | "pptx"; pageCount: number | null; status: string;
+    /** Characters per page (index 0 = page 1); null when the passages have no page numbers. Counts only, never text. */
+    pageChars: number[] | null;
+    /** Characters in passages without a page number (sent with every range). */
+    looseChars: number;
+    /** The whole file fits one set: no page fields. */
+    fitsOneSet: boolean;
+  }[];
   quota: Quota;
 };
 
@@ -32,35 +41,63 @@ export async function loadMakeOptions(subjectId: string): Promise<ActionResult<M
   const repo = await getRepo();
   if (!(await repo.getSubject(subjectId))) return { ok: false, error: "Subject not found." };
   const [notes, files, quota] = await Promise.all([repo.listNotes(subjectId), repo.listSources(subjectId), quotaFor(repo, "flashcards")]);
+  const stats = await Promise.all(files.map(async (f): Promise<PageStats> =>
+    f.extractStatus === "ready" ? pageStats(await repo.listChunks({ sourceId: f.id }), f.pageCount) : { pageChars: null, looseChars: 0, totalChars: 0 }));
   return {
     ok: true,
     notes: notes.map((n) => ({ id: n.id, title: n.title || "Untitled note", chars: n.chars, updatedAt: n.updatedAt })),
-    files: files.map((f) => ({ id: f.id, name: f.fileName, kind: f.kind, pageCount: f.pageCount, status: f.extractStatus })),
+    files: files.map((f, i) => ({
+      id: f.id, name: f.fileName, kind: f.kind, pageCount: f.pageCount, status: f.extractStatus,
+      pageChars: stats[i].pageChars, looseChars: stats[i].looseChars, fitsOneSet: fitsOneSet(stats[i].totalChars),
+    })),
     quota,
   };
 }
 
+/**
+ * Where a file's set sits in the series (flashcards.md "Long files"): the range read, whether
+ * every passage fitted (else sampled), the file's page count and the next range by the fit rule.
+ */
+export type FileSeries = { range: PageRange; covered: boolean; pageCount: number; next: PageRange | null };
+
 export type MakeResult =
-  | { status: "made"; cards: DeckCard[]; quota: Quota; requested: number; cached: boolean }
+  | { status: "made"; cards: DeckCard[]; quota: Quota; requested: number; cached: boolean; series?: FileSeries }
   | { status: "too_short"; sourceType: "note" | "file"; quota: Quota }
   | { status: "limit"; quota: Quota }
   | { status: "allowance"; quota: Quota }
-  | { status: "already"; count: number; quota: Quota }
+  | { status: "already"; count: number; quota: Quota; series?: FileSeries }
   | { status: "failed"; quota: Quota }
   /** Production build without an AI key. */
   | { status: "not_configured"; quota: Quota };
 
-async function sourceChunks(repo: Repo, subjectId: string, source: { type: "note"; id: string } | { type: "file"; id: string; fromPage: number; toPage: number }) {
+type Found = { chunks: ChunkRow[]; noteId: string | null; sourceId: string | null; series: FileSeries | null };
+
+async function sourceChunks(repo: Repo, subjectId: string, source: MakeFlashcardsInput["source"]): Promise<Found | { error: string } | null> {
   if (source.type === "note") {
     const note = await repo.getNote(source.id);
     if (!note || note.subjectId !== subjectId) return null;
     await syncNoteChunks(repo, note); // make sure passages match the latest text
-    return { chunks: await repo.listChunks({ noteId: note.id }), noteId: note.id, sourceId: null };
+    return { chunks: await repo.listChunks({ noteId: note.id }), noteId: note.id, sourceId: null, series: null };
   }
   const file = await repo.getSource(source.id);
   if (!file || file.subjectId !== subjectId || file.extractStatus !== "ready") return null;
-  const chunks = (await repo.listChunks({ sourceId: file.id })).filter((c) => c.page === null || (c.page >= source.fromPage && c.page <= source.toPage));
-  return { chunks, noteId: null, sourceId: file.id };
+  const all = await repo.listChunks({ sourceId: file.id });
+  const stats = pageStats(all, file.pageCount);
+  const pageCount = Math.max(1, file.pageCount ?? 0, stats.pageChars?.length ?? 0);
+  const unit = file.kind === "pptx" ? "slide" : "page";
+  if (source.fromPage === undefined || source.toPage === undefined) {
+    // Whole file (it fits one set; a stale dialog sending a long file gets an even sample).
+    const range = { from: 1, to: pageCount };
+    return { chunks: all, noteId: null, sourceId: file.id, series: { range, covered: fitsOneSet(stats.totalChars), pageCount, next: null } };
+  }
+  if (source.fromPage > pageCount) return { error: `Pick a ${unit} between 1 and ${pageCount}.` };
+  const range = { from: source.fromPage, to: Math.min(source.toPage, pageCount) };
+  const chunks = all.filter((c) => c.page === null || (c.page >= range.from && c.page <= range.to));
+  // Same fit rule as the dialog (src/lib/page-range.ts); without page counts, the next 20 pages.
+  const series: FileSeries = stats.pageChars
+    ? { range, pageCount, covered: isCovered(stats.pageChars, stats.looseChars, range), next: nextRange(stats.pageChars, stats.looseChars, range.to) }
+    : { range, pageCount, covered: stats.totalChars <= FLASHCARDS_MAX_CHARS, next: range.to < pageCount ? { from: range.to + 1, to: Math.min(pageCount, range.to + MAX_CARD_PAGES) } : null };
+  return { chunks, noteId: null, sourceId: file.id, series };
 }
 
 function cardsToSave(cards: GeneratedCard[], chunks: ChunkRow[], subjectId: string, hash: string, link: { noteId: string | null; sourceId: string | null }) {
@@ -83,6 +120,8 @@ export async function makeFlashcards(raw: unknown): Promise<ActionResult<{ resul
   if (!(await repo.getSubject(subjectId))) return { ok: false, error: "Subject not found." };
   const found = await sourceChunks(repo, subjectId, source);
   if (!found) return { ok: false, error: "That note or file isn't available any more." };
+  if ("error" in found) return { ok: false, error: found.error };
+  const series = found.series ? { series: found.series } : {};
   const quota = () => quotaFor(repo, "flashcards");
 
   const totalChars = found.chunks.reduce((n, c) => n + c.text.length, 0);
@@ -103,12 +142,12 @@ export async function makeFlashcards(raw: unknown): Promise<ActionResult<{ resul
   if (cached && (cached.model !== "local" || mode === "local")) {
     // Only this subject's cards count: the same text can live in two subjects.
     const existing = (await repo.findFlashcardsByHash(hash)).filter((c) => c.subjectId === subjectId);
-    if (existing.length) return { ok: true, result: { status: "already", count: existing.length, quota: await quota() } };
+    if (existing.length) return { ok: true, result: { status: "already", count: existing.length, quota: await quota(), ...series } };
     const cards = normaliseFlashcards(cached.output, passages, Math.min(count + 5, 25));
     if (cards && cards.length) {
       const saved = await repo.createFlashcards(cardsToSave(cards, picked, subjectId, hash, link));
       revalidatePath(`/subjects/${subjectId}`);
-      return { ok: true, result: { status: "made", cards: await toDeckCards(repo, saved, ctx), quota: await quota(), requested: count, cached: true } };
+      return { ok: true, result: { status: "made", cards: await toDeckCards(repo, saved, ctx), quota: await quota(), requested: count, cached: true, ...series } };
     }
   }
 
@@ -128,7 +167,7 @@ export async function makeFlashcards(raw: unknown): Promise<ActionResult<{ resul
     revalidatePath(`/subjects/${subjectId}`);
     // Settle before reading the quota back, so the chip shows the go just used.
     await repo.settleAi(day, "flashcards", true, tokens.input, tokens.output);
-    return { ok: true, result: { status: "made", cards: await toDeckCards(repo, saved, ctx), quota: await quota(), requested: count, cached: false } };
+    return { ok: true, result: { status: "made", cards: await toDeckCards(repo, saved, ctx), quota: await quota(), requested: count, cached: false, ...series } };
   } finally {
     if (!ok) await repo.settleAi(day, "flashcards", false, tokens.input, tokens.output);
   }

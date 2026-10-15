@@ -5,7 +5,8 @@ import type { Repo } from "../repo/types";
 let repo: Repo;
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 vi.mock("../session", () => ({ getRepo: async () => repo }));
-const { makeFlashcards, deleteCard } = await import("./flashcards");
+const { makeFlashcards, deleteCard, loadMakeOptions } = await import("./flashcards");
+const { chunkPages } = await import("@/lib/extract/chunk");
 const { makeMindmap } = await import("./mindmap");
 
 const text = (topic: string) =>
@@ -142,5 +143,97 @@ describe("flashcard generation quota (QA)", () => {
     expect((await repo.listFlashcards({ subjectId: other.id })).length).toBeGreaterThan(0);
     expect(await used()).toBe(1);
   });
+
+  it("refuses a range with only one end or past the end of the file", async () => {
+    const { subjectId } = await subjectWithNote();
+    const src = await longFile(subjectId, 12);
+    const half = await makeFlashcards({ subjectId, source: { type: "file", id: src, fromPage: 2 }, count: 10 });
+    expect(half.ok).toBe(false);
+    const past = await makeFlashcards({ subjectId, source: { type: "file", id: src, fromPage: 13, toPage: 14 }, count: 10 });
+    expect(past.ok ? null : past.error).toBe("Pick a page between 1 and 12.");
+    expect(await used()).toBe(0);
+  });
 });
 
+/** A ready lecture file whose pages each have ~2,600 characters (5 pages fit one set). */
+async function longFile(subjectId: string, pages: number, opts: { kind?: "pdf" | "pptx"; blankFrom?: number } = {}) {
+  const id = crypto.randomUUID();
+  await repo.createSource({ id, subjectId, fileName: "long.pdf", kind: opts.kind ?? "pdf", sizeBytes: 10, storagePath: `x/${id}.pdf` });
+  const texts = Array.from({ length: pages }, (_, p) => (opts.blankFrom && p + 1 >= opts.blankFrom ? "" :
+    Array.from({ length: 4 }, (_, k) => Array.from({ length: 10 }, (_, i) => `Page ${p + 1} part ${k} fact ${i + 1}: enzymes speed up reactions in cells.`).join(" ")).join("\n\n")));
+  await repo.replaceSourceChunks(id, subjectId, chunkPages(texts));
+  await repo.updateSource(id, { extractStatus: "ready", pageCount: pages });
+  return id;
+}
+
+describe("long files: page ranges and series (flashcards.md)", () => {
+  beforeEach(() => {
+    vi.stubEnv("GROQ_API_KEY", "");
+    vi.stubEnv("CLOUDFLARE_ACCOUNT_ID", "");
+    vi.stubEnv("CLOUDFLARE_AI_TOKEN", "");
+  });
+  afterEach(() => { vi.unstubAllEnvs(); });
+
+  it("loadMakeOptions sends per-page counts, never text", async () => {
+    const { subjectId } = await subjectWithNote();
+    const long = await longFile(subjectId, 12);
+    const short = await longFile(subjectId, 2);
+    const r = await loadMakeOptions(subjectId);
+    if (!r.ok) throw new Error(r.error);
+    const l = r.files.find((f) => f.id === long)!;
+    expect(l.pageChars).toHaveLength(12);
+    expect(l.pageChars!.every((n) => n > 2000 && n < 2800)).toBe(true);
+    expect(l.looseChars).toBe(0);
+    expect(l.fitsOneSet).toBe(false);
+    expect(r.files.find((f) => f.id === short)!.fitsOneSet).toBe(true);
+    expect(JSON.stringify(r.files)).not.toContain("enzymes");
+  });
+
+  it("makes a series: each set covers its range and points at the next", async () => {
+    const { subjectId } = await subjectWithNote();
+    const src = await longFile(subjectId, 12);
+    const first = await makeFlashcards({ subjectId, source: { type: "file", id: src, fromPage: 1, toPage: 5 }, count: 10 });
+    if (!first.ok || first.result.status !== "made") throw new Error("not made");
+    expect(first.result.series).toEqual({ range: { from: 1, to: 5 }, covered: true, pageCount: 12, next: { from: 6, to: 10 } });
+    expect(await pagesOf(first.result.cards)).toSatisfy((ps: (number | null)[]) => ps.every((p) => p !== null && p >= 1 && p <= 5));
+
+    const second = await makeFlashcards({ subjectId, source: { type: "file", id: src, ...rangeOf(first.result.series!.next!) }, count: 10 });
+    if (!second.ok || second.result.status !== "made") throw new Error("not made");
+    expect(second.result.series).toEqual({ range: { from: 6, to: 10 }, covered: true, pageCount: 12, next: { from: 11, to: 12 } });
+    expect(await pagesOf(second.result.cards)).toSatisfy((ps: (number | null)[]) => ps.every((p) => p !== null && p >= 6 && p <= 10));
+
+    const last = await makeFlashcards({ subjectId, source: { type: "file", id: src, fromPage: 11, toPage: 12 }, count: 10 });
+    expect(last.ok && last.result.status === "made" && last.result.series?.next).toBeNull();
+    expect(await used()).toBe(3);
+
+    // The same pages again: free, and still says what comes next.
+    const again = await makeFlashcards({ subjectId, source: { type: "file", id: src, fromPage: 1, toPage: 5 }, count: 10 });
+    expect(again.ok && again.result.status).toBe("already");
+    expect(again.ok && again.result.status === "already" && again.result.series?.next).toEqual({ from: 6, to: 10 });
+    expect(await used()).toBe(3);
+  });
+
+  it("a range over the budget is sampled; trailing pages without text count as done", async () => {
+    const { subjectId } = await subjectWithNote();
+    const src = await longFile(subjectId, 12, { blankFrom: 9 });
+    const wide = await makeFlashcards({ subjectId, source: { type: "file", id: src, fromPage: 1, toPage: 8 }, count: 10 });
+    expect(wide.ok && wide.result.status === "made" && wide.result.series).toEqual({ range: { from: 1, to: 8 }, covered: false, pageCount: 12, next: null });
+  });
+
+  it("a range past the last page is clamped to it", async () => {
+    const { subjectId } = await subjectWithNote();
+    const src = await longFile(subjectId, 12);
+    const r = await makeFlashcards({ subjectId, source: { type: "file", id: src, fromPage: 11, toPage: 20 }, count: 10 });
+    expect(r.ok && r.result.status === "made" && r.result.series?.range).toEqual({ from: 11, to: 12 });
+  });
+
+  it("a file that fits one set is made whole, without a range", async () => {
+    const { subjectId } = await subjectWithNote();
+    const src = await longFile(subjectId, 3);
+    const r = await makeFlashcards({ subjectId, source: { type: "file", id: src }, count: 10 });
+    expect(r.ok && r.result.status === "made" && r.result.series).toEqual({ range: { from: 1, to: 3 }, covered: true, pageCount: 3, next: null });
+  });
+});
+
+const pagesOf = async (cards: { id: string }[]) => Promise.all(cards.map(async (c) => (await repo.getFlashcard(c.id))!.page));
+const rangeOf = (r: { from: number; to: number }) => ({ fromPage: r.from, toPage: r.to });

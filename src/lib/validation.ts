@@ -53,13 +53,15 @@ export const makeFlashcardsInput = z.object({
   subjectId: id,
   source: z.discriminatedUnion("type", [
     z.object({ type: z.literal("note"), id }),
+    // A page range for long files; a file that fits one set is sent without one (whole file).
     z.object({
       type: z.literal("file"),
       id,
-      fromPage: z.int().min(1).max(10_000),
-      toPage: z.int().min(1).max(10_000),
-    }).refine((s) => s.toPage >= s.fromPage, "The last page comes before the first.")
-      .refine((s) => s.toPage - s.fromPage < MAX_CARD_PAGES, `Up to ${MAX_CARD_PAGES} pages at a time.`),
+      fromPage: z.int().min(1).max(10_000).optional(),
+      toPage: z.int().min(1).max(10_000).optional(),
+    }).refine((s) => (s.fromPage === undefined) === (s.toPage === undefined), "Pick a first and a last page.")
+      .refine((s) => s.fromPage === undefined || s.toPage! >= s.fromPage, "The last page comes before the first.")
+      .refine((s) => s.fromPage === undefined || s.toPage! - s.fromPage < MAX_CARD_PAGES, `Up to ${MAX_CARD_PAGES} pages at a time.`),
   ]),
   count: z.union([z.literal(10), z.literal(15), z.literal(20)]),
 });
