@@ -190,6 +190,10 @@ mark, .mark { background: var(--mark); color: var(--on-colour); border-radius: 2
 .chip-limit { background: var(--danger); color: var(--on-colour); }
 .skeleton { background: var(--grid); border-radius: 8px; animation: pulse 1.2s ease-in-out infinite; }
 
+/* progress bar (flashcard series): 8 px track, ink border, subject-colour fill */
+.progress-track { box-sizing: content-box; height: 8px; background: var(--grid); border: 2px solid var(--ink); border-radius: 999px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--subject); border-radius: 999px; transition: width 400ms ease-out; }
+
 /* segmented radio (card count, Map | Outline) */
 .seg { display: inline-flex; border: 2.5px solid var(--ink); border-radius: 8px; overflow: hidden; background: var(--card); }
 .seg > label, .seg > button { min-height: 44px; min-width: 44px; padding: 0.4rem 0.9rem; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; cursor: pointer; color: var(--ink); background: transparent; }
