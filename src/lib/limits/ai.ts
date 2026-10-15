@@ -21,6 +21,14 @@ export const APP_BUDGET: Record<"groq" | "cloudflare", { requests: number; token
   cloudflare: { requests: 300, tokens: 150_000 },
 };
 
+/**
+ * Character budget per flashcard request. Groq's free plan allows ~8,000 tokens a minute per
+ * model, counting the prompt and the reply, so a request stays around 4,000 input tokens.
+ */
+export const FLASHCARDS_MAX_CHARS = 14_000;
+/** Below this a note or file is "a bit short" for flashcards (flashcards.md). */
+export const MIN_SOURCE_CHARS = 200;
+
 export type Quota = { kind: AiKind; used: number; limit: number; left: number; appAllowanceLeft: boolean };
 
 export function quotaFrom(kind: AiKind, used: number, appAllowanceLeft: boolean): Quota {

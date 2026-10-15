@@ -6,14 +6,10 @@ import type { AiTask } from "./run";
 import { normaliseFlashcards, normaliseMindmap } from "./schemas";
 import type { GeneratedCard, MindmapGraph, Passage } from "./types";
 
-/**
- * Character budgets per request. Groq's free plan allows ~8,000 tokens a minute per model,
- * counting the prompt and the reply, so a request stays around 4,000 input tokens.
- */
-export const FLASHCARDS_MAX_CHARS = 14_000;
+// Flashcard budgets live in limits/ai.ts so the dialog can use them too (page-range hints).
+export { FLASHCARDS_MAX_CHARS, MIN_SOURCE_CHARS } from "../limits/ai";
+/** See FLASHCARDS_MAX_CHARS. */
 export const MINDMAP_MAX_CHARS = 16_000;
-/** Below this a note or file is "a bit short" for flashcards (flashcards.md). */
-export const MIN_SOURCE_CHARS = 200;
 export const MIN_MINDMAP_CHARS = 200;
 export const CARD_COUNTS = [10, 15, 20] as const;
 export type CardCount = (typeof CARD_COUNTS)[number];
