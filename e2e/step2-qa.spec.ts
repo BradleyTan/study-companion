@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { createSubject, expectNoA11yViolations, expectNoHorizontalScroll, startDemo } from "./helpers";
+import { createSubject, expectNoA11yViolations, expectNoHorizontalScroll, smallTargets, startDemo } from "./helpers";
 
 // QA regression checks for Step 2 (docs/qa/step-2.md). Demo mode: the local generator makes the cards.
 const NOTE = Array.from({ length: 24 }, (_, i) =>
@@ -27,20 +27,6 @@ async function makeCards(page: Page, count: 10 | 15 | 20 = 10) {
 }
 
 /** Visible controls smaller than 44 × 44 px (inline text links excepted). */
-async function smallTargets(page: Page) {
-  return page.evaluate(() => {
-    const out: string[] = [];
-    for (const el of document.querySelectorAll<HTMLElement>("button, a[href], select, input:not([type=hidden]), [role=button], [role=treeitem]")) {
-      const r = el.getBoundingClientRect();
-      const style = getComputedStyle(el);
-      if (!r.width || !r.height || style.visibility === "hidden" || el.closest("[aria-hidden=true], .sr-only, .react-flow__attribution")) continue;
-      if (el.tagName === "A" && style.display === "inline") continue;
-      if (r.height < 44 || (r.width < 44 && el.tagName !== "INPUT")) out.push(`${el.tagName.toLowerCase()} "${(el.getAttribute("aria-label") || el.textContent || "").trim().slice(0, 30)}" ${Math.round(r.width)}×${Math.round(r.height)}`);
-    }
-    return out;
-  });
-}
-
 test("a double tap on a grade doesn't flip the next card", async ({ page }) => {
   await subjectWithNote(page, "Biochem");
   const dialog = await makeCards(page);
