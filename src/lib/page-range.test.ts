@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FLASHCARDS_MAX_CHARS } from "./limits/ai";
 import {
-  defaultRange, fitPageRange, fitsOneSet, isCovered, nextRange, pageStats, pagesSpoken, pagesText, pagesTitle,
+  defaultRange, fitPageRange, fitsOneSet, isCovered, nextRange, pageStats, pageStatsFromCounts, pagesSpoken, pagesText, pagesTitle,
   rangeChars, rangeError, rangeHint, resumeFrom,
 } from "./page-range";
 
@@ -102,6 +102,18 @@ describe("pageStats", () => {
   it("has no page counts when no passage has a page", () => {
     expect(pageStats([{ page: null, text: "abc" }], 10)).toEqual({ pageChars: null, looseChars: 3, totalChars: 3 });
     expect(pageStats([], null).pageChars).toBeNull();
+  });
+});
+
+describe("pageStatsFromCounts (security review S2-9)", () => {
+  it("matches pageStats on the same passages", () => {
+    const chunks = [{ page: 1, text: "abc" }, { page: 1, text: "de" }, { page: 3, text: "f" }, { page: null, text: "xyz" }];
+    expect(pageStatsFromCounts([{ page: 1, chars: 5 }, { page: 3, chars: 1 }, { page: null, chars: 3 }], 4)).toEqual(pageStats(chunks, 4));
+  });
+  it("never allocates for an absurd page number or page count", () => {
+    expect(pageStatsFromCounts([{ page: 2_000_000_000, chars: 7 }, { page: 1, chars: 1 }], null)).toEqual({ pageChars: [1], looseChars: 7, totalChars: 8 });
+    expect(pageStatsFromCounts([{ page: 1.5, chars: 2 }], null).pageChars).toBeNull();
+    expect(pageStatsFromCounts([{ page: 1, chars: 1 }], 1e9).pageChars).toHaveLength(10_000);
   });
 });
 

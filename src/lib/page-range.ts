@@ -14,17 +14,26 @@ export type PageStats = { pageChars: number[] | null; looseChars: number; totalC
  * page number (nothing to fit pages against). Its length covers `pageCount` and every page seen.
  */
 export function pageStats(chunks: { page: number | null; text: string }[], pageCount: number | null): PageStats {
+  return pageStatsFromCounts(chunks.map((c) => ({ page: c.page, chars: c.text.length })), pageCount);
+}
+
+/** Highest page number counted (above the 500-page extraction limit, as defence in depth). */
+const MAX_PAGE = 10_000;
+
+/** Same as pageStats, from characters already summed per page (repo.listPageChars). */
+export function pageStatsFromCounts(rows: { page: number | null; chars: number }[], pageCount: number | null): PageStats {
   let looseChars = 0;
   let totalChars = 0;
   let maxPage = 0;
-  for (const c of chunks) {
-    totalChars += c.text.length;
-    if (c.page === null || c.page < 1) looseChars += c.text.length;
-    else maxPage = Math.max(maxPage, c.page);
+  const paged = (p: number | null): p is number => p !== null && Number.isInteger(p) && p >= 1 && p <= MAX_PAGE;
+  for (const r of rows) {
+    totalChars += r.chars;
+    if (!paged(r.page)) looseChars += r.chars;
+    else maxPage = Math.max(maxPage, r.page);
   }
   if (maxPage === 0) return { pageChars: null, looseChars, totalChars };
-  const pageChars = new Array<number>(Math.max(maxPage, pageCount ?? 0)).fill(0);
-  for (const c of chunks) if (c.page !== null && c.page >= 1) pageChars[c.page - 1] += c.text.length;
+  const pageChars = new Array<number>(Math.min(MAX_PAGE, Math.max(maxPage, pageCount ?? 0))).fill(0);
+  for (const r of rows) if (paged(r.page)) pageChars[r.page - 1] += r.chars;
   return { pageChars, looseChars, totalChars };
 }
 

@@ -274,6 +274,28 @@ exception when check_violation then null; end $$;
 delete from public.subjects;
 reset role;
 
+-- ===== S2-9: per-page character counts (counts only, own files only)
+reset role;
+insert into public.chunks (user_id, subject_id, source_id, ordinal, page, text, content_hash) values
+  ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000b1', 0, 1, 'abcd', 'p1'),
+  ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000b1', 1, 1, 'ef', 'p1b'),
+  ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000b1', 2, 3, 'ghi', 'p3'),
+  ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000b1', 3, null, 'loose', 'pl');
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+select pg_temp.check((select count(*) from public.source_page_chars('5a000000-0000-0000-0000-000000000001')) = 3, 'A gets one row per page of own file');
+select pg_temp.check((select chars from public.source_page_chars('5a000000-0000-0000-0000-000000000001') where page = 1) = 6, 'A page 1 counts summed');
+select pg_temp.check((select chars from public.source_page_chars('5a000000-0000-0000-0000-000000000001') where page is null) = 5, 'A loose passages counted');
+set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
+select pg_temp.check((select count(*) from public.source_page_chars('5a000000-0000-0000-0000-000000000001')) = 0, 'B gets no counts for A files');
+reset role;
+set role anon;
+do $$ begin
+  perform public.source_page_chars('5a000000-0000-0000-0000-000000000001');
+  raise exception 'RLS TEST FAILED: anon called source_page_chars';
+exception when insufficient_privilege then null; end $$;
+set role authenticated;
+
 -- ===== anon sees nothing
 reset request.jwt.claim.sub;
 set role anon;

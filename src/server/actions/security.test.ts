@@ -7,7 +7,8 @@ import type { Repo } from "../repo/types";
 let repo: Repo;
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 vi.mock("../session", () => ({ getRepo: async () => repo }));
-const { makeFlashcards, updateCard, deleteCard, restoreCard, createCard, cardsOfSubject } = await import("./flashcards");
+const { makeFlashcards, updateCard, deleteCard, restoreCard, createCard, cardsOfSubject, loadMakeOptions } = await import("./flashcards");
+const { chunkPages } = await import("@/lib/extract/chunk");
 const { makeMindmap, saveMindmapPositions, getPassage, resetMindmapLayout } = await import("./mindmap");
 const { reviewCard, undoReview } = await import("./review");
 const { passageTarget } = await import("../passages");
@@ -67,6 +68,31 @@ describe("student B can't reach student A's Step 2 data through server actions",
 
     expect(JSON.stringify(await a.repo.listFlashcards())).toBe(aCardsBefore);
     expect(JSON.stringify(await a.repo.getMindmap(a.subjectId))).toBe(aMapBefore);
+  });
+
+  it("page ranges: B can't make cards from, or count the pages of, A's file (S2-9)", async () => {
+    const a = await student("Osmosis");
+    const file = crypto.randomUUID();
+    await a.repo.createSource({ id: file, subjectId: a.subjectId, fileName: "a.pdf", kind: "pdf", sizeBytes: 10, storagePath: `x/${file}.pdf` });
+    const pages = Array.from({ length: 12 }, (_, p) => Array.from({ length: 40 }, (_, i) => `Secret page ${p + 1} fact ${i}: A's private lecture notes.`).join(" "));
+    await a.repo.replaceSourceChunks(file, a.subjectId, chunkPages(pages));
+    await a.repo.updateSource(file, { extractStatus: "ready", pageCount: 12 });
+    const before = (await a.repo.listFlashcards()).length;
+    const b = await student("Enzymes"); // repo is now B's
+
+    for (const range of [{}, { fromPage: 1, toPage: 5 }, { fromPage: 13, toPage: 14 }]) {
+      for (const subjectId of [a.subjectId, b.subjectId]) {
+        const r = await makeFlashcards({ subjectId, source: { type: "file", id: file, ...range }, count: 10 });
+        expect(r.ok).toBe(false);
+        // No page count of A's file leaks through the "past the end" message.
+        expect(r.ok ? "" : r.error).not.toContain("12");
+      }
+    }
+    expect((await loadMakeOptions(a.subjectId)).ok).toBe(false);
+    const mine = await loadMakeOptions(b.subjectId);
+    expect(mine.ok && mine.files).toEqual([]);
+    expect(await repo.listPageChars(a.subjectId)).toEqual([]);
+    expect((await a.repo.listFlashcards()).length).toBe(before);
   });
 
   it("a model reply citing A's passage id saves nothing that points at A", async () => {

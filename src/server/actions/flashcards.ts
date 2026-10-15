@@ -6,7 +6,7 @@ import { aiMode } from "@/lib/ai/providers";
 import { runAiTask } from "@/lib/ai/run";
 import { normaliseFlashcards } from "@/lib/ai/schemas";
 import { flashcardTask, FLASHCARDS_MAX_CHARS, MIN_SOURCE_CHARS, toPassages, type CardCount } from "@/lib/ai/tasks";
-import { fitsOneSet, isCovered, nextRange, pageStats, type PageRange, type PageStats } from "@/lib/page-range";
+import { fitsOneSet, isCovered, nextRange, pageStats, pageStatsFromCounts, type PageRange, type PageStats } from "@/lib/page-range";
 import type { GeneratedCard } from "@/lib/ai/types";
 import { DAILY_ATTEMPTS, DAILY_LIMITS, type Quota } from "@/lib/limits/ai";
 import { editCardInput, id as idSchema, MAX_CARD_PAGES, makeFlashcardsInput, newCardInput, type MakeFlashcardsInput } from "@/lib/validation";
@@ -40,9 +40,17 @@ export async function loadMakeOptions(subjectId: string): Promise<ActionResult<M
   if (!idSchema.safeParse(subjectId).success) return { ok: false, error: "Subject not found." };
   const repo = await getRepo();
   if (!(await repo.getSubject(subjectId))) return { ok: false, error: "Subject not found." };
-  const [notes, files, quota] = await Promise.all([repo.listNotes(subjectId), repo.listSources(subjectId), quotaFor(repo, "flashcards")]);
-  const stats = await Promise.all(files.map(async (f): Promise<PageStats> =>
-    f.extractStatus === "ready" ? pageStats(await repo.listChunks({ sourceId: f.id }), f.pageCount) : { pageChars: null, looseChars: 0, totalChars: 0 }));
+  const [notes, files, quota, counts] = await Promise.all([
+    repo.listNotes(subjectId), repo.listSources(subjectId), quotaFor(repo, "flashcards"), repo.listPageChars(subjectId),
+  ]);
+  // Counts summed in the database, one query per dialog open (security review S2-9): never the passages' text.
+  const bySource = new Map<string, typeof counts>();
+  for (const r of counts) {
+    const list = bySource.get(r.sourceId);
+    if (list) list.push(r); else bySource.set(r.sourceId, [r]);
+  }
+  const stats = files.map((f): PageStats =>
+    f.extractStatus === "ready" ? pageStatsFromCounts(bySource.get(f.id) ?? [], f.pageCount) : { pageChars: null, looseChars: 0, totalChars: 0 });
   return {
     ok: true,
     notes: notes.map((n) => ({ id: n.id, title: n.title || "Untitled note", chars: n.chars, updatedAt: n.updatedAt })),

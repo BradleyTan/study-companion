@@ -147,6 +147,8 @@ export interface Repo {
   /** Passages, in reading order. */
   listChunks(filter: { noteId: string } | { sourceId: string } | { subjectId: string }): Promise<ChunkRow[]>;
   getChunks(ids: string[]): Promise<ChunkRow[]>;
+  /** Characters per (file, page) of a subject's files; page null = passages without a page. Counts only, never text. */
+  listPageChars(subjectId: string): Promise<{ sourceId: string; page: number | null; chars: number }[]>;
 
   /** Cards not deleted, newest first. Without a subject: every subject's cards. */
   listFlashcards(filter?: { subjectId?: string }): Promise<Flashcard[]>;

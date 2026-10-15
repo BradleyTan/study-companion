@@ -276,6 +276,17 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
         if (!data || data.length < 1000) return out;
       }
     },
+    async listPageChars(subjectId) {
+      // Summed in the database (security review S2-9): counts only, RLS-scoped to the student.
+      const out: { sourceId: string; page: number | null; chars: number }[] = [];
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await db.rpc("source_page_chars", { p_subject_id: subjectId }).range(from, from + 999);
+        fail(error, "listPageChars");
+        const rows = (data ?? []) as { source_id: string; page: number | null; chars: number | string }[];
+        out.push(...rows.map((r) => ({ sourceId: r.source_id, page: r.page, chars: Number(r.chars) })));
+        if (rows.length < 1000) return out;
+      }
+    },
     async getChunks(ids) {
       if (!ids.length) return [];
       const out: ChunkRow[] = [];

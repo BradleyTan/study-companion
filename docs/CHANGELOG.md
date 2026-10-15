@@ -4,8 +4,9 @@
 - A file with more text than one set can read (about 14,000 characters) now shows page fields, whatever its page count. The default range is what fits, and the hint says whether every passage on those pages is covered or only a sample ("Use pages 1–6" snaps back). Files that fit in one set are unchanged and are sent whole.
 - The result step shows "Pages 1–6 of 42 done" with a progress bar and a "Next: pages 7–12" button that goes straight back to Step 1 with the next range filled in, or says the next pages are for tomorrow when no goes are left. "Already made" for a page range offers the next pages too.
 - The dialog remembers the furthest page made per file in this browser (`studynest:cardRange:<sourceId>`) and starts after it next time.
-- One shared fit rule (`src/lib/page-range.ts`) for the dialog's hints and the server's answer. `loadMakeOptions` sends per-page character counts (never text); `makeFlashcards` takes a file with or without a page range and returns the range, coverage, page count and next range. No migration.
+- One shared fit rule (`src/lib/page-range.ts`) for the dialog's hints and the server's answer. `loadMakeOptions` sends per-page character counts (never text); `makeFlashcards` takes a file with or without a page range and returns the range, coverage, page count and next range.
 - e2e: `e2e/step2-pages.spec.ts` with a 12-page fixture (`e2e/fixtures/long-lecture.pdf`, made by `make-long-lecture.mjs`).
+- Security review: the dialog's per-page counts are now summed in the database (`source_page_chars`, migration `20261015000001_source_page_chars.sql`) instead of reading every passage of every file on each open. Review addendum in `docs/security/step-2-review.md`.
 
 ## 2026-10-15 · Sign in on preview deploys
 - Sign-in links sent from a Vercel preview now open that preview, not the live site, so new steps can be tried before merge. Needs the preview URL pattern in Supabase's redirect list (README).

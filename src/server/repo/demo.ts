@@ -178,6 +178,17 @@ export function demoRepo(userId: string): Repo {
         : myChunks().filter((c) => c.subjectId === filter.subjectId);
       return list.filter((c) => c.userId === userId).sort((a, b) => a.ordinal - b.ordinal).map(strip);
     },
+    async listPageChars(subjectId) {
+      const sums = new Map<string, { sourceId: string; page: number | null; chars: number }>();
+      for (const c of myChunks()) {
+        if (c.subjectId !== subjectId || !c.sourceId) continue;
+        const key = `${c.sourceId}|${c.page}`;
+        const row = sums.get(key) ?? { sourceId: c.sourceId, page: c.page, chars: 0 };
+        row.chars += c.text.length;
+        sums.set(key, row);
+      }
+      return [...sums.values()];
+    },
     async getChunks(ids) {
       const want = new Set(ids);
       return myChunks().filter((c) => want.has(c.id)).map(strip);

@@ -63,6 +63,10 @@ Reviewer: security-engineer. Verdict: no critical/high findings; cleared to merg
 | S2-6 Time zone change shifts the per-student quota (QA B) | Low | Accepted: borrows adjacent days, doesn't raise the average |
 | S2-7 Non-atomic note passage sync (QA C) | Low | Open (developer): own data only |
 | S2-8 Privacy page out of date | Low | Fixed |
+| S2-9 Make dialog read every file's full text per open, to count characters (long files) | Medium | Fixed: counts summed in the database (`source_page_chars`) |
+| S2-10 makeFlashcards reads the whole file before the quota check | Low | Accepted: needs a general server-action rate limit |
+| S2-11 Unbounded array from page numbers | Low | Fixed: capped at 10,000 |
+| S2-12 Loose passages re-sent with every page range | Low | Accepted: own quota only |
 
 ## Residual risks / follow-ups
 - Clean up upload rows left `pending` (browser closed mid-upload) with a scheduled job, once Supabase is connected (free `pg_cron`).
@@ -71,4 +75,6 @@ Reviewer: security-engineer. Verdict: no critical/high findings; cleared to merg
 - Apply `20261014000002_step2_security_review.sql` to the live project, then run the Supabase security advisor and the two-student checks again.
 - Prompt injection can't be fully prevented: a hostile lecture file can still make misleading cards for the student who uploaded it. Test against real Groq/Cloudflare replies in a preview deploy.
 - Note passage sync should become one SQL transaction (S2-7, QA C).
+- Apply `20261015000001_source_page_chars.sql` to the live project before deploying the long-files change.
+- Add a per-student rate limit to server actions that aren't quota-gated (S2-10).
 - Account deletion relies on Supabase backups expiring (stated on the privacy page as 30 days).
