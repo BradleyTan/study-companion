@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-10-15 · Sign in on preview deploys
+- Sign-in links sent from a Vercel preview now open that preview, not the live site, so new steps can be tried before merge. Needs the preview URL pattern in Supabase's redirect list (README).
+
 ## 2026-10-14 · Step 2 security review
 - Flashcards, reviews and mindmaps can only be written through the server now (students could write them directly with the public key and skip the card cap and validation).
 - Failed AI generations still give the go back, but tries per day are capped (15 flashcard, 9 mindmap), so a note that makes the model fail can't use up the whole app's free AI allowance.
