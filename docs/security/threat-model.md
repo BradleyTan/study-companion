@@ -18,7 +18,7 @@ Every server action and route handler is a public endpoint. The browser only eve
 |---|---|---|---|
 | T1 | Student B reads or edits student A's notes/files | RLS `user_id = auth.uid()` on every table; sources, chunks and the upload log are read/delete-only for students, and flashcards, card reviews and mindmaps are read-only (only the server writes them, every query pinned to the student's id); Storage policies on `<user_id>/` folder; composite FKs `(subject_id, user_id)` so rows can't point at another student's subject; `storage_path` must start with owner id. Tested in `supabase/tests/10_rls.sql` and, through the server actions, in `src/server/actions/security.test.ts`. | Done |
 | T2 | Forged or stale session | Pages use `auth.getUser()` (validated by Supabase Auth); the proxy only refreshes cookies and redirects. | Done |
-| T3 | Malicious upload (executable, polyglot, macro deck, zip bomb) | Extension allow-list (pdf, pptx), magic-byte check, PPTX must contain `ppt/presentation.xml`, macro-enabled decks rejected, 25 MB cap (client, server action, bucket limit, DB check), 500 pages/slides cap, rejected files deleted. Files are never rendered inline on our origin: Supabase signed URLs force download; demo route sends `attachment` + `nosniff`. | Done |
+| T3 | Malicious upload (executable, polyglot, macro deck, zip bomb) | Extension allow-list (pdf, pptx), magic-byte check, PPTX must contain `ppt/presentation.xml`, macro-enabled decks rejected, 25 MB cap (client, server action, bucket limit, DB check), 500 pages/slides cap, rejected files deleted, slide XML parsed in linear time (S2-16). Files are never rendered inline on our origin: Supabase signed URLs force download; demo route sends `attachment` + `nosniff`. | Done |
 | T4 | Upload abuse / storage exhaustion | No Storage insert policy for students: the only way in is a one-path signed upload URL the server issues after limits pass. 20 uploads per 24 h counted from an append-only `upload_log` (deleting files doesn't reset it); 100 MB per student computed from the real stored size, not the size the browser claims. Files can't be downloaded until their contents are checked. | Done |
 | T5 | Open redirect via sign-in callback | `next` must be a same-site relative path. | Done |
 | T6 | Secret key exposure | Secret key only in `createSupabaseAdminClient` (server-only module, `server-only` import); every admin query is pinned to the student's id. Only `NEXT_PUBLIC_SUPABASE_URL` and the publishable key reach the browser. | Done |
@@ -69,6 +69,10 @@ Reviewer: security-engineer. Verdict: no critical/high findings; cleared to merg
 | S2-12 Loose passages re-sent with every page range | Low | Accepted: own quota only |
 | S2-13 Quadratic regex in `normaliseFront` (duplicate check) | Low | Fixed: linear trim, timing test |
 | S2-14 15 goes / 45 tries per student can use most of the app-wide free AI budget | Medium | Accepted for the Phase 1 test; per-student token cap or 20 s throttle before more students |
+| S2-15 defuse rewrite missed `</passageＸ>`-style tags; TAG quadratic on space runs | Medium | Fixed: unfolded pass restored, linear TAG |
+| S2-16 Hostile PPTX: quadratic run parsing (minutes of CPU per deck) | Medium | Fixed: indexOf scanner, fuzz-checked |
+| S2-17 Failed settle RPC can give a go back twice | Low | Accepted: tries still capped |
+| S2-18 Read-aloud regexes quadratic on superscript runs (browser, own text) | Low | Accepted |
 
 ## Residual risks / follow-ups
 - Clean up upload rows left `pending` (browser closed mid-upload) with a scheduled job, once Supabase is connected (free `pg_cron`).
@@ -80,5 +84,5 @@ Reviewer: security-engineer. Verdict: no critical/high findings; cleared to merg
 - Apply `20261015000001_source_page_chars.sql` to the live project before deploying the long-files change.
 - Add a per-student rate limit to server actions that aren't quota-gated (S2-10).
 - Per-student AI token cap or per-minute throttle in `ai_usage_reserve`, or tries at 2× goes, before more students use the app (S2-14).
-- Re-check QA's `src/lib/ai/text.ts` / `src/lib/extract/` normalisation changes for ReDoS and CPU cost before merge.
+- Any new regex over passage or file text gets a timing test on a long adversarial run (S2-13, S2-15, S2-16).
 - Account deletion relies on Supabase backups expiring (stated on the privacy page as 30 days).
