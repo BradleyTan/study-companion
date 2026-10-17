@@ -113,12 +113,27 @@ describe("card quality filter on realistic lecture text (QA sample)", () => {
   // update the snapshot (and docs/qa/flashcard-pages-50.md) when the filter improves.
   it("current false drops and false keeps (known, see QA report)", () => {
     expect(falseDrops.map((r) => r.back)).toEqual(["It regulates body heat, holding it near 37 °C."]);
+    // L2 (developer, 2026-10-17): "7.45" (wrong end of a range) and "5.25%" (a number from another
+    // sentence) are now dropped. Before: 1 false drop, 4 false keeps.
     expect(falseKeeps.map((r) => r.back)).toEqual([
-      "7.45",
       "On the cristae of the inner mitochondrial membrane, by oxidative phosphorylation.",
       "Phobos is the larger of the two moons.",
-      "5.25%",
     ]);
+  });
+
+  it("checks numbers against the model's quote first, then its sentence (L2)", () => {
+    const card = (front: string, back: string, quote: string, p: Passage = ECON) =>
+      normaliseFlashcardsWithStats({ cards: [{ front, back, passage: p.ref, quote }] }, PASSAGES, 25)!.cards.length === 1;
+    const q = "consumer price inflation fell from 10.1% in March 2023 to 4.0% in December 2023";
+    expect(card("What was UK inflation in December 2023?", "4.0%", q)).toBe(true);
+    expect(card("What was UK inflation in December 2023?", "5.25%", q)).toBe(false);
+    expect(card("What was UK inflation in March 2023?", "10.1%", q)).toBe(true);
+    // A number from another sentence that appears once and is about the card's subject is kept.
+    expect(card("What happened to UK inflation and the base rate?", "Inflation fell to 4.0%; the base rate rose to 5.25%.", q)).toBe(true);
+    // The quote is about the base rate, the answer's number isn't in it nor near the card's words.
+    expect(card("How many times did the Bank of England raise the base rate?", "10.1 times", "The Bank of England raised the base rate 14 times")).toBe(false);
+    expect(card("What was the lower end of the normal arterial pH range?", "7.35", "", BIO)).toBe(true);
+    expect(card("What was the upper end of the normal arterial pH range?", "7.35", "", BIO)).toBe(false);
   });
 
   it("every clearly wrong number or outside-knowledge answer that has no overlap is dropped", () => {

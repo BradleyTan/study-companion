@@ -2,7 +2,7 @@
 // then normalised (lengths, duplicates, tree shape) and every passage reference is mapped
 // through the server's own list, so a card or node can only point at this student's text.
 import { z } from "zod";
-import { canonical, clip, collapse, containsLoose, equationsIn, factsOf, GREEK, NO_SPACES, normaliseFront, NUMBER_WORD_VALUES, overlap, passageFacts, SCALE, sentences } from "./text";
+import { canonical, clip, collapse, containsLoose, equationsIn, factsOf, GREEK, NO_SPACES, normaliseFront, NUMBER_WORD_VALUES, numbersIn, overlap, passageFacts, SCALE, sentences, type PassageFacts } from "./text";
 import type { GeneratedCard, MindmapGraph, MindmapNode, Passage } from "./types";
 
 export const CARD_FRONT_MAX = 500;
@@ -132,6 +132,89 @@ export function isGrounded(back: string, passageText: string): boolean {
   return hits / total >= GROUNDING_MIN;
 }
 
+/**
+ * Sentences of a passage (whitespace collapsed), split only at . ! ? followed by a space and a
+ * capital, digit or bracket, or at 。！？. Decimals (7.35) and "E. coli" stay inside a sentence.
+ */
+export function passageSentences(text: string): string[] {
+  return collapse(text).split(/(?<=[.!?]["')\]]?)\s+(?=[\p{Lu}\p{N}("'\[−-])|(?<=[。！？])/u).map((x) => x.trim()).filter(Boolean);
+}
+
+const LOWER_END = /\b(?:lower|lowest|minimum|bottom)\b/i;
+const UPPER_END = /\b(?:upper|highest|maximum|top)\b/i;
+
+/**
+ * A card that asks for one end of a range and answers with the other ("What is the lower limit
+ * of normal arterial pH?" → "7.45" when the passage says 7.35–7.45).
+ */
+export function wrongRangeEnd(front: string, back: string, passageText: string): boolean {
+  const card = `${front} ${back}`;
+  const lower = LOWER_END.test(card);
+  const upper = UPPER_END.test(card);
+  if (lower === upper) return false;
+  const answer = new Set(numbersIn(back));
+  const c = canonical(passageText);
+  for (const m of c.matchAll(/(?<![\d.,])(\d+(?:[.,]\d+)?) ?- ?(\d+(?:[.,]\d+)?)(?![\d.,])/g)) {
+    const [x, y] = [numbersIn(m[1])[0], numbersIn(m[2])[0]];
+    if (!x || !y || Number(x) >= Number(y)) continue;
+    if (lower && answer.has(y) && !answer.has(x)) return true;
+    if (upper && answer.has(x) && !answer.has(y)) return true;
+  }
+  return false;
+}
+
+/**
+ * Accuracy where the fact sits (QA L2): every number, formula and charge in the answer must be
+ * in the sentence the card comes from: the sentence(s) holding the model's verified quote, or,
+ * without one, the sentence(s) sharing most words with the card. A value from another sentence is
+ * accepted only when it appears in exactly one sentence of the passage and that sentence shares at
+ * least two words with the card (a list answer gathering facts about the same thing). This drops
+ * "a right number from the wrong sentence" (inflation given as the base rate's 5.25%).
+ */
+export function groundedNearQuote(front: string, back: string, passageText: string, quote: string | null): boolean {
+  const sents = passageSentences(passageText);
+  if (sents.length < 2) return true;
+  const cardWords = new Set(factsOf(`${front} ${back}`).words);
+  const shared = (t: string) => { let n = 0; for (const w of passageFacts(t).words) if (cardWords.has(w)) n++; return n; };
+  let anchor: string[] = [];
+  if (quote) {
+    // Sentences overlapping the quote's span (positions in the collapsed, lower-cased passage).
+    const pt = collapse(passageText).toLowerCase();
+    const at = pt.indexOf(collapse(quote).toLowerCase());
+    if (at >= 0) {
+      const end = at + collapse(quote).length;
+      let pos = 0;
+      for (const t of sents) {
+        const start = pt.indexOf(t.toLowerCase(), pos);
+        const stop = start + t.length;
+        if (start >= 0) { if (start < end && stop > at) anchor.push(t); pos = stop; }
+      }
+    }
+  }
+  if (!anchor.length) {
+    const scores = sents.map(shared);
+    const best = Math.max(...scores);
+    if (best === 0) return true; // nothing to anchor on: the whole-passage check stands
+    anchor = sents.filter((_, i) => scores[i] === best);
+  }
+  const a = factsOf(back);
+  const sizeOnly = /\b(?:minus|negative|below)\b/i.test(back);
+  const hasNumber = (f: PassageFacts, n: string) => f.numbers.has(n) || (sizeOnly && (f.numbers.has(n.replace(/^-/, "")) || f.numbers.has(`-${n.replace(/^-/, "")}`)));
+  const near = passageFacts(anchor.join(" "));
+  const checks: ((f: PassageFacts) => boolean)[] = [
+    ...a.numbers.map((n) => (f: PassageFacts) => hasNumber(f, n)),
+    ...a.terms.map((t) => (f: PassageFacts) => f.terms.has(t)),
+    ...a.scripted.map((t) => (f: PassageFacts) => f.scripted.has(t)),
+  ];
+  for (const has of checks) {
+    if (has(near)) continue;
+    const holders = sents.filter((t) => has(passageFacts(t)));
+    if (holders.length === 1 && shared(holders[0]) >= 2) continue;
+    return false;
+  }
+  return true;
+}
+
 export type NormalisedCards = { cards: GeneratedCard[]; dropped: number };
 
 /** Validates and cleans the model's flashcards. Null when the reply isn't usable at all. */
@@ -172,7 +255,9 @@ export function normaliseFlashcardsWithStats(json: unknown, passages: Passage[],
     }
     if (!passage || !isGrounded(back, passage.text)) { dropped++; continue; }
     // Only show a quote that really is in the passage.
-    const verified = quote && quote.length <= 600 && containsLoose(passage.text, quote) ? clip(quote, QUOTE_MAX) : bestSentence(passage, `${front} ${back}`);
+    const modelQuote = quote && quote.length <= 600 && containsLoose(passage.text, quote) ? quote : null;
+    if (wrongRangeEnd(front, back, passage.text) || (!NO_SPACES.test(back) && !groundedNearQuote(front, back, passage.text, modelQuote))) { dropped++; continue; }
+    const verified = modelQuote ? clip(modelQuote, QUOTE_MAX) : bestSentence(passage, `${front} ${back}`);
     seen.add(key);
     out.push({ front, back, chunkId: passage.chunkId, quote: verified });
   }
