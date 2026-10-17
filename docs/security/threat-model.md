@@ -29,7 +29,7 @@ Every server action and route handler is a public endpoint. The browser only eve
 | T15 | Account deleted from an unattended laptop | Deletion needs a sign-in within the last 10 minutes plus typing DELETE. | Done |
 | T16 | Sign-in links built from a spoofed Host header | `NEXT_PUBLIC_SITE_URL` required in production; Supabase redirect allow-list should list exact URLs only. | Done |
 | T10 | Prompt injection from uploaded PDFs and notes | Text goes to the model only inside `<passage>` data blocks, with rules saying it is data, never instructions. Delimiters are defused, including look-alike, invisible-character and HTML-entity disguises, and the subject name is defused too. The model cites short refs (`p1`) only, which the server maps to the chunk ids it sent. Replies are validated with zod, clipped to the database limits, and quotes must appear in the cited passage. A successful injection can only affect the uploading student's own cards. Tested in `src/lib/ai/injection.test.ts`. | Done (Step 2 review) |
-| T11 | AI allowance abuse (one student uses up the shared free AI allowance) | Server-side daily quotas per student in `ai_usage` (students can read, not write, their rows): successful goes (flashcards 15, mindmaps 3; flashcards raised from 5 by Bradley on 2026-10-17) and tries including failures (45 / 9). An app-wide daily budget per model below the free plan limit. Cache by content hash. Atomic reserve/settle functions callable only by `service_role`. No paid plan or card is attached anywhere, so abuse can't create a bill. | Done (Step 2 review) |
+| T11 | AI allowance abuse (one student uses up the shared free AI allowance) | Server-side daily quotas per student in `ai_usage` (students can read, not write, their rows): successful goes (flashcards 15, mindmaps 3; flashcards raised from 5 by Bradley on 2026-10-17) and tries including failures (45 / 9). An app-wide daily budget per model below the free plan limit. Cache by content hash. Atomic reserve/settle functions callable only by `service_role`. A set where every card is already in the deck (`all_skipped`) gives the go back but keeps the try. No paid plan or card is attached anywhere, so abuse can't create a bill. Residual (S2-14): at 15 goes and 45 tries one student can use up most of the day's app-wide flashcard budget, so other students wait until tomorrow; needs a per-student token cap or throttle before more students join. | Done (Step 2 review); S2-14 open |
 | T12 | Google OAuth token theft | Encrypted at rest (Vault), least scopes, revocable. | Step 4 |
 | T17 | One student fills the shared free database with direct writes | Students can't write flashcards, reviews or mindmaps directly. Subject (50) and note (500 per subject) caps and the note size limits are enforced in the database as well as in server actions. Card text and quotes, mindmap JSON and sources JSON have size checks. | Done (Step 2 review) |
 | T18 | Read-aloud text leaving the device | Web Speech with on-device voices first; online voices are labelled, with a hint that the browser's maker receives the text; stated on the privacy page. StudyNest sends nothing. | Done |
@@ -67,6 +67,8 @@ Reviewer: security-engineer. Verdict: no critical/high findings; cleared to merg
 | S2-10 makeFlashcards reads the whole file before the quota check | Low | Accepted: needs a general server-action rate limit |
 | S2-11 Unbounded array from page numbers | Low | Fixed: capped at 10,000 |
 | S2-12 Loose passages re-sent with every page range | Low | Accepted: own quota only |
+| S2-13 Quadratic regex in `normaliseFront` (duplicate check) | Low | Fixed: linear trim, timing test |
+| S2-14 15 goes / 45 tries per student can use most of the app-wide free AI budget | Medium | Accepted for the Phase 1 test; per-student token cap or 20 s throttle before more students |
 
 ## Residual risks / follow-ups
 - Clean up upload rows left `pending` (browser closed mid-upload) with a scheduled job, once Supabase is connected (free `pg_cron`).
@@ -77,4 +79,6 @@ Reviewer: security-engineer. Verdict: no critical/high findings; cleared to merg
 - Note passage sync should become one SQL transaction (S2-7, QA C).
 - Apply `20261015000001_source_page_chars.sql` to the live project before deploying the long-files change.
 - Add a per-student rate limit to server actions that aren't quota-gated (S2-10).
+- Per-student AI token cap or per-minute throttle in `ai_usage_reserve`, or tries at 2× goes, before more students use the app (S2-14).
+- Re-check QA's `src/lib/ai/text.ts` / `src/lib/extract/` normalisation changes for ReDoS and CPU cost before merge.
 - Account deletion relies on Supabase backups expiring (stated on the privacy page as 30 days).
