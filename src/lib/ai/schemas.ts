@@ -2,7 +2,7 @@
 // then normalised (lengths, duplicates, tree shape) and every passage reference is mapped
 // through the server's own list, so a card or node can only point at this student's text.
 import { z } from "zod";
-import { clip, collapse, containsLoose, overlap, sentences } from "./text";
+import { clip, collapse, containsLoose, NO_SPACES, normaliseFront, numbersIn, overlap, sentences, stem, words } from "./text";
 import type { GeneratedCard, MindmapGraph, MindmapNode, Passage } from "./types";
 
 export const CARD_FRONT_MAX = 500;
@@ -51,22 +51,74 @@ function bestSentence(passage: Passage, about: string): string {
   return clip(best, QUOTE_MAX);
 }
 
+/** Shortest front that can be a real question (scripts without spaces: see FRONT_MIN_NO_SPACES). */
+export const FRONT_MIN = 12;
+const FRONT_MIN_NO_SPACES = 4;
+/**
+ * Share of the answer's content words that must appear in the cited passage. 0.5 keeps honest
+ * paraphrases ("Water moving across a membrane" for "the movement of water across a membrane"
+ * shares 3 of 4) and drops answers built from outside knowledge, which share 0–1 of 3–6 words
+ * (see "grounding" in ai.test.ts).
+ */
+export const GROUNDING_MIN = 0.5;
+
+/** Why a card fails the quality bar, or null when it's fine (Bradley: quality as important as quantity). */
+export function cardQualityIssue(front: string, back: string): "short" | "not_a_question" | "repeats_front" | null {
+  const noSpaces = NO_SPACES.test(front);
+  if (front.length < (noSpaces ? FRONT_MIN_NO_SPACES : FRONT_MIN)) return "short";
+  const tokens = front.match(/[\p{L}\p{N}]+/gu) ?? [];
+  if (!/[?？¿؟]/u.test(front) && tokens.length < 3 && !noSpaces) return "not_a_question";
+  const f = normaliseFront(front);
+  const b = normaliseFront(back);
+  if (b === f || (b.includes(f) && b.length - f.length < 10)) return "repeats_front";
+  return null;
+}
+
+/**
+ * Whether the answer is grounded in the passage it cites: every number in it appears in the
+ * passage, and at least GROUNDING_MIN of its content words (stemmed) do. Answers in scripts
+ * without spaces get the number check only.
+ */
+export function isGrounded(back: string, passageText: string): boolean {
+  const have = new Set(numbersIn(passageText));
+  if (!numbersIn(back).every((n) => have.has(n))) return false;
+  if (NO_SPACES.test(back)) return true;
+  const answer = [...new Set(words(back).filter((w) => !/^\d/.test(w)).map(stem))];
+  if (!answer.length) return true;
+  const text = new Set(words(passageText).map(stem));
+  return answer.filter((w) => text.has(w)).length / answer.length >= GROUNDING_MIN;
+}
+
+export type NormalisedCards = { cards: GeneratedCard[]; dropped: number };
+
 /** Validates and cleans the model's flashcards. Null when the reply isn't usable at all. */
 export function normaliseFlashcards(json: unknown, passages: Passage[], max: number): GeneratedCard[] | null {
+  return normaliseFlashcardsWithStats(json, passages, max)?.cards ?? null;
+}
+
+/**
+ * Same as normaliseFlashcards, with the number of cards dropped by the quality and grounding
+ * checks: empty, too short, not a question, answer repeats the question, duplicate question in
+ * the set, a passage we didn't send, or an answer the cited passage doesn't support.
+ */
+export function normaliseFlashcardsWithStats(json: unknown, passages: Passage[], max: number): NormalisedCards | null {
   const parsed = rawFlashcards.safeParse(json);
   if (!parsed.success) return null;
   const out: GeneratedCard[] = [];
   const seen = new Set<string>();
+  let dropped = 0;
   for (const c of parsed.data.cards) {
+    if (out.length >= max) break;
     const front = clip(c.front, CARD_FRONT_MAX);
     const back = clip(c.back, CARD_BACK_MAX);
-    if (!front || !back) continue;
-    const key = front.toLowerCase();
-    if (seen.has(key)) continue;
+    if (!front || !back || cardQualityIssue(front, back)) { dropped++; continue; }
+    const key = normaliseFront(front);
+    if (seen.has(key)) { dropped++; continue; }
     const quote = c.quote ? collapse(c.quote) : "";
-    // The passage must be one we sent. If the reference is missing or made up, find the
-    // passage the quote (or the card's words) actually came from; otherwise drop the card.
+    // A cited passage must be one we sent; citing any other is dropped. Without a citation, find
+    // the passage the quote (or the card's words) actually came from; otherwise drop the card.
     let passage = resolvePassage(c.passage, passages);
+    if (!passage && c.passage) { dropped++; continue; }
     if (!passage && quote) passage = passages.find((p) => containsLoose(p.text, quote)) ?? null;
     if (!passage) {
       let best = 0;
@@ -75,14 +127,13 @@ export function normaliseFlashcards(json: unknown, passages: Passage[], max: num
         if (sc > best) { best = sc; passage = p; }
       }
     }
-    if (!passage) continue;
+    if (!passage || !isGrounded(back, passage.text)) { dropped++; continue; }
     // Only show a quote that really is in the passage.
     const verified = quote && quote.length <= 600 && containsLoose(passage.text, quote) ? clip(quote, QUOTE_MAX) : bestSentence(passage, `${front} ${back}`);
     seen.add(key);
     out.push({ front, back, chunkId: passage.chunkId, quote: verified });
-    if (out.length >= max) break;
   }
-  return out;
+  return { cards: out, dropped };
 }
 
 /**

@@ -40,7 +40,19 @@ const DATA_RULES = [
   "Reply with a single JSON object and nothing else.",
 ].join("\n");
 
+/** How flashcards should be written: quality matters as much as quantity (Bradley, 2026-10-17). */
+export const FLASHCARD_QUALITY_RULES = [
+  "Accuracy first. Every answer must come only from the passages: no outside knowledge, nothing the passages don't say. Keep numbers, units, names and technical terms exactly as written in the passage. If a passage is ambiguous or incomplete, skip it rather than guess.",
+  "Prefer key concepts, definitions, processes and cause-and-effect over trivia (page headings, lecture numbers, who said what in passing).",
+  "One fact per card. Each answer must stand alone: never \"see above\", \"as mentioned\" or a reference to another card.",
+  "The answer must not repeat the question; it must add the fact being asked for.",
+].join("\n");
+
+/** Spread across the passages when they come from several pages (a quick sample of a range). */
+const SPREAD_RULE = "The passages come from different pages. Spread the cards evenly across them: at most 2 cards from one passage until every passage with a good fact has one.";
+
 export function flashcardMessages(passages: Passage[], count: number): ChatMessage[] {
+  const pages = new Set(passages.map((p) => p.page).filter((p) => p !== null));
   return [
     {
       role: "system",
@@ -48,7 +60,9 @@ export function flashcardMessages(passages: Passage[], count: number): ChatMessa
         "You write study flashcards for a university student.",
         DATA_RULES,
         'JSON shape: {"cards":[{"front":"question","back":"answer","passage":"p1","quote":"exact words from that passage"}]}',
-        `Write about ${count} cards; fewer if the passages only support fewer good cards. Each front is one clear question (under 200 characters). Each back is a short, complete answer (under 400 characters). "passage" is the id of the passage the card comes from. "quote" is a short exact quote from that passage (under 200 characters) that supports the answer. No duplicate questions.`,
+        `Write about ${count} cards; fewer if the passages only support fewer good cards. Never pad with weak cards. Each front is one clear question (under 200 characters). Each back is a short, complete answer (under 400 characters). "passage" is the id of the passage the card comes from. "quote" is a short exact quote from that passage (under 200 characters) that supports the answer. No duplicate questions.`,
+        FLASHCARD_QUALITY_RULES,
+        ...(pages.size > 1 ? [SPREAD_RULE] : []),
       ].join("\n\n"),
     },
     { role: "user", content: `${passagesBlock(passages)}\n\nMake about ${count} flashcards from the passages above.` },

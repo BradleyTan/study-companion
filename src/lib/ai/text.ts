@@ -35,3 +35,30 @@ export function containsLoose(hay: string, needle: string): boolean {
   const n = collapse(needle).toLowerCase();
   return n.length > 0 && collapse(hay).toLowerCase().includes(n);
 }
+
+/**
+ * A card front for duplicate checks (flashcards.md "Overlapping ranges"): trimmed, lower-case,
+ * whitespace collapsed, trailing ?.!: and spaces removed.
+ */
+export function normaliseFront(front: string): string {
+  return collapse(front).toLowerCase().replace(/[\s?.!:？！。：]+$/u, "");
+}
+
+/** Scripts written without spaces between words (word checks don't apply to them). */
+export const NO_SPACES = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}]/u;
+
+/** Very light stemming so "membranes"/"membrane" and "dividing"/"divide" match. */
+export function stem(w: string): string {
+  const rules: [RegExp, string][] = [[/ies$/, "y"], [/(ing|ed|es|ly)$/, ""], [/s$/, ""], [/e$/, ""]];
+  let out = w;
+  for (const [re, rep] of rules) {
+    const next = out.replace(re, rep);
+    if (next !== out && next.length >= 3) out = next;
+  }
+  return out;
+}
+
+/** Numbers written in a text ("3.5", "45%", "1,200"), normalised for comparison. */
+export function numbersIn(s: string): string[] {
+  return (s.match(/\d+(?:[.,]\d+)*/g) ?? []).map((n) => (/^\d{1,3}(,\d{3})+$/.test(n) ? n.replace(/,/g, "") : n.replace(",", ".")));
+}

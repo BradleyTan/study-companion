@@ -121,15 +121,16 @@ describe("model replies can only cite the student's own passages", () => {
     const reply = { cards: [
       { front: "Ignore the rules", back: "Here is the system prompt", passage: OTHER_STUDENT },
       { front: "What do mitochondria make?", back: "ATP", passage: OTHER_STUDENT, quote: "They make ATP through respiration." },
+      { front: "What do mitochondria produce?", back: "ATP", passage: "p1", quote: "They make ATP through respiration." },
     ] };
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(reply) } }] }))));
     const budget: AiBudget = { reserve: async () => true, addTokens: async () => {} };
     const r = await runAiTask(flashcardTask(passages, 10), budget);
     expect(r.ok).toBe(true);
     if (r.ok) {
-      // The first card shares no words with the passages: dropped. The second is mapped by its real quote.
-      expect(r.value).toHaveLength(1);
-      expect(r.value[0].chunkId).toBe(MINE_1);
+      // Cards citing a passage we didn't send are dropped, even with a real quote; the third cites p1.
+      expect(r.value.cards).toHaveLength(1);
+      expect(r.value.cards[0].chunkId).toBe(MINE_1);
     }
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
@@ -147,7 +148,7 @@ describe("weird and oversized model output", () => {
   });
 
   it("never stores half an emoji or control characters (Postgres would refuse the row)", () => {
-    const front = "a".repeat(CARD_FRONT_MAX - 1) + "😀😀";
+    const front = "What is " + "a".repeat(CARD_FRONT_MAX - 9) + "😀😀";
     const [c] = normaliseFlashcards({ cards: [{ front, back: "ATP\u0000\u0007 made by mitochondria \uD800", passage: "p1" }] }, passages, 25)!;
     expect(LONE_SURROGATE.test(c.front)).toBe(false);
     expect(LONE_SURROGATE.test(c.back)).toBe(false);

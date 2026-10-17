@@ -3,8 +3,8 @@ import { fakeFlashcards, fakeMindmap } from "./fake";
 import { flashcardMessages, mindmapMessages } from "./prompts";
 import { GROQ_MODELS } from "./providers";
 import type { AiTask } from "./run";
-import { normaliseFlashcards, normaliseMindmap } from "./schemas";
-import type { GeneratedCard, MindmapGraph, Passage } from "./types";
+import { normaliseFlashcardsWithStats, normaliseMindmap, type NormalisedCards } from "./schemas";
+import type { MindmapGraph, Passage } from "./types";
 
 // Flashcard budgets live in limits/ai.ts so the dialog can use them too (page-range hints).
 export { FLASHCARDS_MAX_CHARS, MIN_SOURCE_CHARS } from "../limits/ai";
@@ -14,15 +14,16 @@ export const MIN_MINDMAP_CHARS = 200;
 export const CARD_COUNTS = [10, 15, 20] as const;
 export type CardCount = (typeof CARD_COUNTS)[number];
 
-export function flashcardTask(passages: Passage[], count: CardCount): AiTask<GeneratedCard[]> {
+export function flashcardTask(passages: Passage[], count: CardCount): AiTask<NormalisedCards> {
   return {
     groqModel: GROQ_MODELS.flashcards,
     messages: flashcardMessages(passages, count),
     maxTokens: 3500,
     // Allow a few more than asked; nothing beyond 25.
     parse: (json) => {
-      const cards = normaliseFlashcards(json, passages, Math.min(count + 5, 25));
-      return cards && cards.length ? cards : null;
+      // Never padded: cards that fail the quality or grounding checks are dropped, not replaced.
+      const out = normaliseFlashcardsWithStats(json, passages, Math.min(count + 5, 25));
+      return out && out.cards.length ? out : null;
     },
     fake: () => fakeFlashcards(passages, count),
   };
