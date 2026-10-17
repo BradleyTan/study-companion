@@ -36,11 +36,12 @@ test("PPTX: every string says slides; invalid ranges are caught on submit only",
   const first = dialog.getByLabel("First slide");
   const last = dialog.getByLabel("Last slide");
   const hint = dialog.getByTestId("range-hint");
-  await expect(dialog.getByRole("group", { name: "Slides" })).toBeVisible();
+  await expect(dialog.getByRole("group", { name: "Slides", exact: true })).toBeVisible();
   await expect(first).toHaveValue("1");
   await expect(last).toHaveValue("5");
   await expect(hint).toHaveText("Covers every passage on slides 1–5.");
-  await expect(dialog.getByText("Each set of slides uses one go. Making cards from the same slides again is free.")).toBeVisible();
+  await expect(dialog.getByText("Each set of slides uses one go, however many slides. Making cards from the same slides again is free.")).toBeVisible();
+  await expect(dialog.getByRole("group", { name: "Quick pick for slides" }).getByRole("button")).toHaveText(["Best fit", "All 12 slides"]);
 
   const make = dialog.getByRole("button", { name: "Make flashcards" });
   // First slide 0: out of range, focus to the first field.
@@ -75,33 +76,32 @@ test("PPTX: every string says slides; invalid ranges are caught on submit only",
 });
 
 test("a series until the goes run out: last go, tomorrow hint, already, resume", async ({ page }) => {
-  await subjectWithFile(page, "Cell biology", "long-lecture.pdf", "Ready · 12 pages");
+  test.setTimeout(180_000);
+  // 60 pages of ~2,450 characters: 5 per set. 15 goes a day.
+  await subjectWithFile(page, "Cell biology", "very-long-lecture.pdf", "Ready · 60 pages");
   const dialog = page.locator("dialog[open]");
   const make = dialog.getByRole("button", { name: "Make flashcards" });
   const first = dialog.getByLabel("First page");
   const done = dialog.getByRole("button", { name: "Done" });
 
-  // Three goes on pages 1–5 (each card count is a different request), then 6–10: one go left.
-  for (const n of [10, 15, 20]) {
-    await openMake(page, "long-lecture.pdf");
-    await first.fill("1");
+  // 14 goes: pages 1–5 and 6–10 with each card count (more cards each time, so new ones), then 11–15 … 46–50.
+  const sets: [number, 10 | 15 | 20][] = [[1, 10], [1, 15], [1, 20], [6, 10], [6, 15], [6, 20], ...[11, 16, 21, 26, 31, 36, 41, 46].map((f) => [f, 10] as [number, 10])];
+  for (const [from, n] of sets) {
+    await openMake(page, "very-long-lecture.pdf");
+    await first.fill(String(from));
     await dialog.getByText(`About ${n}`).click();
     await make.click();
     await expect(resultHeading(page)).toBeVisible({ timeout: 15_000 });
-    await done.click();
+    if (from !== 46) await done.click();
   }
-  await openMake(page, "long-lecture.pdf");
-  await first.fill("6");
-  await dialog.getByText("About 15").click();
-  await make.click();
-  await expect(resultHeading(page)).toBeVisible({ timeout: 15_000 });
-  await expect(dialog.getByTestId("series-progress")).toContainText("Pages 1–10 of 12 done");
+  await expect(dialog.getByTestId("series-progress")).toContainText("Pages 1–50 of 60 done");
   await expect(dialog.getByText("Uses your last go for today.")).toBeVisible();
   await done.click();
 
   // Pages 1–5 again with 10 cards: already made, free, offers the next pages.
-  await openMake(page, "long-lecture.pdf");
-  await expect(dialog.getByTestId("range-hint")).toContainText("Last time you got to page 10.");
+  await openMake(page, "very-long-lecture.pdf");
+  await expect(dialog.getByTestId("range-hint")).toContainText("You've made cards from pages 1–50 so far.");
+  await expect(first).toHaveValue("51");
   await first.fill("1");
   await dialog.getByText("About 10").click();
   await make.click();
@@ -109,19 +109,20 @@ test("a series until the goes run out: last go, tomorrow hint, already, resume",
   await dialog.getByRole("button", { name: "Make the next set: pages 6 to 10" }).click();
   await expect(first).toHaveValue("6");
   await expect(make).toBeFocused();
-  // The last go: pages 6–10 with 10 cards. No Next button, the "tomorrow" hint instead.
+  // The last go: pages 51–55. No Next button, the "tomorrow" hint instead.
+  await first.fill("51");
   await make.click();
   await expect(resultHeading(page)).toBeVisible({ timeout: 15_000 });
-  await expect(dialog.getByTestId("quota-chip")).toHaveText("0 of 5 left today");
-  await expect(dialog.getByText("That was today's last go. Pages 11–12 are next, tomorrow.")).toBeVisible();
+  await expect(dialog.getByTestId("quota-chip")).toHaveText("0 of 15 left today");
+  await expect(dialog.getByText("That was today's last go. Pages 56–60 are next, tomorrow.")).toBeVisible();
   await expect(dialog.getByRole("button", { name: /Make the next set/ })).toHaveCount(0);
   await expect(dialog.getByRole("link", { name: "Start reviewing" })).toHaveClass(/btn-primary/);
   await expectNoHorizontalScroll(page);
   await done.click();
 
   // No goes left: the dialog opens on the limit message.
-  await openMake(page, "long-lecture.pdf");
-  await expect(dialog.getByText("You've made all 5 sets of flashcards for today.")).toBeVisible();
+  await openMake(page, "very-long-lecture.pdf");
+  await expect(dialog.getByText("You've made all 15 sets of flashcards for today.")).toBeVisible();
 });
 
 test("storage blocked: long files still default to the fitted range and make a set", async ({ page }) => {

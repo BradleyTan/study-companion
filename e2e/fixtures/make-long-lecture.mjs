@@ -1,11 +1,17 @@
 // Writes long-lecture.pdf: a 12-page text PDF for the "long files" e2e test.
 // Each page has ~2,500 characters, so about five pages fit one flashcard set (14,000 chars).
-// Run: node e2e/fixtures/make-long-lecture.mjs
+// Run: node e2e/fixtures/make-long-lecture.mjs [pages] [file name]
+// `node e2e/fixtures/make-long-lecture.mjs 60 very-long-lecture.pdf` writes the 60-page file for
+// the 50-page tests. Pages repeat every 14 (page 15 has page 1's points, only its heading differs),
+// so overlapping sets meet cards already in the deck. The first 12 pages are the same in both files.
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const TOPICS = ["enzymes", "the cell membrane", "mitochondria", "ribosomes", "the nucleus", "chloroplasts",
-  "osmosis", "diffusion", "active transport", "DNA replication", "protein synthesis", "cell division"];
+  "osmosis", "diffusion", "active transport", "DNA replication", "protein synthesis", "cell division",
+  "photosynthesis", "respiration"];
+const PAGES = Number(process.argv[2] ?? 12);
+const OUT = process.argv[3] ?? "long-lecture.pdf";
 const FACTS = [
   "is a key idea that students should be able to explain in their own words",
   "links closely to how cells stay alive and keep their inside conditions steady",
@@ -15,10 +21,12 @@ const FACTS = [
   "often appears in exam questions that ask for a clear definition and an example",
 ];
 
-const pages = TOPICS.map((topic, p) => {
+const pages = Array.from({ length: PAGES }, (_, p) => {
+  const q = p % TOPICS.length;
+  const topic = TOPICS[q];
   const lines = [`Lecture 5, page ${p + 1}: ${topic}`];
   for (let i = 0; lines.join(" ").length < 2400; i++) {
-    lines.push(`Point ${i + 1}: ${topic} ${FACTS[(i + p) % FACTS.length]}.`);
+    lines.push(`Point ${i + 1}: ${topic} ${FACTS[(i + q) % FACTS.length]}.`);
   }
   return lines;
 });
@@ -43,4 +51,4 @@ objects.forEach((body, i) => { offsets.push(Buffer.byteLength(out)); out += `${i
 const xref = Buffer.byteLength(out);
 out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}`;
 out += `trailer\n<< /Size ${objects.length + 1} /Root ${catalog} 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
-writeFileSync(fileURLToPath(new URL("./long-lecture.pdf", import.meta.url)), out, "latin1");
+writeFileSync(fileURLToPath(new URL(`./${OUT}`, import.meta.url)), out, "latin1");

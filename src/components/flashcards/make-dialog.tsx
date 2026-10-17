@@ -4,7 +4,10 @@ import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { timeAgo } from "@/lib/time";
 import type { Quota } from "@/lib/limits/ai";
-import { defaultRange, pagesSpoken, pagesText, pagesTitle, rangeError, rangeHint, resumeFrom, type PageRange, type PageUnit } from "@/lib/page-range";
+import {
+  coveredCount, coverageText, defaultRange, effectiveCoverage, firstUnmade, madeSoFarText, mergeRanges, modeOf, overlapOf, pagesSpoken, pagesText,
+  pagesTitle, parseCoverage, quickPicks, rangeError, rangeHint, refit, type Coverage, type PageRange, type PageUnit, type RefitMode,
+} from "@/lib/page-range";
 import { deleteCard, loadMakeOptions, makeFlashcards, restoreCard, updateCard, type FileSeries, type MakeOptions, type MakeResult } from "@/server/actions/flashcards";
 import type { DeckCard } from "@/server/cards";
 import { useSound } from "../sound-provider";
@@ -17,49 +20,57 @@ import { CardEditor } from "./card-editor";
 export type MakePreset = { type: "note" | "file"; id: string };
 type FileOption = MakeOptions["files"][number];
 
-/** A long file's progress through its series, as the result step shows it. */
+/** A file's pages covered so far, as the result step shows it. */
 type SeriesView = {
-  fileId: string;
   unit: PageUnit;
   pageCount: number;
   range: PageRange;
-  start: number;
-  furthest: number;
-  /** Progress before this set (the bar animates from it). */
+  /** "Pages 1–34 of 42 done", "26 of 42 pages done" or "All 42 pages done. Nice work!". */
+  text: string;
+  /** Share of pages covered, before this set (the bar animates from it) and after. */
   before: number;
-  sampled: boolean;
+  value: number;
   next: PageRange | null;
-  allDone: boolean;
 };
 
 type Phase =
   | { kind: "loading" }
   | { kind: "choose" }
-  | { kind: "generating"; range: PageRange | null; unit: PageUnit }
-  | { kind: "result"; cards: DeckCard[]; requested: number; series: SeriesView | null }
+  | { kind: "generating"; range: PageRange | null; unit: PageUnit; sampled: boolean }
+  | { kind: "result"; cards: DeckCard[]; requested: number; skipped: number; dropped: number; series: SeriesView | null }
   | { kind: "message"; result: Exclude<MakeResult, { status: "made" }>; series?: SeriesView | null }
   | { kind: "error"; text: string };
 
 const LINES = ["Reading your notes…", "Picking out the key ideas…", "Writing questions…", "Nearly there…"];
 
-// The furthest page made per file, so the next visit starts after it (flashcards.md).
-const rangeKey = (sourceId: string) => `studynest:cardRange:${sourceId}`;
-function readLastPage(sourceId: string): number | null {
+// Pages made per file (union of ranges), so the next visit starts on a new page (flashcards.md).
+const rangesKey = (sourceId: string) => `studynest:cardRanges:${sourceId}`;
+/** The old key held only the furthest page; read once as [[1, n]], then removed. */
+const oldRangeKey = (sourceId: string) => `studynest:cardRange:${sourceId}`;
+function readCoverage(sourceId: string): { list: Coverage; stored: boolean } {
   try {
-    const v = localStorage.getItem(rangeKey(sourceId));
-    const n = v === null ? NaN : Number(v);
-    return Number.isInteger(n) && n > 0 ? n : null;
+    const raw = localStorage.getItem(rangesKey(sourceId));
+    if (raw !== null) return { list: parseCoverage(raw), stored: true };
+    const old = localStorage.getItem(oldRangeKey(sourceId));
+    if (old === null) return { list: [], stored: true };
+    const n = Number(old);
+    const list: Coverage = Number.isInteger(n) && n > 0 && n <= 10_000 ? [[1, n]] : [];
+    if (list.length) localStorage.setItem(rangesKey(sourceId), JSON.stringify(list));
+    localStorage.removeItem(oldRangeKey(sourceId));
+    return { list, stored: true };
   } catch {
-    return null;
+    return { list: [], stored: false };
   }
 }
-function writeLastPage(sourceId: string, page: number) {
-  try { localStorage.setItem(rangeKey(sourceId), String(page)); } catch {}
+function writeCoverage(sourceId: string, list: Coverage) {
+  try { localStorage.setItem(rangesKey(sourceId), JSON.stringify(list)); } catch {}
 }
 
 const filePages = (f: FileOption) => Math.max(1, f.pageCount ?? 0, f.pageChars?.length ?? 0);
 const unitOf = (f: FileOption | undefined): PageUnit => (f?.kind === "pptx" ? "slide" : "page");
 const isLong = (f: FileOption | undefined): f is FileOption => !!f && f.status === "ready" && !f.fitsOneSet;
+/** A file that fits one set but has pages to choose from ("Choose pages"). */
+const canChoose = (f: FileOption | undefined): f is FileOption => !!f && f.status === "ready" && f.fitsOneSet && filePages(f) >= 2;
 
 /**
  * "Make flashcards" (flashcards.md): choose a source → generating → result, with the
@@ -88,13 +99,17 @@ export function MakeFlashcardsDialog({ subjectId, subjectName, open, onClose, pr
   const [count, setCount] = useState<10 | 15 | 20>(10);
   const [fields, setFields] = useState({ from: "1", to: "1" });
   const [rangeErr, setRangeErr] = useState<{ field: "from" | "to"; text: string } | null>(null);
-  /** "Last time you got to page 6." when the default range resumed from storage. */
-  const [resumedAfter, setResumedAfter] = useState<number | null>(null);
+  /** How "Last page" follows a new "First page": the pressed quick pick, else the current size. */
+  const [mode, setMode] = useState<RefitMode>({ kind: "fit" });
+  /** "Choose pages" on a file that fits one set (otherwise it is sent whole). */
+  const [choosePages, setChoosePages] = useState(false);
+  /** Pages made from the selected file; `stored` is false when browser storage is blocked. */
+  const [coverage, setCoverage] = useState<{ fileId: string; list: Coverage; stored: boolean } | null>(null);
+  /** Files with a sampled set made in this dialog ("(some passages sampled)"). */
+  const sampledFiles = useRef(new Set<string>());
   const [spokenHint, setSpokenHint] = useState("");
   /** After "Next: pages 7–12" it is one more press: the Make button takes focus when Step 1 mounts. */
   const [focusMake, setFocusMake] = useState(false);
-  /** This dialog's series so far: where it started, the furthest page, any sampled set. */
-  const track = useRef<{ fileId: string; start: number; furthest: number; sampled: boolean } | null>(null);
   const [line, setLine] = useState(0);
   const openRef = useRef(open);
   const { play } = useSound();
@@ -112,16 +127,19 @@ export function MakeFlashcardsDialog({ subjectId, subjectName, open, onClose, pr
     if (!open && d.open) d.close();
   }, [open]);
 
-  /** Default page range for a long file: after the furthest page made last time, else page 1. */
+  /** Default page range: from the first page not made yet that has text, else page 1, by the fit rule. */
   function initRange(file: FileOption | undefined) {
     setRangeErr(null);
-    if (!isLong(file)) { setResumedAfter(null); return; }
+    setChoosePages(false);
+    if (!file || file.status !== "ready") { setCoverage(null); return; }
+    const { list, stored } = readCoverage(file.id);
+    setCoverage({ fileId: file.id, list, stored });
     const pageCount = filePages(file);
-    const last = readLastPage(file.id);
-    const from = resumeFrom(file.pageChars, file.looseChars, pageCount, last);
-    setResumedAfter(from === null ? null : last);
-    const r = defaultRange(file.pageChars, file.looseChars, pageCount, from ?? 1);
+    const r = isLong(file)
+      ? defaultRange(file.pageChars, file.looseChars, pageCount, firstUnmade(list, file.pageChars, pageCount) ?? 1)
+      : { from: 1, to: pageCount };
     setFields({ from: String(r.from), to: String(r.to) });
+    setMode(modeOf(file.pageChars, file.looseChars, r));
   }
 
   // Load sources and quota each time it opens (unless a generation is still running).
@@ -157,54 +175,58 @@ export function MakeFlashcardsDialog({ subjectId, subjectName, open, onClose, pr
   useEffect(() => { if (phase.kind === "result" || phase.kind === "message") titleRef.current?.focus(); }, [phase.kind]);
 
   const selectedFile = choice?.type === "file" ? opts?.files.find((f) => f.id === choice.id) : undefined;
-  const longFile = isLong(selectedFile) ? selectedFile : undefined;
+  // Page fields show for a long file, or after "Choose pages" on one that fits one set.
+  const rangeFile = isLong(selectedFile) || (choosePages && canChoose(selectedFile)) ? selectedFile : undefined;
   const unit = unitOf(selectedFile);
   const quota = phase.kind === "message" ? phase.result.quota : opts?.quota;
+  const made = coverage && rangeFile && coverage.fileId === rangeFile.id && coverage.stored ? coverage.list : [];
 
   // Coverage hint for the page fields (only while the numbers make a valid range).
-  const pageCount = longFile ? filePages(longFile) : 1;
-  const fieldsOk = longFile ? rangeError(fields.from, fields.to, pageCount, unit) === null : false;
-  const hint = longFile && fieldsOk ? rangeHint(longFile.pageChars, longFile.looseChars, { from: Number(fields.from), to: Number(fields.to) }, unit) : null;
-  const hintText = hint?.text ?? "";
+  const pageCount = rangeFile ? filePages(rangeFile) : 1;
+  const fieldsOk = rangeFile ? rangeError(fields.from, fields.to, pageCount, unit) === null : false;
+  const fieldRange = { from: Number(fields.from), to: Number(fields.to) };
+  const hint = rangeFile && fieldsOk ? rangeHint(rangeFile.pageChars, rangeFile.looseChars, fieldRange, unit) : null;
+  const soFar = rangeFile ? madeSoFarText(made, pageCount, unit) : null;
+  const overlap = fieldsOk ? overlapOf(made, fieldRange) : "none";
+  const overlapText = overlap === "all"
+    ? `You've made cards from these ${unit}s before. Cards you already have will be skipped.`
+    : overlap === "some" ? "Cards you already have will be skipped." : null;
+  const snap = hint?.kind === "sampled" ? hint.snap : null;
+  const fromNum = /^\d+$/.test(fields.from.trim()) ? Math.min(Math.max(1, Number(fields.from)), pageCount) : 1;
+  const picks = rangeFile ? quickPicks(rangeFile.pageChars, rangeFile.looseChars, pageCount, fromNum, unit) : [];
+  const hintText = [soFar, hint?.text, snap ? `Want every passage? Use ${pagesSpoken(snap, unit)}.` : null, overlapText].filter(Boolean).join(" ");
   // Announce the hint 600 ms after the last keystroke, not on every digit.
   useEffect(() => {
     const t = setTimeout(() => setSpokenHint(hintText), 600);
     return () => clearTimeout(t);
   }, [hintText]);
 
-  /** Records a made (or already made) set of a long file and works out the progress to show. */
+  /** Merges a made (or already made) set into the file's pages covered and works out the progress to show. */
   function recordSet(file: FileOption, s: FileSeries): SeriesView {
     const u = unitOf(file);
-    const stored = readLastPage(file.id);
-    const prev = track.current?.fileId === file.id ? track.current : null;
-    const r = s.range;
-    let start: number, furthest: number, sampled: boolean, before: number;
-    if (prev && r.from >= prev.start && r.from <= prev.furthest + 1) {
-      start = prev.start;
-      before = prev.furthest - prev.start + 1;
-      furthest = Math.max(prev.furthest, r.to);
-      sampled = prev.sampled || !s.covered;
-    } else {
-      // Picking up where the last visit stopped continues that series from page 1.
-      start = r.from === 1 || (stored !== null && r.from === stored + 1) ? 1 : r.from;
-      before = start === 1 && r.from > 1 ? r.from - 1 : 0;
-      furthest = r.to;
-      sampled = !s.covered;
-    }
-    // Trailing pages without text count as done.
-    if (!s.next) furthest = s.pageCount;
-    track.current = { fileId: file.id, start, furthest, sampled };
-    writeLastPage(file.id, Math.max(stored ?? 0, furthest));
-    return { fileId: file.id, unit: u, pageCount: s.pageCount, range: r, start, furthest, before, sampled, next: s.next, allDone: !s.next && start === 1 };
+    const prev = coverage?.fileId === file.id ? coverage : { fileId: file.id, ...readCoverage(file.id) };
+    const list = mergeRanges(prev.list, s.range);
+    setCoverage({ ...prev, list });
+    writeCoverage(file.id, list);
+    if (!s.covered) sampledFiles.current.add(file.id);
+    const before = effectiveCoverage(prev.list, file.pageChars, s.pageCount);
+    const after = effectiveCoverage(list, file.pageChars, s.pageCount);
+    const done = coveredCount(after) >= s.pageCount;
+    return {
+      unit: u, pageCount: s.pageCount, range: s.range,
+      text: coverageText(after, s.pageCount, u, sampledFiles.current.has(file.id)),
+      before: coveredCount(before) / s.pageCount, value: Math.min(1, coveredCount(after) / s.pageCount),
+      next: done ? null : s.next,
+    };
   }
 
   async function generate() {
     if (!choice) return;
     const file = choice.type === "file" ? opts?.files.find((f) => f.id === choice.id) : undefined;
-    const long = isLong(file) ? file : undefined;
+    const long = file && rangeFile?.id === file.id ? file : undefined;
     const range = long ? { from: Number(fields.from), to: Number(fields.to) } : null;
     setFocusMake(false);
-    setPhase({ kind: "generating", range, unit: unitOf(file) });
+    setPhase({ kind: "generating", range, unit: unitOf(file), sampled: hint?.kind === "sampled" || hint?.kind === "long_page" });
     setLine(0);
     const source = choice.type === "note"
       ? { type: "note" as const, id: choice.id }
@@ -220,7 +242,7 @@ export function MakeFlashcardsDialog({ subjectId, subjectName, open, onClose, pr
     if (r.status === "made") {
       const series = long && r.series ? recordSet(long, r.series) : null;
       onMade?.(r.cards, r.quota);
-      setPhase({ kind: "result", cards: r.cards, requested: r.requested, series });
+      setPhase({ kind: "result", cards: r.cards, requested: r.requested, skipped: r.skipped, dropped: r.dropped, series });
       if (openRef.current) play("pop");
       else {
         const from = series ? ` from ${pagesText(series.range, series.unit)}` : "";
@@ -229,12 +251,13 @@ export function MakeFlashcardsDialog({ subjectId, subjectName, open, onClose, pr
       router.refresh();
       return;
     }
-    if (r.status !== "already") play("boop");
-    setPhase({ kind: "message", result: r, series: r.status === "already" && long && r.series ? recordSet(long, r.series) : null });
+    // "Already" and "all already in your deck" have no sound: nothing went wrong.
+    if (r.status !== "already" && r.status !== "all_skipped") play("boop");
+    setPhase({ kind: "message", result: r, series: (r.status === "already" || r.status === "all_skipped") && long && r.series ? recordSet(long, r.series) : null });
   }
 
   function submit() {
-    if (longFile) {
+    if (rangeFile) {
       const err = rangeError(fields.from, fields.to, pageCount, unit);
       if (err) {
         setRangeErr(err);
@@ -246,12 +269,13 @@ export function MakeFlashcardsDialog({ subjectId, subjectName, open, onClose, pr
     void generate();
   }
 
-  /** "Next: pages 7–12": back to Step 1 with the same file and count, the server's next range filled in. */
+  /** "Next: pages 21–40": back to Step 1 with the same file and count, the server's next range filled in. */
   function goNext(next: PageRange) {
     setShowList(false);
     setFields({ from: String(next.from), to: String(next.to) });
+    if (selectedFile) setMode(modeOf(selectedFile.pageChars, selectedFile.looseChars, next));
+    setChoosePages(true);
     setRangeErr(null);
-    setResumedAfter(null);
     setFocusMake(true);
     setPhase({ kind: "choose" });
   }
@@ -272,7 +296,7 @@ export function MakeFlashcardsDialog({ subjectId, subjectName, open, onClose, pr
             play("click");
             setChoice({ type: kind, id });
             if (kind === "file") initRange(opts?.files.find((f) => f.id === id));
-            else setRangeErr(null);
+            else { setRangeErr(null); setChoosePages(false); }
           }}
         />
         <span aria-hidden="true">{kind === "note" ? "📝" : "📄"}</span>
@@ -342,8 +366,27 @@ export function MakeFlashcardsDialog({ subjectId, subjectName, open, onClose, pr
             <button type="button" className="min-h-11 font-bold underline underline-offset-2" onClick={() => { play("click"); setShowList(true); }}>Change source</button>
           </p>
         )}
-        {longFile && (
-          <fieldset className="flex flex-col gap-1">
+        {canChoose(selectedFile) && (
+          <p>
+            <button
+              type="button" className="min-h-11 font-bold underline underline-offset-2" aria-expanded={choosePages}
+              onClick={() => {
+                play("click");
+                const pc = filePages(selectedFile);
+                setRangeErr(null);
+                if (!choosePages) {
+                  setFields({ from: "1", to: String(pc) });
+                  setMode(modeOf(selectedFile.pageChars, selectedFile.looseChars, { from: 1, to: pc }));
+                }
+                setChoosePages(!choosePages);
+              }}
+            >
+              {choosePages ? "Use the whole file" : `Choose ${unit}s`}
+            </button>
+          </p>
+        )}
+        {rangeFile && (
+          <fieldset className="flex flex-col gap-2">
             <legend className="label">{Unit}s</legend>
             <div className="flex flex-wrap items-center gap-2">
               <label className="sr-only" htmlFor={`${uid}-from`}>First {unit}</label>
@@ -353,11 +396,10 @@ export function MakeFlashcardsDialog({ subjectId, subjectName, open, onClose, pr
                 onChange={(e) => {
                   const v = e.target.value;
                   setRangeErr(null);
-                  setResumedAfter(null);
-                  // A new first page re-fits the last page; a typed last page is left alone.
+                  // A new first page re-fits the last page by the pressed pick (or keeps the size); a typed last page is left alone.
                   const n = Number(v);
                   if (/^\d+$/.test(v.trim()) && n >= 1 && n <= pageCount) {
-                    const r = defaultRange(longFile.pageChars, longFile.looseChars, pageCount, n);
+                    const r = refit(mode, rangeFile.pageChars, rangeFile.looseChars, pageCount, n);
                     setFields({ from: v, to: String(r.to) });
                   } else setFields((f) => ({ ...f, from: v }));
                 }}
@@ -367,22 +409,50 @@ export function MakeFlashcardsDialog({ subjectId, subjectName, open, onClose, pr
               <input
                 id={`${uid}-to`} ref={toRef} type="number" inputMode="numeric" className="input w-24" min={1} max={pageCount} value={fields.to}
                 aria-invalid={rangeErr?.field === "to" || undefined} aria-describedby={describedBy("to")}
-                onChange={(e) => { setRangeErr(null); setFields((f) => ({ ...f, to: e.target.value })); }}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setRangeErr(null);
+                  setFields((f) => ({ ...f, to: v }));
+                  const r = { from: Number(fields.from), to: Number(v) };
+                  if (rangeError(fields.from, v, pageCount, unit) === null) setMode(modeOf(rangeFile.pageChars, rangeFile.looseChars, r));
+                }}
               />
               <span className="text-ink-soft">of {pageCount}</span>
             </div>
+            {picks.length > 0 && (
+              <div role="group" aria-label={`Quick pick for ${unit}s`} className="seg max-w-full flex-wrap" data-testid="quick-picks">
+                {picks.map((p) => (
+                  <button
+                    key={p.id} type="button" aria-label={p.name}
+                    aria-pressed={fieldsOk && fieldRange.from === p.range.from && fieldRange.to === p.range.to}
+                    onClick={() => {
+                      play("click");
+                      setRangeErr(null);
+                      setFields({ from: String(p.range.from), to: String(p.range.to) });
+                      setMode(p.id === "fit" ? { kind: "fit" } : { kind: "size", size: p.range.to - p.range.from + 1 });
+                    }}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            )}
             {rangeErr && <p id={`${uid}-range-err`} className="error-text w-fit">{rangeErr.text}</p>}
             <div id={`${uid}-range-hint`} className="hint" data-testid="range-hint">
-              {resumedAfter !== null && <p>Last time you got to {unit} {resumedAfter}.</p>}
+              {soFar && <p>{soFar}</p>}
               {hint && <p>{hint.text}</p>}
-              {hint?.kind === "sampled" && hint.snap && (
-                <button
-                  type="button" className="min-h-11 font-bold text-ink underline underline-offset-2"
-                  onClick={() => { play("click"); setFields((f) => ({ ...f, to: String(hint.snap!.to) })); }}
-                >
-                  Use {pagesText(hint.snap, unit)}
-                </button>
+              {snap && (
+                <p>
+                  Want every passage?{" "}
+                  <button
+                    type="button" className="min-h-11 font-bold text-ink underline underline-offset-2"
+                    onClick={() => { play("click"); setFields((f) => ({ ...f, to: String(snap.to) })); setMode({ kind: "fit" }); }}
+                  >
+                    Use {pagesText(snap, unit)}
+                  </button>
+                </p>
               )}
+              {overlapText && <p>{overlapText}</p>}
             </div>
             <p className="sr-only" role="status">{spokenHint}</p>
           </fieldset>
@@ -401,7 +471,7 @@ export function MakeFlashcardsDialog({ subjectId, subjectName, open, onClose, pr
         <div className="flex flex-wrap items-center gap-2">
           <QuotaChip quota={opts.quota} />
           <span className="hint">
-            {longFile ? `Each set of ${unit}s uses one go. Making cards from the same ${unit}s again is free.` : "Making cards from the same text again is free."}
+            {rangeFile ? `Each set of ${unit}s uses one go, however many ${unit}s. Making cards from the same ${unit}s again is free.` : "Making cards from the same text again is free."}
           </span>
         </div>
         <div className="flex flex-wrap justify-end gap-2">
@@ -411,7 +481,7 @@ export function MakeFlashcardsDialog({ subjectId, subjectName, open, onClose, pr
       </form>
     );
   } else if (phase.kind === "generating") {
-    const lines = phase.range ? [`Reading ${pagesText(phase.range, phase.unit)}…`, ...LINES.slice(1)] : LINES;
+    const lines = phase.range ? [`${phase.sampled ? "Skimming" : "Reading"} ${pagesText(phase.range, phase.unit)}…`, ...LINES.slice(1)] : LINES;
     body = (
       <div className="flex flex-col items-center gap-4 py-4 text-center">
         <div className="relative h-28 w-40" aria-hidden="true">
@@ -431,21 +501,21 @@ export function MakeFlashcardsDialog({ subjectId, subjectName, open, onClose, pr
     const s = phase.series;
     const left = quota?.left ?? 0;
     const withNext = hasNextButton(s, left);
+    const n = phase.cards.length;
+    // The skipped line explains a shortfall itself; cards dropped for quality only show when fewer than half are left.
+    const showFewer = phase.skipped === 0 && n < phase.requested && (phase.dropped === 0 || n < phase.requested / 2);
     title = `${phase.cards.length} new ${phase.cards.length === 1 ? "card" : "cards"}! ✨`;
     body = (
       <div className="flex flex-col gap-3">
-        {phase.cards.length < phase.requested && <p className="hint">Your notes had enough for {phase.cards.length} {phase.cards.length === 1 ? "card" : "cards"}.</p>}
+        {phase.skipped > 0 && <p className="hint">Skipped {phase.skipped} {phase.skipped === 1 ? "card" : "cards"} you already have.</p>}
+        {showFewer && <p className="hint">Your notes had enough for {phase.cards.length} {phase.cards.length === 1 ? "card" : "cards"}.</p>}
         <ul className="flex max-h-[45dvh] flex-col gap-2 overflow-y-auto pr-1" aria-label="New cards">
           {phase.cards.map((c) => <ResultRow key={c.id} card={c} onChange={onCardChange} />)}
         </ul>
         {s && (
           <div className="flex flex-col gap-1" data-testid="series-progress">
-            <p className="font-bold">
-              {s.allDone
-                ? `All ${s.pageCount} ${s.unit}s done. Nice work!`
-                : `${pagesTitle({ from: s.start, to: s.furthest }, s.unit)} of ${s.pageCount} done${s.sampled ? " (some passages sampled)" : ""}`}
-            </p>
-            <ProgressBar value={s.allDone ? 1 : (s.furthest - s.start + 1) / s.pageCount} from={s.before / s.pageCount} />
+            <p className="font-bold">{s.text}</p>
+            <ProgressBar value={s.value} from={s.before} />
           </div>
         )}
         {quota && <div><QuotaChip quota={quota} /></div>}
@@ -468,6 +538,10 @@ export function MakeFlashcardsDialog({ subjectId, subjectName, open, onClose, pr
         emoji: "📚",
         text: s ? `You already made cards from ${pagesText(s.range, s.unit)}. Try the next ${s.unit}s or another source.` : "You already made cards from this version of the note. Change the note or pick another source.",
       },
+      all_skipped: {
+        emoji: "🗂️",
+        text: `Every card from ${s ? pagesText(s.range, s.unit) : "these pages"} is already in your deck. Try some new ${s?.unit ?? "page"}s. This one didn't use up a go.`,
+      },
       failed: { emoji: "🌀", text: "The card maker got muddled. Try again. This one didn't use up a go." },
       not_configured: { emoji: "🔌", text: "AI isn't set up yet, so flashcards can't be made right now. You can still add cards by hand." },
     }[r.status];
@@ -489,6 +563,12 @@ export function MakeFlashcardsDialog({ subjectId, subjectName, open, onClose, pr
             </>
           )}
           {r.status === "failed" && <Button variant="primary" onClick={() => void generate()} disabled={!choice}>Try again</Button>}
+          {r.status === "all_skipped" && (
+            <>
+              <Button className={withNext ? "w-full sm:w-auto" : ""} onClick={close}>Close</Button>
+              {withNext && nextControl(s, r.quota.left)}
+            </>
+          )}
           {(r.status === "limit" || r.status === "allowance" || r.status === "not_configured") && <Button onClick={close}>Close</Button>}
         </div>
       </div>
