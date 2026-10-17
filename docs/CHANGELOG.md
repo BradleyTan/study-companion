@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-10-17 · Flashcards: any pages up to 50, no duplicate cards, better and more accurate cards
+- Pick any pages for a set, up to 50 at a time (was 20), one after another (1–20, 21–40) or overlapping (1–20, 15–34). Still one AI request per set: a wide range is a quick sample, with a friendly hint ("Cards will be spread across pages 1–20, a quick tour of the lot.") and "Want every passage? Use pages 1–6".
+- Quick picks "Best fit", "20 pages", "50 pages" (or "All N pages" for files of 50 pages or fewer); changing the first page keeps the pressed pick's size. Files that fit one set get an optional "Choose pages".
+- "Next" keeps the size the student chose (1–20 → 21–40; a best-fit set keeps the fit rule), computed on the server (`seriesNext`).
+- Overlapping sets skip cards already in the deck from the same file ("Skipped 4 cards you already have."). If every card is already there, nothing is saved and the go is given back ("Every card from pages 15–34 is already in your deck…").
+- Progress counts pages covered across all sets ("Pages 1–34 of 42 done", "26 of 42 pages done"), stored per browser as `studynest:cardRanges:<sourceId>`; the old `studynest:cardRange:<sourceId>` is read once and removed.
+- Daily flashcard limit 5 → 15 sets (tries 15 → 45). Mindmaps and the app-wide AI budget are unchanged.
+- Quality as important as quantity: the prompt asks for key concepts over trivia, one fact per card, answers that stand alone, and an even spread across passages from many pages. The server drops cards that are too short or not a question, answers that repeat the question, near-duplicate questions in a set and cards citing a passage that wasn't sent. Never padded with weaker cards.
+- Accuracy: the prompt says answers come only from the passages, with numbers, units, names and terms as written, skipping ambiguous passages. The server drops answers whose numbers aren't in the cited passage or with under half of their content words in it (`isGrounded` in `src/lib/ai/schemas.ts`). No extra AI calls.
+- Tests: unit tests for page ranges, quick picks, coverage, validation, dedupe/refund/next rules, the quality filter, grounding (accurate vs wrong number, invented term, outside knowledge) and the prompt wording. e2e `e2e/step2-pages-50.spec.ts` with a 60-page fixture (`e2e/fixtures/very-long-lecture.pdf`, `node e2e/fixtures/make-long-lecture.mjs 60 very-long-lecture.pdf`).
+
 ## 2026-10-15 · Flashcards from long lecture files, set after set
 - A file with more text than one set can read (about 14,000 characters) now shows page fields, whatever its page count. The default range is what fits, and the hint says whether every passage on those pages is covered or only a sample ("Use pages 1–6" snaps back). Files that fit in one set are unchanged and are sent whole.
 - The result step shows "Pages 1–6 of 42 done" with a progress bar and a "Next: pages 7–12" button that goes straight back to Step 1 with the next range filled in, or says the next pages are for tomorrow when no goes are left. "Already made" for a page range offers the next pages too.
