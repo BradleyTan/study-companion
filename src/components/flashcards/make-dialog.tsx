@@ -540,7 +540,10 @@ export function MakeFlashcardsDialog({ subjectId, subjectName, open, onClose, pr
       },
       all_skipped: {
         emoji: "🗂️",
-        text: `Every card from ${s ? pagesText(s.range, s.unit) : "these pages"} is already in your deck. Try some new ${s?.unit ?? "page"}s. This one didn't use up a go.`,
+        // Without a page range (a whole file that fits one set) there are no "new pages" to try.
+        text: s
+          ? `Every card from ${pagesText(s.range, s.unit)} is already in your deck. Try some new ${s.unit}s. This one didn't use up a go.`
+          : "Every card from this file is already in your deck. Try another source. This one didn't use up a go.",
       },
       failed: { emoji: "🌀", text: "The card maker got muddled. Try again. This one didn't use up a go." },
       not_configured: { emoji: "🔌", text: "AI isn't set up yet, so flashcards can't be made right now. You can still add cards by hand." },

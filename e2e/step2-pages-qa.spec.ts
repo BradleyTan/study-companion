@@ -180,3 +180,23 @@ test.describe("at 375 px on a touch screen", () => {
     expect(Math.round(next!.width)).toBe(Math.round(done!.width));
   });
 });
+
+// QA (docs/qa/flashcard-pages-50.md): a whole file that fits one set, made again with fewer
+// cards, gives back only cards already in the deck. The message must not talk about pages.
+test("whole file made again with fewer cards: every card already in the deck", async ({ page }) => {
+  await subjectWithFile(page, "Cardiology", "heart.pdf", "Ready · 2 pages");
+  const dialog = page.locator("dialog[open]");
+  await openMake(page, "heart.pdf");
+  await dialog.getByText("About 15").click();
+  await dialog.getByRole("button", { name: "Make flashcards" }).click();
+  await expect(resultHeading(page)).toBeVisible({ timeout: 15_000 });
+  const before = await dialog.getByTestId("quota-chip").textContent();
+  await dialog.getByRole("button", { name: "Done" }).click();
+
+  await openMake(page, "heart.pdf");
+  await dialog.getByText("About 10").click();
+  await dialog.getByRole("button", { name: "Make flashcards" }).click();
+  await expect(dialog.getByText("Every card from this file is already in your deck. Try another source. This one didn't use up a go.")).toBeVisible({ timeout: 15_000 });
+  await expect(dialog.getByTestId("quota-chip")).toHaveText(before!);
+  await expectNoA11yViolations(page);
+});
