@@ -3,7 +3,8 @@
 // instructions, and anything that looks like our delimiters is defused first.
 import type { ChatMessage, Passage } from "./types";
 
-export const PROMPT_VERSION = 1;
+/** Part of every cache key: bumped when a prompt changes so replies made with an older prompt aren't reused. */
+export const PROMPT_VERSION = 2;
 
 // Characters that render as nothing (zero-width, bidi controls, fillers, variation selectors).
 const INVISIBLE = /[\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0]/g;
@@ -12,18 +13,50 @@ const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
 const TAG = "(?:<|&lt;?|&#0*60;?|&#x0*3c;?)\\s*\\\\?\\/?\\s*passages?\\b[^>]*(?:>|&gt;?)?";
 const OPEN_CLOSE = /<|&lt;?|&#0*60;?|&#x0*3c;?|>|&gt;?/gi;
 
+/** One invisible character (non-global copy of INVISIBLE, safe for .test). */
+const INVISIBLE_ONE = new RegExp(INVISIBLE.source);
+
+/** A tag's own brackets made harmless: look-alike "<" / ">" (and their entities) become ‹ ›, invisibles go. */
+function defuseSpan(span: string): string {
+  let out = "";
+  for (const ch of span) {
+    if (INVISIBLE_ONE.test(ch)) continue;
+    const f = ch.normalize("NFKC");
+    out += f === "<" ? "‹" : f === ">" ? "›" : ch;
+  }
+  return out.replace(OPEN_CLOSE, (c) => (c.startsWith(">") || c.toLowerCase().startsWith("&g") ? "›" : "‹"));
+}
+
 /**
  * Stops a passage from closing its own block or opening a fake one. Disguised delimiters
- * count too: when the text only spells a delimiter after folding look-alikes (full-width or
- * small "<", full-width letters) and removing invisible characters, the folded text is sent
- * instead, so the delimiter is defused like a plain one. Other text is left as written
- * (folding everything would break quote checks on PDF ligatures like "ﬁ").
+ * count too: the text is matched after folding look-alikes (full-width or small "<", full-width
+ * letters) and removing invisible characters, and only the matched tag is changed: its brackets
+ * become ‹ › and invisible characters inside it are removed. Everything else is left exactly as
+ * written, so science notation (10⁸, H₂O) and PDF ligatures ("ﬁ") reach the model unchanged
+ * (QA L5: folding the whole passage turned 10⁸ into 108).
  */
 export function defuse(text: string): string {
-  let t = text.replace(CONTROL, "");
-  const folded = t.normalize("NFKC").replace(INVISIBLE, "");
-  if (folded !== t && new RegExp(TAG, "i").test(folded)) t = folded;
-  return t.replace(new RegExp(TAG, "gi"), (m) => m.replace(OPEN_CLOSE, (c) => (c.startsWith(">") || c.toLowerCase().startsWith("&g") ? "›" : "‹")));
+  const t = text.replace(CONTROL, "");
+  // The folded text, with the index in `t` of the character each folded character came from.
+  let folded = "";
+  const from: number[] = [];
+  let at = 0;
+  for (const ch of t) {
+    const f = ch.normalize("NFKC").replace(INVISIBLE, "");
+    for (let k = 0; k < f.length; k++) { folded += f[k]; from.push(at); }
+    at += ch.length;
+  }
+  from.push(t.length);
+  let out = "";
+  let last = 0;
+  for (const m of folded.matchAll(new RegExp(TAG, "gi"))) {
+    const start = from[m.index];
+    const end = from[m.index + m[0].length];
+    if (start < last) continue;
+    out += t.slice(last, start) + defuseSpan(t.slice(start, end));
+    last = end;
+  }
+  return out + t.slice(last);
 }
 
 export function passagesBlock(passages: Passage[]): string {
