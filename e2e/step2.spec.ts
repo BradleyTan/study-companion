@@ -52,7 +52,7 @@ test("make flashcards from a note, edit and delete a card, follow its source lin
   await page.getByRole("button", { name: /Make flashcards/ }).click();
   const dialog = page.locator("dialog[open]");
   await expect(dialog.getByText("Cell structure")).toBeVisible();
-  await expect(dialog.getByTestId("quota-chip")).toHaveText("5 of 5 left today");
+  await expect(dialog.getByTestId("quota-chip")).toHaveText("15 of 15 left today");
   await dialog.getByRole("button", { name: "Make flashcards" }).click();
   await expect(dialog.getByRole("heading", { name: /new cards?!/ })).toBeVisible({ timeout: 15_000 });
   await expect(dialog.getByText("Your notes had enough for")).toBeVisible();
@@ -66,7 +66,7 @@ test("make flashcards from a note, edit and delete a card, follow its source lin
   await expect(cards.first()).toBeVisible();
   const total = await cards.count();
   expect(total).toBeGreaterThan(1);
-  await expect(page.getByTestId("quota-chip").first()).toHaveText("4 of 5 left today");
+  await expect(page.getByTestId("quota-chip").first()).toHaveText("14 of 15 left today");
   await expectNoA11yViolations(page);
   await expectNoHorizontalScroll(page);
 
@@ -254,4 +254,23 @@ test("cards from a lecture file link to the read-only source page", async ({ pag
   await expect(page.getByRole("button", { name: "Open the original file" })).toBeEnabled();
   await expectNoA11yViolations(page);
   await expectNoHorizontalScroll(page);
+});
+
+test("making cards from the same note again skips the ones already in the deck", async ({ page }) => {
+  await subjectWithNote(page, "Botany");
+  await page.getByRole("button", { name: /Make flashcards/ }).click();
+  const dialog = page.locator("dialog[open]");
+  await dialog.getByRole("button", { name: "Make flashcards" }).click();
+  await expect(dialog.getByRole("heading", { name: /new cards?!/ })).toBeVisible({ timeout: 15_000 });
+  await dialog.getByRole("button", { name: "Done" }).click();
+
+  // Asking for more cards is a new request, but this short note only holds the same cards.
+  await page.getByRole("button", { name: /Make flashcards/ }).click();
+  await dialog.getByText("About 15").click();
+  await dialog.getByRole("button", { name: "Make flashcards" }).click();
+  await expect(dialog.getByText("Every card from this note is already in your deck. Try another source. This one didn't use up a go.")).toBeVisible({ timeout: 15_000 });
+  await expect(dialog.getByTestId("quota-chip")).toHaveText("14 of 15 left today");
+  await expect(dialog.getByRole("button", { name: /Make the next set/ })).toHaveCount(0);
+  await expectNoA11yViolations(page);
+  await dialog.getByRole("button", { name: "Close" }).click();
 });

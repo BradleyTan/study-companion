@@ -48,7 +48,9 @@
   --color-highlight: var(--highlight);
   --color-success: var(--success);
   --color-danger: var(--danger);
-  --font-sans: var(--font-body), system-ui, sans-serif;
+  /* Atkinson Hyperlegible (latin subset) has no Greek, sub/superscript signs or arrows (Δ α ₂ ⁺ ⇌):
+     those glyphs fall through to these free system fonts, in this order, before the generic one. */
+  --font-sans: var(--font-body), system-ui, "Segoe UI Symbol", "Cambria Math", "STIX Two Math", "Noto Sans", "Noto Sans Math", "Noto Sans Symbols", "DejaVu Sans", sans-serif;
   --font-display: var(--font-marker), "Comic Sans MS", cursive;
 }
 
@@ -59,7 +61,8 @@ body {
   background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
   background-size: 24px 24px;
   color: var(--ink);
-  font-family: var(--font-body), system-ui, sans-serif;
+  /* Same stack as --font-sans (in @theme inline, so not a runtime variable). */
+  font-family: var(--font-body), system-ui, "Segoe UI Symbol", "Cambria Math", "STIX Two Math", "Noto Sans", "Noto Sans Math", "Noto Sans Symbols", "DejaVu Sans", sans-serif;
   font-size: 16px;
   line-height: 1.55;
 }

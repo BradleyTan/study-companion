@@ -3,13 +3,13 @@
 export type AiKind = "flashcards" | "mindmap";
 
 /** Successful, non-cached generations per student per local day. */
-export const DAILY_LIMITS: Record<AiKind, number> = { flashcards: 5, mindmap: 3 };
+export const DAILY_LIMITS: Record<AiKind, number> = { flashcards: 15, mindmap: 3 };
 
 /**
  * Tries per student per local day, failed ones included. A failed generation gives the go
  * back, but it still used the shared allowance, so retries can't be endless.
  */
-export const DAILY_ATTEMPTS: Record<AiKind, number> = { flashcards: 15, mindmap: 9 };
+export const DAILY_ATTEMPTS: Record<AiKind, number> = { flashcards: 45, mindmap: 9 };
 
 /**
  * App-wide daily budget per model, kept below the free plan's limits so students get a

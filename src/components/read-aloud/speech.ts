@@ -3,7 +3,7 @@
 // utterance per sentence (reliable highlighting, no Chrome cut-offs), pause = cancel and
 // resume from the start of the sentence (Android's pause() is broken).
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { DEFAULT_PREFS, parsePrefs, pickVoice, PREFS_KEY, type ReadAloudPrefs } from "@/lib/speech/sentences";
+import { DEFAULT_PREFS, parsePrefs, pickVoice, PREFS_KEY, speakable, type ReadAloudPrefs } from "@/lib/speech/sentences";
 
 export type Segment = { text: string; start: number; end: number; part?: string; gapBefore?: number };
 export type SpeechStatus = "idle" | "playing" | "paused" | "finished" | "stopped";
@@ -52,7 +52,7 @@ function speakFrom(i: number) {
   const go = () => {
     if (my !== token) return;
     const prefs = readPrefs(); // speed or voice changes apply from the next sentence
-    const u = new SpeechSynthesisUtterance(seg.text);
+    const u = new SpeechSynthesisUtterance(speakable(seg.text));
     const voice = pickVoice(window.speechSynthesis.getVoices(), prefs.voiceURI, document.documentElement.lang || "en");
     if (voice) { u.voice = voice; u.lang = voice.lang; }
     u.rate = prefs.rate;

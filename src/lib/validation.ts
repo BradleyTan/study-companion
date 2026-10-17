@@ -40,7 +40,8 @@ export const MAX_TOTAL_BYTES = 100 * 1024 * 1024;
 // ---- Step 2 -------------------------------------------------------------------
 export const CARD_FRONT_MAX = 500;
 export const CARD_BACK_MAX = 1500;
-export const MAX_CARD_PAGES = 20;
+/** Most pages in one flashcard set (flashcards.md: a wider range is a quick sample). */
+export const MAX_CARD_PAGES = 50;
 
 export const cardText = z.object({
   front: z.string().trim().min(1, "Add some text to the front.").max(CARD_FRONT_MAX, `Keep the front under ${CARD_FRONT_MAX} characters.`),
