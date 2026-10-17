@@ -2,7 +2,7 @@
 // then normalised (lengths, duplicates, tree shape) and every passage reference is mapped
 // through the server's own list, so a card or node can only point at this student's text.
 import { z } from "zod";
-import { clip, collapse, containsLoose, NO_SPACES, normaliseFront, numbersIn, overlap, sentences, stem, words } from "./text";
+import { canonical, clip, collapse, containsLoose, equationsIn, factsOf, NO_SPACES, normaliseFront, NUMBER_WORD_VALUES, overlap, scanNumbers, sentences } from "./text";
 import type { GeneratedCard, MindmapGraph, MindmapNode, Passage } from "./types";
 
 export const CARD_FRONT_MAX = 500;
@@ -71,23 +71,72 @@ export function cardQualityIssue(front: string, back: string): "short" | "not_a_
   const f = normaliseFront(front);
   const b = normaliseFront(back);
   if (b === f || (b.includes(f) && b.length - f.length < 10)) return "repeats_front";
+  // A non-answer that only names what was asked ("What is the molar mass of X?" → "The molar
+  // mass of X."): every word of the answer is in the question. Not for either/or questions.
+  const fw = new Set(factsOf(front).words);
+  const bf = factsOf(back);
+  if (!noSpaces && !/\bor\b/i.test(front) && bf.words.length >= 2 && !bf.numbers.length && !bf.terms.length && bf.words.every((w) => fw.has(w))) return "repeats_front";
   return null;
 }
 
 /**
- * Whether the answer is grounded in the passage it cites: every number in it appears in the
- * passage, and at least GROUNDING_MIN of its content words (stemmed) do. Answers in scripts
- * without spaces get the number check only.
+ * Whether the answer is grounded in the passage it cites (Bradley: what a card says must be
+ * accurate, science notation included). Compared in canonical form (see `canonical` in text.ts),
+ * so H₂O = H2O, 10⁸ = 10^8, −70 = -70, 4% = 4.0%, "five" = 5:
+ * - every number in the answer is in the passage, with its sign (an answer that says "minus",
+ *   "negative" or "below" may give the size of a negative number);
+ * - every term mixing letters and digits (H2O, C6H12O6, BRCA1, p53, 6CO2) and every word with a
+ *   Greek letter (α-helix, ΔG) is in the passage;
+ * - every equation (around =, →, ⇌) appears in the passage as written, spacing aside;
+ * - a species name (Genus epithet, or E. coli) uses an epithet the passage gives that genus;
+ * - at least GROUNDING_MIN of the answer's words, numbers and terms are in the passage.
+ * Answers in scripts without spaces get the number check only.
  */
 export function isGrounded(back: string, passageText: string): boolean {
-  const have = new Set(numbersIn(passageText));
-  if (!numbersIn(back).every((n) => have.has(n))) return false;
+  const p = factsOf(passageText);
+  const a = factsOf(back);
+  const wordNumbers = p.words.filter((w) => NUMBER_WORD.test(w)).map(numberOfWord);
+  const hyphenated = scanNumbers(passageText).filter((n) => n.hyphen).map((n) => n.value.slice(1));
+  const have = new Set([...p.numbers, ...wordNumbers, ...hyphenated]);
+  const sizeOnly = /\b(?:minus|negative|below)\b/i.test(back);
+  const abs = new Set([...have].map((n) => n.replace(/^-/, "")));
+  const numberOk = (n: string) => have.has(n) || (sizeOnly && abs.has(n.replace(/^-/, "")));
+  if (!a.numbers.every(numberOk)) return false;
   if (NO_SPACES.test(back)) return true;
-  const answer = [...new Set(words(back).filter((w) => !/^\d/.test(w)).map(stem))];
-  if (!answer.length) return true;
-  const text = new Set(words(passageText).map(stem));
-  return answer.filter((w) => text.has(w)).length / answer.length >= GROUNDING_MIN;
+
+  const terms = new Set(p.terms.flatMap((t) => [t, t.replace(/^\d+(?=\p{L})/u, "")]));
+  for (const t of factsOf(passageText.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ]+/gu, (m) => m.normalize("NFKC"))).terms) terms.add(t);
+  if (!a.terms.every((t) => terms.has(t))) return false;
+  const words = new Set(p.words);
+  // Greek-letter words (α-helix, ΔG) and number scales (million, billion) must match exactly.
+  if (!a.words.filter((w) => GREEK_LETTER.test(w) || SCALE.test(w)).every((w) => words.has(w))) return false;
+  if (!equationsIn(canonical(back)).every((eq) => p.squashed.includes(eq))) return false;
+  // Charges, powers and exponents (Ca²⁺, mc², 10⁸, L⁻¹), Greek compounds (α-helix) and the unit
+  // after a number (µm, not mm) must be the passage's own.
+  const scripted = new Set(p.scripted);
+  if (!a.scripted.every((t) => scripted.has(t))) return false;
+  const compounds = new Set(p.compounds);
+  if (!a.compounds.every((t) => compounds.has(t))) return false;
+  for (const [n, units] of a.units) {
+    const known = p.units.get(n);
+    if (known && ![...units].every((u) => known.has(u))) return false;
+  }
+  for (const [genus, names] of a.species) {
+    const known = [...p.species].filter(([g]) => g === genus || (genus.endsWith(".") ? g[0] === genus[0] : genus[0] + "." === g));
+    if (known.length && ![...names].every((n) => known.some(([, set]) => set.has(n)))) return false;
+  }
+
+  // Number words in the answer ("five") count as numbers.
+  const answerWords = a.words.filter((w) => !(NUMBER_WORD.test(w) && have.has(numberOfWord(w))));
+  const total = answerWords.length + a.numbers.length + a.terms.length;
+  if (!total) return true;
+  const hits = answerWords.filter((w) => words.has(w)).length + a.numbers.length + a.terms.length;
+  return hits / total >= GROUNDING_MIN;
 }
+const NUMBER_WORD = new RegExp(`^(?:${Object.keys(NUMBER_WORD_VALUES).join("|")})$`);
+const numberOfWord = (w: string) => String(NUMBER_WORD_VALUES[w]);
+const GREEK_LETTER = /\p{Script=Greek}/u;
+const SCALE = /^(?:thousand|million|billion|trillion)$/;
 
 export type NormalisedCards = { cards: GeneratedCard[]; dropped: number };
 

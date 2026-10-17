@@ -43,6 +43,7 @@ const DATA_RULES = [
 /** How flashcards should be written: quality matters as much as quantity (Bradley, 2026-10-17). */
 export const FLASHCARD_QUALITY_RULES = [
   "Accuracy first. Every answer must come only from the passages: no outside knowledge, nothing the passages don't say. Keep numbers, units, names and technical terms exactly as written in the passage. If a passage is ambiguous or incomplete, skip it rather than guess.",
+  "Copy scientific names, gene and protein names, chemical formulas, equations, symbols and units exactly as the passage writes them, character for character: keep subscripts and superscripts as Unicode characters (H₂O, C₆H₁₂O₆, Ca²⁺, SO₄²⁻, 10⁸, mol·L⁻¹), Greek letters (α-helix, ΔG), arrows (→, ⇌), minus signs (−70 mV) and capitals (BRCA1, p53, Homo sapiens, E. coli). Never round, convert units or rewrite an equation. Plain text only: no Markdown, LaTeX, HTML or italics markers.",
   "Prefer key concepts, definitions, processes and cause-and-effect over trivia (page headings, lecture numbers, who said what in passing).",
   "One fact per card. Each answer must stand alone: never \"see above\", \"as mentioned\" or a reference to another card.",
   "The answer must not repeat the question; it must add the fact being asked for.",
