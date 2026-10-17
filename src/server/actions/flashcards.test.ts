@@ -56,16 +56,16 @@ describe("flashcard generation quota (QA)", () => {
     expect(await used()).toBe(0);
   });
 
-  it("stops at 5 a day", async () => {
+  it("stops at 15 a day", async () => {
     const { subjectId } = await subjectWithNote();
     const statuses: string[] = [];
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 16; i++) {
       const noteId = await addNote(subjectId, `Topic ${i}`);
       const r = await makeFlashcards({ subjectId, source: { type: "note", id: noteId }, count: 10 });
       statuses.push(r.ok ? r.result.status : r.error);
     }
-    expect(statuses).toEqual(["made", "made", "made", "made", "made", "limit"]);
-    expect(await used()).toBe(5);
+    expect(statuses).toEqual([...new Array(15).fill("made"), "limit"]);
+    expect(await used()).toBe(15);
   });
 
   it("in production without an AI key says so, makes nothing and uses no go", async () => {
@@ -120,10 +120,10 @@ describe("flashcard generation quota (QA)", () => {
     }
   });
 
-  it("refuses page ranges over 20 pages and files that aren't ready", async () => {
+  it("refuses page ranges over 50 pages and files that aren't ready", async () => {
     const { subjectId } = await subjectWithNote();
-    const big = await makeFlashcards({ subjectId, source: { type: "file", id: crypto.randomUUID(), fromPage: 1, toPage: 21 }, count: 10 });
-    expect(big.ok).toBe(false);
+    const big = await makeFlashcards({ subjectId, source: { type: "file", id: crypto.randomUUID(), fromPage: 1, toPage: 51 }, count: 10 });
+    expect(big.ok ? null : big.error).toBe("Up to 50 pages at a time.");
     const backwards = await makeFlashcards({ subjectId, source: { type: "file", id: crypto.randomUUID(), fromPage: 5, toPage: 2 }, count: 10 });
     expect(backwards.ok).toBe(false);
     const src = await repo.createSource({ id: crypto.randomUUID(), subjectId, fileName: "scan.pdf", kind: "pdf", sizeBytes: 10, storagePath: "x/scan.pdf" });
@@ -232,6 +232,143 @@ describe("long files: page ranges and series (flashcards.md)", () => {
     const src = await longFile(subjectId, 3);
     const r = await makeFlashcards({ subjectId, source: { type: "file", id: src }, count: 10 });
     expect(r.ok && r.result.status === "made" && r.result.series).toEqual({ range: { from: 1, to: 3 }, covered: true, pageCount: 3, next: null });
+  });
+});
+
+describe("any pages, up to 50, sequential or overlapping (flashcards.md 2026-10-17)", () => {
+  beforeEach(() => {
+    vi.stubEnv("GROQ_API_KEY", "");
+    vi.stubEnv("CLOUDFLARE_ACCOUNT_ID", "");
+    vi.stubEnv("CLOUDFLARE_AI_TOKEN", "");
+  });
+  afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+
+  const make = (subjectId: string, src: string, from: number, to: number, count: 10 | 15 | 20 = 10) =>
+    makeFlashcards({ subjectId, source: { type: "file", id: src, fromPage: from, toPage: to }, count });
+
+  it("a 50-page set is one go, sampled, and Next keeps its size", async () => {
+    const { subjectId } = await subjectWithNote();
+    const src = await longFile(subjectId, 60);
+    const r = await make(subjectId, src, 1, 50);
+    if (!r.ok || r.result.status !== "made") throw new Error("not made");
+    expect(r.result.series).toEqual({ range: { from: 1, to: 50 }, covered: false, pageCount: 60, next: { from: 51, to: 60 } });
+    expect(await used()).toBe(1);
+  });
+
+  it("sequential sets of 20: 1–20 → 21–40 → 41–42, then nothing", async () => {
+    const { subjectId } = await subjectWithNote();
+    const src = await longFile(subjectId, 42);
+    const a = await make(subjectId, src, 1, 20);
+    expect(a.ok && a.result.status === "made" && a.result.series?.next).toEqual({ from: 21, to: 40 });
+    const b = await make(subjectId, src, 21, 40);
+    expect(b.ok && b.result.status === "made" && b.result.series?.next).toEqual({ from: 41, to: 42 });
+    const c = await make(subjectId, src, 41, 42);
+    expect(c.ok && c.result.status === "made" && c.result.series?.next).toBeNull();
+  });
+
+  it("a best-fit set still continues by the fit rule", async () => {
+    const { subjectId } = await subjectWithNote();
+    const src = await longFile(subjectId, 42);
+    const r = await make(subjectId, src, 6, 10);
+    expect(r.ok && r.result.status === "made" && r.result.series?.next).toEqual({ from: 11, to: 15 });
+  });
+
+  it("an overlapping set is allowed and continues from its own end, clamped: 15–34 → 35–42", async () => {
+    const { subjectId } = await subjectWithNote();
+    const src = await longFile(subjectId, 42);
+    expect((await make(subjectId, src, 1, 20)).ok).toBe(true);
+    const r = await make(subjectId, src, 15, 34);
+    if (!r.ok || r.result.status !== "made") throw new Error("not made");
+    expect(r.result.series?.next).toEqual({ from: 35, to: 42 });
+    expect(r.result.skipped).toBe(0);
+  });
+
+  it("skips cards already in the deck from the same file and says how many", async () => {
+    const { subjectId } = await subjectWithNote();
+    const src = await longFile(subjectId, 12);
+    const first = await make(subjectId, src, 1, 5, 10);
+    if (!first.ok || first.result.status !== "made") throw new Error("not made");
+    expect(first.result.skipped).toBe(0);
+    // The local generator reads passages in order, so 15 cards repeat the first 10.
+    const more = await make(subjectId, src, 1, 5, 15);
+    if (!more.ok || more.result.status !== "made") throw new Error("not made");
+    expect(more.result.skipped).toBe(10);
+    expect(more.result.cards).toHaveLength(5);
+    const fronts = (await repo.listFlashcards({ subjectId })).map((c) => c.front.toLowerCase());
+    expect(new Set(fronts).size).toBe(fronts.length);
+    expect(await used()).toBe(2);
+  });
+
+  it("matches fronts after normalising case, spaces and trailing punctuation", async () => {
+    const { subjectId } = await subjectWithNote();
+    const src = await longFile(subjectId, 12);
+    const first = await make(subjectId, src, 1, 5, 10);
+    if (!first.ok || first.result.status !== "made") throw new Error("not made");
+    const c = first.result.cards[0];
+    await repo.updateFlashcardText(c.id, { front: `  ${c.front.toUpperCase().replace(/\s+/g, "   ")} ?!`, back: c.back });
+    const more = await make(subjectId, src, 1, 5, 15);
+    expect(more.ok && more.result.status === "made" && more.result.skipped).toBe(10);
+  });
+
+  it("a deleted card is not a duplicate", async () => {
+    const { subjectId } = await subjectWithNote();
+    const src = await longFile(subjectId, 12);
+    const first = await make(subjectId, src, 1, 5, 10);
+    if (!first.ok || first.result.status !== "made") throw new Error("not made");
+    await deleteCard(first.result.cards[0].id);
+    const more = await make(subjectId, src, 1, 5, 15);
+    expect(more.ok && more.result.status === "made" && more.result.skipped).toBe(9);
+  });
+
+  it("every card already in the deck: saves nothing, gives the go back, and asking again is free", async () => {
+    const { subjectId } = await subjectWithNote();
+    const src = await longFile(subjectId, 12);
+    expect((await make(subjectId, src, 1, 5, 15)).ok).toBe(true);
+    expect(await used()).toBe(1);
+    const before = (await repo.listFlashcards({ subjectId })).length;
+    const r = await make(subjectId, src, 1, 5, 10);
+    if (!r.ok || r.result.status !== "all_skipped") throw new Error(`expected all_skipped, got ${r.ok ? r.result.status : r.error}`);
+    expect(r.result.skipped).toBe(10);
+    expect(r.result.quota.left).toBe(14);
+    expect(r.result.series).toMatchObject({ range: { from: 1, to: 5 }, next: { from: 6, to: 10 } });
+    expect((await repo.listFlashcards({ subjectId })).length).toBe(before);
+    expect(await used()).toBe(1);
+    // Cached now: the same request again costs nothing and still saves nothing.
+    const again = await make(subjectId, src, 1, 5, 10);
+    expect(again.ok && again.result.status).toBe("all_skipped");
+    expect(await used()).toBe(1);
+  });
+
+  it("an all-skipped set with live AI refunds the go but counts as a try", async () => {
+    const { subjectId } = await subjectWithNote();
+    const src = await longFile(subjectId, 12);
+    const first = await make(subjectId, src, 1, 5, 10);
+    if (!first.ok || first.result.status !== "made") throw new Error("not made");
+    const chunk = (await repo.listChunks({ sourceId: src })).find((c) => c.page === 6)!;
+    const dup = first.result.cards[0];
+    vi.stubEnv("GROQ_API_KEY", "gsk_test");
+    const fetchSpy = vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ cards: [{ front: dup.front, back: dup.back, passage: "p1", quote: chunk.text.slice(0, 60) }] }) } }] })));
+    vi.stubGlobal("fetch", fetchSpy);
+    const r = await make(subjectId, src, 6, 10, 10);
+    expect(r.ok && r.result.status).toBe("all_skipped");
+    expect(fetchSpy).toHaveBeenCalled();
+    expect(await used()).toBe(1);
+  });
+
+  it("notes are never deduplicated (only cards from the same file)", async () => {
+    const { subjectId, noteId } = await subjectWithNote();
+    expect((await makeFlashcards({ subjectId, source: { type: "note", id: noteId }, count: 10 })).ok).toBe(true);
+    const r = await makeFlashcards({ subjectId, source: { type: "note", id: noteId }, count: 15 });
+    expect(r.ok && r.result.status === "made" && r.result.skipped).toBe(0);
+  });
+
+  it("cards from another file with the same text are not compared", async () => {
+    const { subjectId } = await subjectWithNote();
+    const a = await longFile(subjectId, 12);
+    const b = await longFile(subjectId, 12);
+    expect((await make(subjectId, a, 1, 5, 10)).ok).toBe(true);
+    const r = await make(subjectId, b, 1, 5, 15);
+    expect(r.ok && r.result.status === "made" && r.result.skipped).toBe(0);
   });
 });
 
