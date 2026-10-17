@@ -1,4 +1,5 @@
 import JSZip from "jszip";
+import { SUB, SUP, toScript } from "./scripts";
 
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
 
@@ -17,8 +18,16 @@ export function slideXmlToText(xml: string): string {
   const paragraphs = xml.split(/<\/a:p>/);
   const lines: string[] = [];
   for (const p of paragraphs) {
-    const runs = [...p.matchAll(/<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/g)].map((m) => decodeXml(m[1]));
-    const line = runs.join("").trim();
+    let line = "";
+    // Runs (<a:r>, fields <a:fld>) and line breaks inside the paragraph, in order.
+    for (const m of p.matchAll(/<a:(r|fld)\b[^>]*>([\s\S]*?)<\/a:\1>|<a:br\b[^>]*>/g)) {
+      if (!m[1]) { line += " "; continue; }
+      const text = [...m[2].matchAll(/<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/g)].map((t) => decodeXml(t[1])).join("");
+      // Superscript and subscript runs (baseline="30000" / "-25000") keep their meaning: 10⁸, CO₂.
+      const baseline = Number(/<a:rPr\b[^>]*\bbaseline="(-?\d+)"/.exec(m[2])?.[1] ?? 0);
+      line += baseline > 0 ? toScript(text, SUP) : baseline < 0 ? toScript(text, SUB) : text;
+    }
+    line = line.trim();
     if (line) lines.push(line);
   }
   return lines.join("\n");

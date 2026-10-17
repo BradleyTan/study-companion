@@ -9,7 +9,9 @@ export function normaliseText(s: string): string {
   return s
     .replace(/\r\n?/g, "\n")
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "")
-    .replace(/-\n(?=[a-z])/g, "") // re-join words hyphenated across lines
+    // Re-join words hyphenated across lines ("mito-\nchondria"), but keep the hyphen of a term
+    // that has one ("Gram-\nnegative", "α-\nhelix", "Na⁺/K⁺-\nATPase", "3-\nphosphate").
+    .replace(/([^\s-]*)-\n(?=\p{Ll})/gu, (_, w: string) => (/^\p{Ll}{2,}$/u.test(w) && !/\p{Script=Greek}/u.test(w) ? w : `${w}-`))
     .replace(/[ \t]+/g, " ")
     .replace(/ *\n */g, "\n")
     .replace(/\n{3,}/g, "\n\n")
