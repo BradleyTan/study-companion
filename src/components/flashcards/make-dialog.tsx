@@ -420,10 +420,10 @@ export function MakeFlashcardsDialog({ subjectId, subjectName, open, onClose, pr
               <span className="text-ink-soft">of {pageCount}</span>
             </div>
             {picks.length > 0 && (
-              <div role="group" aria-label={`Quick pick for ${unit}s`} className="seg max-w-full flex-wrap" data-testid="quick-picks">
+              <div role="group" aria-label={`Quick pick for ${unit}s`} className="seg flex w-full" data-testid="quick-picks">
                 {picks.map((p) => (
                   <button
-                    key={p.id} type="button" aria-label={p.name}
+                    key={p.id} type="button" aria-label={p.name} className="flex-1 whitespace-nowrap px-2"
                     aria-pressed={fieldsOk && fieldRange.from === p.range.from && fieldRange.to === p.range.to}
                     onClick={() => {
                       play("click");
