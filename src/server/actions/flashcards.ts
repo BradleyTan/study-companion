@@ -78,7 +78,7 @@ export type MakeResult =
     dropped: number;
   }
   /** Every generated card was already in the deck: nothing saved, the go given back. */
-  | { status: "all_skipped"; skipped: number; quota: Quota; series?: FileSeries }
+  | { status: "all_skipped"; sourceType: "note" | "file"; skipped: number; quota: Quota; series?: FileSeries }
   | { status: "too_short"; sourceType: "note" | "file"; quota: Quota }
   | { status: "limit"; quota: Quota }
   | { status: "allowance"; quota: Quota }
@@ -117,12 +117,14 @@ async function sourceChunks(repo: Repo, subjectId: string, source: MakeFlashcard
 }
 
 /**
- * Fronts of the cards already in this subject from the same file (not deleted), normalised.
- * Notes, hand-written cards and other files are never compared (flashcards.md "Overlapping ranges").
+ * Fronts of the AI cards already in this subject from the same note or file (not deleted),
+ * normalised. Hand-written cards and other sources are never compared (flashcards.md
+ * "Overlapping ranges"; notes too since 2026-10-17).
  */
-function existingFronts(deck: { sourceId: string | null; front: string; origin: string }[], sourceId: string | null): Set<string> {
-  if (!sourceId) return new Set();
-  return new Set(deck.filter((c) => c.sourceId === sourceId && c.origin === "ai").map((c) => normaliseFront(c.front)));
+function existingFronts(deck: { noteId: string | null; sourceId: string | null; front: string; origin: string }[], link: { noteId: string | null; sourceId: string | null }): Set<string> {
+  const same = (c: { noteId: string | null; sourceId: string | null }) =>
+    (link.sourceId !== null && c.sourceId === link.sourceId) || (link.noteId !== null && c.noteId === link.noteId);
+  return new Set(deck.filter((c) => c.origin === "ai" && same(c)).map((c) => normaliseFront(c.front)));
 }
 
 /** Splits generated cards into new ones and ones already in the deck. Not exported: this file's exports are public actions. */
@@ -161,7 +163,7 @@ export async function makeFlashcards(raw: unknown): Promise<ActionResult<{ resul
   if (deck.length >= MAX_CARDS_PER_SUBJECT) {
     return { ok: false, error: `A subject can hold up to ${MAX_CARDS_PER_SUBJECT} cards. Delete some first.` };
   }
-  const have = existingFronts(deck, found.sourceId);
+  const have = existingFronts(deck, { noteId: found.noteId, sourceId: found.sourceId });
 
   const picked = fitPassages(found.chunks, FLASHCARDS_MAX_CHARS);
   const passages = toPassages(picked);
@@ -180,7 +182,7 @@ export async function makeFlashcards(raw: unknown): Promise<ActionResult<{ resul
     if (norm && norm.cards.length) {
       const { fresh, skipped } = splitDuplicates(norm.cards, have);
       // Cached output costs nothing, so "didn't use up a go" holds.
-      if (!fresh.length) return { ok: true, result: { status: "all_skipped", skipped, quota: await quota(), ...series } };
+      if (!fresh.length) return { ok: true, result: { status: "all_skipped", sourceType: source.type, skipped, quota: await quota(), ...series } };
       const saved = await repo.createFlashcards(cardsToSave(fresh, picked, subjectId, hash, link));
       revalidatePath(`/subjects/${subjectId}`);
       return { ok: true, result: { status: "made", cards: await toDeckCards(repo, saved, ctx), quota: await quota(), requested: count, cached: true, skipped, dropped: norm.dropped, ...series } };
@@ -205,7 +207,7 @@ export async function makeFlashcards(raw: unknown): Promise<ActionResult<{ resul
       await cacheIt();
       await repo.settleAi(day, "flashcards", false, tokens.input, tokens.output);
       settled = true; // only once it worked: if settling throws, the finally below tries again
-      return { ok: true, result: { status: "all_skipped", skipped, quota: await quota(), ...series } };
+      return { ok: true, result: { status: "all_skipped", sourceType: source.type, skipped, quota: await quota(), ...series } };
     }
     const saved = await repo.createFlashcards(cardsToSave(fresh, picked, subjectId, hash, link));
     if (!saved.length) return { ok: true, result: { status: "failed", quota: await quota() } };

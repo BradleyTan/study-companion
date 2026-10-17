@@ -355,10 +355,34 @@ describe("any pages, up to 50, sequential or overlapping (flashcards.md 2026-10-
     expect(await used()).toBe(1);
   });
 
-  it("notes are never deduplicated (only cards from the same file)", async () => {
+  it("notes skip cards already made from the same note", async () => {
     const { subjectId, noteId } = await subjectWithNote();
     expect((await makeFlashcards({ subjectId, source: { type: "note", id: noteId }, count: 10 })).ok).toBe(true);
     const r = await makeFlashcards({ subjectId, source: { type: "note", id: noteId }, count: 15 });
+    if (!r.ok || r.result.status !== "made") throw new Error("not made");
+    expect(r.result.skipped).toBeGreaterThan(0);
+    expect(r.result.series).toBeUndefined();
+    const fronts = (await repo.listFlashcards({ subjectId })).map((c) => c.front.toLowerCase());
+    expect(new Set(fronts).size).toBe(fronts.length);
+  });
+
+  it("a note whose cards are all in the deck saves nothing and gives the go back", async () => {
+    const { subjectId, noteId } = await subjectWithNote();
+    expect((await makeFlashcards({ subjectId, source: { type: "note", id: noteId }, count: 15 })).ok).toBe(true);
+    const before = (await repo.listFlashcards({ subjectId })).length;
+    const r = await makeFlashcards({ subjectId, source: { type: "note", id: noteId }, count: 10 });
+    if (!r.ok || r.result.status !== "all_skipped") throw new Error(`expected all_skipped, got ${r.ok ? r.result.status : r.error}`);
+    expect(r.result.sourceType).toBe("note");
+    expect(r.result.series).toBeUndefined();
+    expect((await repo.listFlashcards({ subjectId })).length).toBe(before);
+    expect(await used()).toBe(1);
+  });
+
+  it("cards from another note with the same text are not compared", async () => {
+    const { subjectId, noteId } = await subjectWithNote();
+    const copy = await addNote(subjectId, "Osmosis");
+    expect((await makeFlashcards({ subjectId, source: { type: "note", id: noteId }, count: 10 })).ok).toBe(true);
+    const r = await makeFlashcards({ subjectId, source: { type: "note", id: copy }, count: 15 });
     expect(r.ok && r.result.status === "made" && r.result.skipped).toBe(0);
   });
 

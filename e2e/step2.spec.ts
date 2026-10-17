@@ -255,3 +255,22 @@ test("cards from a lecture file link to the read-only source page", async ({ pag
   await expectNoA11yViolations(page);
   await expectNoHorizontalScroll(page);
 });
+
+test("making cards from the same note again skips the ones already in the deck", async ({ page }) => {
+  await subjectWithNote(page, "Botany");
+  await page.getByRole("button", { name: /Make flashcards/ }).click();
+  const dialog = page.locator("dialog[open]");
+  await dialog.getByRole("button", { name: "Make flashcards" }).click();
+  await expect(dialog.getByRole("heading", { name: /new cards?!/ })).toBeVisible({ timeout: 15_000 });
+  await dialog.getByRole("button", { name: "Done" }).click();
+
+  // Asking for more cards is a new request, but this short note only holds the same cards.
+  await page.getByRole("button", { name: /Make flashcards/ }).click();
+  await dialog.getByText("About 15").click();
+  await dialog.getByRole("button", { name: "Make flashcards" }).click();
+  await expect(dialog.getByText("Every card from this note is already in your deck. Try another source. This one didn't use up a go.")).toBeVisible({ timeout: 15_000 });
+  await expect(dialog.getByTestId("quota-chip")).toHaveText("14 of 15 left today");
+  await expect(dialog.getByRole("button", { name: /Make the next set/ })).toHaveCount(0);
+  await expectNoA11yViolations(page);
+  await dialog.getByRole("button", { name: "Close" }).click();
+});
