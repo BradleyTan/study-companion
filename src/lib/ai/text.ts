@@ -41,8 +41,14 @@ export function containsLoose(hay: string, needle: string): boolean {
  * whitespace collapsed, trailing ?.!: and spaces removed.
  */
 export function normaliseFront(front: string): string {
-  return collapse(front).toLowerCase().replace(/[\s?.!:？！。：]+$/u, "");
+  // Trimmed with a loop, not /[...]+$/: that regex backtracks quadratically on long runs of
+  // punctuation that don't end the string (security review S2-13).
+  const s = collapse(front).toLowerCase();
+  let end = s.length;
+  while (end > 0 && TRAILING.test(s[end - 1])) end--;
+  return s.slice(0, end);
 }
+const TRAILING = /[\s?.!:？！。：]/u;
 
 /** Scripts written without spaces between words (word checks don't apply to them). */
 export const NO_SPACES = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}]/u;

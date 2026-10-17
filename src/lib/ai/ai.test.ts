@@ -202,6 +202,10 @@ describe("flashcard quality filter", () => {
   it("normalises fronts for duplicate checks", () => {
     expect(normaliseFront("  What IS   osmosis ?!: ")).toBe("what is osmosis");
     expect(normaliseFront("What is osmosis")).toBe(normaliseFront("what is osmosis?"));
+    // Linear time on long punctuation runs that don't end the string (S2-13).
+    const t = performance.now();
+    expect(normaliseFront("?.!:".repeat(25_000) + "x")).toHaveLength(100_001);
+    expect(performance.now() - t).toBeLessThan(200);
   });
 
   it("drops short fronts, non-questions and answers that repeat the question", () => {
