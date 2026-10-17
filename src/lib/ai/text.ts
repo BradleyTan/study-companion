@@ -1,3 +1,4 @@
+import { SUP } from "../extract/scripts";
 // Small text helpers shared by validation, the fake generator and passage matching.
 
 export const collapse = (s: string) => s.replace(/\s+/g, " ").trim();
@@ -78,6 +79,14 @@ export function stem(w: string): string {
 // ---- grounding: is an answer supported by its passage? ------------------------------------
 // Science notation must survive the comparison both ways (Bradley, 2026-10-17): H₂O and H2O are
 // the same, 10⁸ is not 108, C₆H₁₂O₅ is not C₆H₁₂O₆, −70 is not +70, α-helix is not β-helix.
+// Every pattern that can start anywhere begins with a lookbehind, so a match only starts at a
+// token's first character: without it, runs like "1.1.1.1…" or "a1a1a1…" backtrack quadratically.
+
+/** A run of Unicode superscript characters (the ones extraction produces, see extract/scripts.ts). */
+const SUPERSCRIPTS = new RegExp(`[${[...new Set(Object.values(SUP))].join("")}]+`, "gu");
+export const GREEK = /\p{Script=Greek}/u;
+/** Number scales: "132 million" is not "132 billion". */
+export const SCALE = /^(?:thousand|million|billion|trillion)$/;
 
 /**
  * Canonical text for grounding checks (never shown): superscript runs become "^" + run
@@ -87,17 +96,15 @@ export function stem(w: string): string {
  */
 export function canonical(s: string): string {
   return s
-    .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ]+/gu, (m) => `^${m}`)
+    .replace(SUPERSCRIPTS, (m) => `^${m}`)
     .normalize("NFKC")
-    .replace(/[‐‑‒–—―−﹣－]/g, "-")
+    .replace(/[‐-―−﹣－]/g, "-")
     .replace(/<=>|<->|[↔⇄⇋]/g, "⇌")
     .replace(/-->|->|=>|[⟶⇒]/g, "→")
     .replace(/(?<![\d.,])(\d{1,3})[    ](?=\d{3}(?![\d.,]))/g, "$1")
     .toLowerCase();
 }
 
-export // Every pattern below starts with a lookbehind so a match can only start at a token's first
-// character: without it, long runs like "1.1.1.1…" or "a1a1a1…" backtrack quadratically.
 /** "70mV" → "70 mV" (a number glued to its unit); "6CO2" stays one term. */
 const GLUED_UNIT = /(?<![\p{L}\p{N}.,])(\d+(?:[.,]\d+)*)(\p{L}+)(?![\p{L}\p{N}])/gu;
 
@@ -131,7 +138,7 @@ export function numbersIn(s: string): string[] {
 export function scanNumbers(s: string): { value: string; hyphen: boolean }[] {
   const c = canonical(s).replace(GLUED_UNIT, "$1 $2");
   const out: { value: string; hyphen: boolean }[] = [];
-  for (const m of c.matchAll(/\d+(?:[.,]\d+)*/g)) {
+  for (const m of c.matchAll(/(?<![\d.,])\d+(?:[.,]\d+)*/g)) {
     const i = m.index;
     const before = c[i - 1] ?? "";
     const after = c[i + m[0].length] ?? "";
@@ -144,32 +151,35 @@ export function scanNumbers(s: string): { value: string; hyphen: boolean }[] {
   return out;
 }
 
-const GREEK = /\p{Script=Greek}/u;
 const LATIN_EPITHET = /(?:us|um|is|ae|ii|i|ens|ensis|a|ica|oides|ata|ana)$/;
 const BINOMIAL = /(?<![\p{L}])(\p{Lu}\p{Ll}+|\p{Lu}\.)\s+(\p{Ll}{3,})(?![\p{L}])/gu;
+/** Capitalised words that start sentences, never a genus ("The nucleus", "In bacteria"). */
+const NOT_GENUS = new Set(("the a an this that these those its it their there they each every some all most many any no "
+  + "in on at by for from with into onto over under when where which what why how both such our your his her "
+  + "one two three another other only also then thus hence so but and or if as after before during").split(" "));
 
-/** Facts of a text the grounding check compares: numbers, plain words, terms, equations, species names. */
+/** Units whose prefix changes the size (µm vs mm): a number's unit must match the passage's. */
+const UNITS = new Set(("m mm cm km μm nm pm g mg kg μg ng l ml μl dl mol mmol μmol nmol pmol s ms μs ns min h hz khz mhz "
+  + "v mv μv kv a ma μa j kj mj cal kcal w kw mw pa kpa mpa atm k °c °f da kda bp kb mb gb").split(" "));
+
+/** Facts of a text the grounding check compares. */
 export type Facts = {
   numbers: string[];
   /** Stemmed content words (3+ letters, or any word with a Greek letter: α, ΔG). */
   words: string[];
   /** Terms mixing letters and digits, compared whole: h2o, c6h12o6, brca1, p53, 6co2. */
   terms: string[];
-  /** The text with spaces and "^" removed, for finding an equation in it. */
+  /** The canonical text with spaces and "^" removed, for finding an equation in it. */
   squashed: string;
-  /** Genus (or "E.") → species epithets named with it. */
+  /** Genus (or "e.") → species epithets named with it. */
   species: Map<string, Set<string>>;
   /** Superscripted terms, compared whole: "ca^2+", "mc^2", "10^8", "l^-1", "h^+". */
   scripted: string[];
   /** Greek-prefixed compounds, compared whole: "α-helix", "β-sheet". */
   compounds: string[];
-  /** Number → units written right after it ("30" → "μm"), from the list in UNITS. */
+  /** Number → units written right after it ("30" → "μm"), from UNITS. */
   units: Map<string, Set<string>>;
 };
-
-/** Units whose prefix changes the size (µm vs mm): a number's unit must match the passage's. */
-const UNITS = new Set(("m mm cm km μm nm pm g mg kg μg ng l ml μl dl mol mmol μmol nmol pmol s ms μs ns min h hz khz mhz "
-  + "v mv μv kv a ma μa j kj mj cal kcal w kw mw pa kpa mpa atm k °c °f da kda bp kb mb gb").split(" "));
 
 export function factsOf(text: string): Facts {
   const c = canonical(text);
@@ -179,13 +189,13 @@ export function factsOf(text: string): Facts {
   for (const t of tokens) {
     const letters = /\p{L}/u.test(t);
     if (letters && /\p{N}/u.test(t)) terms.push(t);
-    else if (letters && (GREEK.test(t) || (t.length > 2 && !STOP.has(t)))) words.push(NUMBER_WORD_VALUES[t] !== undefined || /^(?:thousand|million|billion|trillion)$/.test(t) ? t : stem(t));
+    else if (letters && (GREEK.test(t) || (t.length > 2 && !STOP.has(t)))) words.push(NUMBER_WORD_VALUES[t] !== undefined || SCALE.test(t) ? t : stem(t));
   }
   const species = new Map<string, Set<string>>();
   for (const m of text.normalize("NFKC").matchAll(BINOMIAL)) {
-    if (!LATIN_EPITHET.test(m[2])) continue;
-    const key = m[1].toLowerCase();
-    species.set(key, (species.get(key) ?? new Set()).add(m[2]));
+    const genus = m[1].toLowerCase();
+    if (!LATIN_EPITHET.test(m[2]) || NOT_GENUS.has(genus)) continue;
+    species.set(genus, (species.get(genus) ?? new Set()).add(m[2]));
   }
   const scripted = [...c.matchAll(/(?<![\p{L}\p{N}])([\p{L}\p{N}]+)\^([\d+\-]+)/gu)].map((m) => `${m[1]}^${m[2]}`);
   const compounds = [...c.matchAll(/(?<![\p{L}])(\p{Script=Greek}+)-(\p{L}+)/gu)].map((m) => `${m[1]}-${stem(m[2])}`);
@@ -196,6 +206,35 @@ export function factsOf(text: string): Facts {
     units.set(n, (units.get(n) ?? new Set()).add(m[2]));
   }
   return { numbers: numbersIn(text), words, terms, squashed: c.replace(/[\s^]+/g, ""), species, scripted, compounds, units };
+}
+
+/** What an answer may draw on from a passage, as sets. */
+export type PassageFacts = Omit<Facts, "numbers" | "words" | "terms" | "scripted" | "compounds"> & {
+  /** Numbers, plus number words ("five" → 5) and hyphenated numbers without the hyphen ("type-2" → 2). */
+  numbers: Set<string>;
+  words: Set<string>;
+  /** Terms, also without a leading coefficient ("6co2" → "co2") and with superscripts flattened ("ca2", "mc2"). */
+  terms: Set<string>;
+  scripted: Set<string>;
+  compounds: Set<string>;
+};
+
+const passageCache = new Map<string, PassageFacts>();
+
+/** Facts of a passage, worked out once per text (every card citing it reuses them). */
+export function passageFacts(text: string): PassageFacts {
+  const hit = passageCache.get(text);
+  if (hit) return hit;
+  const f = factsOf(text);
+  const numbers = new Set(f.numbers);
+  for (const w of f.words) if (NUMBER_WORD_VALUES[w] !== undefined) numbers.add(String(NUMBER_WORD_VALUES[w]));
+  for (const n of scanNumbers(text)) if (n.hyphen) numbers.add(n.value.slice(1));
+  const terms = new Set(f.terms.flatMap((t) => [t, t.replace(/^\d+(?=\p{L})/u, "")]));
+  for (const t of factsOf(text.replace(SUPERSCRIPTS, (m) => m.normalize("NFKC"))).terms) terms.add(t);
+  const out: PassageFacts = { ...f, numbers, words: new Set(f.words), terms, scripted: new Set(f.scripted), compounds: new Set(f.compounds) };
+  if (passageCache.size >= 200) passageCache.clear();
+  passageCache.set(text, out);
+  return out;
 }
 
 /** Equations in canonical text: the run of formula-like tokens around each =, → or ⇌. */

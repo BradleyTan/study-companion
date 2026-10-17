@@ -203,8 +203,8 @@ export async function makeFlashcards(raw: unknown): Promise<ActionResult<{ resul
       // Every card is already in the deck: save nothing and give the go back (the finally below
       // settles it as failed, which still counts toward the tries cap). Cached, so asking again is free.
       await cacheIt();
-      settled = true;
       await repo.settleAi(day, "flashcards", false, tokens.input, tokens.output);
+      settled = true; // only once it worked: if settling throws, the finally below tries again
       return { ok: true, result: { status: "all_skipped", skipped, quota: await quota(), ...series } };
     }
     const saved = await repo.createFlashcards(cardsToSave(fresh, picked, subjectId, hash, link));

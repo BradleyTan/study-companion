@@ -9,9 +9,13 @@ export function normaliseText(s: string): string {
   return s
     .replace(/\r\n?/g, "\n")
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "")
-    // Re-join words hyphenated across lines ("mito-\nchondria"), but keep the hyphen of a term
-    // that has one ("Gram-\nnegative", "α-\nhelix", "Na⁺/K⁺-\nATPase", "3-\nphosphate").
-    .replace(/([^\s-]*)-\n(?=\p{Ll})/gu, (_, w: string) => (/^\p{Ll}{2,}$/u.test(w) && !/\p{Script=Greek}/u.test(w) ? w : `${w}-`))
+    // Re-join words hyphenated across lines ("mito-\nchondria", "(cyto-\nplasm)"), but keep the
+    // hyphen of a term that has one ("α-\nhelix", "BRCA1-\nlinked", "3-\nphosphate", "ATP-\nase").
+    // The lookbehind anchors the match at a word's start (no quadratic backtracking on long runs).
+    .replace(/(?<![^\s(\[{"'])([^\s-]*)-\n(?=\p{Ll})/gu, (_, w: string) => {
+      const core = w.replace(/^[^\p{L}\p{N}]+/u, "");
+      return /^\p{L}\p{Ll}+$/u.test(core) && !/\p{Script=Greek}/u.test(core) ? w : `${w}-`;
+    })
     .replace(/[ \t]+/g, " ")
     .replace(/ *\n */g, "\n")
     .replace(/\n{3,}/g, "\n\n")

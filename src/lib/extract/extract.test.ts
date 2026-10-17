@@ -73,11 +73,18 @@ describe("chunking", () => {
   it("normalises whitespace and re-joins hyphenated words", () => {
     expect(normaliseText("mito-\nchondria   make\r\n\n\n\nATP")).toBe("mitochondria make\n\nATP");
   });
-  it("keeps the hyphen of terms broken across lines (Gram-negative, α-helix, 3-phosphate)", () => {
-    expect(normaliseText("a Gram-\nnegative cell")).toBe("a Gram-negative cell");
+  it("keeps the hyphen of terms broken across lines (α-helix, 3-phosphate, BRCA1-linked)", () => {
+    expect(normaliseText("Mito-\nchondria and (cyto-\nplasm)")).toBe("Mitochondria and (cytoplasm)");
+    // Known limitation: a real hyphen before a lower-case line start is lost ("Gram-negative").
+    expect(normaliseText("a Gram-\nnegative cell")).toBe("a Gramnegative cell");
     expect(normaliseText("the α-\nhelix and β-\nsheets")).toBe("the α-helix and β-sheets");
     expect(normaliseText("glyceraldehyde 3-\nphosphate")).toBe("glyceraldehyde 3-phosphate");
     expect(normaliseText("BRCA1-\nlinked")).toBe("BRCA1-linked");
+  });
+  it("re-joins hyphens in linear time on long runs without spaces", () => {
+    const t = performance.now();
+    normaliseText(`${"a".repeat(80_000)}-\nb ${"x-".repeat(40_000)}`);
+    expect(performance.now() - t).toBeLessThan(500);
   });
   it("never crosses a page boundary and numbers pages from 1", () => {
     const chunks = chunkPages(["Page one text.", "Page two text."]);

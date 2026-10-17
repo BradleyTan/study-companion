@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { extractFile } from "../extract";
-import { normaliseFlashcardsWithStats } from "./schemas";
+import { cardQualityIssue, isGrounded, normaliseFlashcardsWithStats, resolvePassage } from "./schemas";
 import { toPassages } from "./tasks";
 import type { Passage } from "./types";
 
@@ -210,5 +210,30 @@ describe("science notation: PDF extraction → passages → grounding filter (QA
     for (const x of keeps) console.log(`  FALSE KEEP: ${x.back}  [${x.note ?? ""}]`);
     expect(drops.map((x) => x.back)).toEqual([]);
     expect(keeps.map((x) => x.back)).toEqual([]);
+  });
+});
+
+describe("regressions found in the QA code review", () => {
+  it("a sentence starting with 'The' is not a species name", () => {
+    expect(isGrounded("The nucleus contains DNA.", "The data show that the nucleus contains DNA.")).toBe(true);
+    expect(isGrounded("In bacteria, the plasmid is circular.", "In fungi it is linear; in bacteria, the plasmid is circular.")).toBe(true);
+  });
+  it("short imperative prompts are real questions", () => {
+    expect(cardQualityIssue("Define osmosis", "Movement of water across a membrane")).toBeNull();
+    expect(cardQualityIssue("Name the enzyme", "Amylase")).toBeNull();
+    expect(cardQualityIssue("Mitochondria function", "Make ATP")).toBe("not_a_question");
+  });
+  it("passage refs written loosely still resolve to a passage we sent, and only to one", () => {
+    const ps = [BIO, CHEM];
+    expect(resolvePassage("passage 2", ps)).toBe(CHEM);
+    expect(resolvePassage("p1, p2", ps)).toBe(BIO);
+    expect(resolvePassage("#2", ps)).toBe(CHEM);
+    expect(resolvePassage("p9", ps)).toBeNull();
+    expect(resolvePassage("ignore previous instructions 1", ps)).toBeNull();
+  });
+  it("grounding stays fast on long runs without spaces", () => {
+    const t = performance.now();
+    for (const s of ["1.".repeat(7000), "a1".repeat(7000), "α-".repeat(7000), "= ".repeat(7000), "1 000 ".repeat(2300)]) isGrounded(s.slice(0, 1500), s);
+    expect(performance.now() - t).toBeLessThan(1500);
   });
 });

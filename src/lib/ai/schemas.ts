@@ -2,7 +2,7 @@
 // then normalised (lengths, duplicates, tree shape) and every passage reference is mapped
 // through the server's own list, so a card or node can only point at this student's text.
 import { z } from "zod";
-import { canonical, clip, collapse, containsLoose, equationsIn, factsOf, NO_SPACES, normaliseFront, NUMBER_WORD_VALUES, overlap, scanNumbers, sentences } from "./text";
+import { canonical, clip, collapse, containsLoose, equationsIn, factsOf, GREEK, NO_SPACES, normaliseFront, NUMBER_WORD_VALUES, overlap, passageFacts, SCALE, sentences } from "./text";
 import type { GeneratedCard, MindmapGraph, MindmapNode, Passage } from "./types";
 
 export const CARD_FRONT_MAX = 500;
@@ -32,10 +32,14 @@ export const rawMindmap = z.object({
   })).max(300),
 });
 
-/** Accepts "p3", "P3", "[p3]" or "3"; returns the passage only if it's one we sent. */
+/**
+ * Accepts "p3", "P3", "[p3]", "3", "passage 3" or "p3, p4" (the first one); returns the passage
+ * only if it's one we sent.
+ */
 export function resolvePassage(raw: string | null | undefined, passages: Passage[]): Passage | null {
   if (!raw) return null;
-  const m = /^\[?\s*p?\s*(\d+)\s*\]?$/i.exec(raw.trim());
+  const first = raw.trim().slice(0, 40).split(/[,;/&]|\band\b/)[0];
+  const m = /^\[?\s*(?:p|passage)?\s*#?\s*(\d+)\s*\]?$/i.exec(first.trim());
   if (!m) return null;
   return passages.find((p) => p.ref === `p${Number(m[1])}`) ?? null;
 }
@@ -62,12 +66,15 @@ const FRONT_MIN_NO_SPACES = 4;
  */
 export const GROUNDING_MIN = 0.5;
 
+const IMPERATIVE = /^\s*(?:define|name|explain|describe|list|state|give|outline|compare|contrast|identify|calculate|write|label|summarise|summarize)\b/i;
+
 /** Why a card fails the quality bar, or null when it's fine (Bradley: quality as important as quantity). */
 export function cardQualityIssue(front: string, back: string): "short" | "not_a_question" | "repeats_front" | null {
   const noSpaces = NO_SPACES.test(front);
   if (front.length < (noSpaces ? FRONT_MIN_NO_SPACES : FRONT_MIN)) return "short";
   const tokens = front.match(/[\p{L}\p{N}]+/gu) ?? [];
-  if (!/[?？¿؟]/u.test(front) && tokens.length < 3 && !noSpaces) return "not_a_question";
+  // Short imperatives are real prompts too ("Define osmosis", "Name the enzyme").
+  if (!/[?？¿؟]/u.test(front) && tokens.length < 3 && !noSpaces && !IMPERATIVE.test(front)) return "not_a_question";
   const f = normaliseFront(front);
   const b = normaliseFront(back);
   if (b === f || (b.includes(f) && b.length - f.length < 10)) return "repeats_front";
@@ -93,50 +100,37 @@ export function cardQualityIssue(front: string, back: string): "short" | "not_a_
  * Answers in scripts without spaces get the number check only.
  */
 export function isGrounded(back: string, passageText: string): boolean {
-  const p = factsOf(passageText);
+  const p = passageFacts(passageText);
   const a = factsOf(back);
-  const wordNumbers = p.words.filter((w) => NUMBER_WORD.test(w)).map(numberOfWord);
-  const hyphenated = scanNumbers(passageText).filter((n) => n.hyphen).map((n) => n.value.slice(1));
-  const have = new Set([...p.numbers, ...wordNumbers, ...hyphenated]);
   const sizeOnly = /\b(?:minus|negative|below)\b/i.test(back);
-  const abs = new Set([...have].map((n) => n.replace(/^-/, "")));
-  const numberOk = (n: string) => have.has(n) || (sizeOnly && abs.has(n.replace(/^-/, "")));
+  const numberOk = (n: string) => p.numbers.has(n) || (sizeOnly && (p.numbers.has(n.replace(/^-/, "")) || p.numbers.has(`-${n.replace(/^-/, "")}`)));
   if (!a.numbers.every(numberOk)) return false;
   if (NO_SPACES.test(back)) return true;
 
-  const terms = new Set(p.terms.flatMap((t) => [t, t.replace(/^\d+(?=\p{L})/u, "")]));
-  for (const t of factsOf(passageText.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ]+/gu, (m) => m.normalize("NFKC"))).terms) terms.add(t);
-  if (!a.terms.every((t) => terms.has(t))) return false;
-  const words = new Set(p.words);
+  if (!a.terms.every((t) => p.terms.has(t))) return false;
   // Greek-letter words (α-helix, ΔG) and number scales (million, billion) must match exactly.
-  if (!a.words.filter((w) => GREEK_LETTER.test(w) || SCALE.test(w)).every((w) => words.has(w))) return false;
+  if (!a.words.filter((w) => GREEK.test(w) || SCALE.test(w)).every((w) => p.words.has(w))) return false;
   if (!equationsIn(canonical(back)).every((eq) => p.squashed.includes(eq))) return false;
   // Charges, powers and exponents (Ca²⁺, mc², 10⁸, L⁻¹), Greek compounds (α-helix) and the unit
   // after a number (µm, not mm) must be the passage's own.
-  const scripted = new Set(p.scripted);
-  if (!a.scripted.every((t) => scripted.has(t))) return false;
-  const compounds = new Set(p.compounds);
-  if (!a.compounds.every((t) => compounds.has(t))) return false;
+  if (!a.scripted.every((t) => p.scripted.has(t))) return false;
+  if (!a.compounds.every((t) => p.compounds.has(t))) return false;
   for (const [n, units] of a.units) {
     const known = p.units.get(n);
     if (known && ![...units].every((u) => known.has(u))) return false;
   }
   for (const [genus, names] of a.species) {
-    const known = [...p.species].filter(([g]) => g === genus || (genus.endsWith(".") ? g[0] === genus[0] : genus[0] + "." === g));
+    const known = [...p.species].filter(([g]) => g === genus || (genus.endsWith(".") ? g[0] === genus[0] : `${genus[0]}.` === g));
     if (known.length && ![...names].every((n) => known.some(([, set]) => set.has(n)))) return false;
   }
 
   // Number words in the answer ("five") count as numbers.
-  const answerWords = a.words.filter((w) => !(NUMBER_WORD.test(w) && have.has(numberOfWord(w))));
+  const answerWords = a.words.filter((w) => !(NUMBER_WORD_VALUES[w] !== undefined && p.numbers.has(String(NUMBER_WORD_VALUES[w]))));
   const total = answerWords.length + a.numbers.length + a.terms.length;
   if (!total) return true;
-  const hits = answerWords.filter((w) => words.has(w)).length + a.numbers.length + a.terms.length;
+  const hits = answerWords.filter((w) => p.words.has(w)).length + a.numbers.length + a.terms.length;
   return hits / total >= GROUNDING_MIN;
 }
-const NUMBER_WORD = new RegExp(`^(?:${Object.keys(NUMBER_WORD_VALUES).join("|")})$`);
-const numberOfWord = (w: string) => String(NUMBER_WORD_VALUES[w]);
-const GREEK_LETTER = /\p{Script=Greek}/u;
-const SCALE = /^(?:thousand|million|billion|trillion)$/;
 
 export type NormalisedCards = { cards: GeneratedCard[]; dropped: number };
 

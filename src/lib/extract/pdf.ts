@@ -10,12 +10,13 @@ export async function extractPdf(buf: Uint8Array): Promise<string[]> {
   if (pdf.numPages > MAX_PDF_PAGES) {
     throw new ExtractLimitError(`That PDF has ${pdf.numPages} pages. The limit is ${MAX_PDF_PAGES}.`);
   }
-  const pages: string[] = [];
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const content = await (await pdf.getPage(i)).getTextContent();
-    pages.push(pageText(content.items as TextItem[]));
-  }
-  return pages;
+  // In parallel, as unpdf's extractText does.
+  return Promise.all(Array.from({ length: pdf.numPages }, async (_, i) => {
+    const page = await pdf.getPage(i + 1);
+    const content = await page.getTextContent();
+    page.cleanup();
+    return pageText(content.items as TextItem[]);
+  }));
 }
 
 export class ExtractLimitError extends Error {}
