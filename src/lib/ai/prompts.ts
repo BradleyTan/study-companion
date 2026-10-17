@@ -9,8 +9,10 @@ export const PROMPT_VERSION = 2;
 // Characters that render as nothing (zero-width, bidi controls, fillers, variation selectors).
 const INVISIBLE = /[\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0]/g;
 const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
-// <passage>, </passages …>, and the same written as HTML entities.
-const TAG = "(?:<|&lt;?|&#0*60;?|&#x0*3c;?)\\s*\\\\?\\/?\\s*passages?\\b[^>]*(?:>|&gt;?)?";
+// <passage>, </passages …>, and the same written as HTML entities. The slash part is one
+// optional group that must start with a slash, so a "<" before a long run of spaces can't
+// backtrack quadratically (security review S2-15).
+const TAG = "(?:<|&lt;?|&#0*60;?|&#x0*3c;?)\\s*(?:[\\\\/]{1,2}\\s*)?passages?\\b[^>]*(?:>|&gt;?)?";
 const OPEN_CLOSE = /<|&lt;?|&#0*60;?|&#x0*3c;?|>|&gt;?/gi;
 
 /** One invisible character (non-global copy of INVISIBLE, safe for .test). */
@@ -56,7 +58,9 @@ export function defuse(text: string): string {
     out += t.slice(last, start) + defuseSpan(t.slice(start, end));
     last = end;
   }
-  return out + t.slice(last);
+  // Then the text as written, as before the folding pass existed: "</passageＸ>" or "</passage¹>"
+  // only match unfolded (folding glues the letter on and \b no longer ends "passage") (S2-15).
+  return (out + t.slice(last)).replace(new RegExp(TAG, "gi"), defuseSpan);
 }
 
 export function passagesBlock(passages: Passage[]): string {

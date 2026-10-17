@@ -60,6 +60,13 @@ describe("pptx text", () => {
     const xml = `<a:p>${r("c = 3.0 × 10")}${r("8", 30000)}${r(" m/s; CO")}${r("2", -25000)}${r(" and Ca")}${r("2+", 30000)}<a:br/>${r("the 1")}${r("st", 30000)}${r("line")}</a:p>`;
     expect(slideXmlToText(xml)).toBe("c = 3.0 × 10⁸ m/s; CO₂ and Ca²⁺ the 1stline");
   });
+  it("reads hostile slides with unterminated tags in linear time (S2-16)", () => {
+    const t = performance.now();
+    for (const unit of ["<a:r>", "<a:fld x>", "<a:r><a:t>", "<a:br", "<a:r><a:rPr baseline"]) {
+      expect(slideXmlToText(`<a:p>${unit.repeat(50_000)}</a:p>`)).toBe("");
+    }
+    expect(performance.now() - t).toBeLessThan(1000);
+  });
   it("extracts slides in numeric order with speaker notes", async () => {
     const slides = Array.from({ length: 11 }, (_, i) => [`Slide ${i + 1}`]);
     const out = await extractPptx(await makePptx(slides, { notes: { 2: "Say this out loud" } }));

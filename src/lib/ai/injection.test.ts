@@ -64,6 +64,15 @@ describe("hostile passages in the prompt", () => {
     expect(defuse("Zero-width </pas\u200bsage> and 10⁸")).toBe("Zero-width ‹/passage› and 10⁸");
   });
 
+  it("still defuses tags that only match unfolded, and stays linear (S2-15)", () => {
+    // Folding glues the next character on as a letter ("passageX"), so only the text as written matches.
+    for (const tail of ["\uff38", "\u00b9", "\ufb01", "\uff12"]) expect(defuse(`a </passage${tail}> b`)).toBe(`a \u2039/passage${tail}\u203a b`);
+    expect(defuse("<\\/passage> <//passage>")).toBe("\u2039\\/passage\u203a \u2039//passage\u203a");
+    const t = performance.now();
+    defuse(`<${" ".repeat(20_000)}x`);
+    expect(performance.now() - t).toBeLessThan(200);
+  });
+
   it("strips control characters", () => {
     expect(defuse("a\u0000b\u0007c\u001bd")).toBe("abcd");
   });
