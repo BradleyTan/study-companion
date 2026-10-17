@@ -59,12 +59,15 @@ describe("makeFlashcardsInput page ranges", () => {
     expect(file({})).toBe(true);
     expect(file({ fromPage: 7, toPage: 7 })).toBe(true);
     expect(file({ fromPage: 1, toPage: 20 })).toBe(true);
+    expect(file({ fromPage: 1, toPage: 50 })).toBe(true);
+    expect(file({ fromPage: 15, toPage: 34 })).toBe(true);
   });
-  it("rejects one end only, backwards, over 20 pages, zero, fractions and strings", () => {
+  it("rejects one end only, backwards, over 50 pages, zero, fractions and strings", () => {
     expect(file({ fromPage: 3 })).toBe(false);
     expect(file({ toPage: 3 })).toBe(false);
     expect(file({ fromPage: 6, toPage: 5 })).toBe(false);
-    expect(file({ fromPage: 1, toPage: 21 })).toBe(false);
+    expect(file({ fromPage: 1, toPage: 51 })).toBe(false);
+    expect(file({ fromPage: 10, toPage: 60 })).toBe(false);
     expect(file({ fromPage: 0, toPage: 5 })).toBe(false);
     expect(file({ fromPage: 1.5, toPage: 5 })).toBe(false);
     expect(file({ fromPage: "1", toPage: "5" })).toBe(false);
