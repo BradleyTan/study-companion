@@ -382,6 +382,8 @@ export async function reportQuestion(raw: unknown): Promise<ActionResult<{ finis
   const found = await attemptQuestion(repo, parsed.data.attemptId, parsed.data.questionId);
   if (!found) return { ok: false, error: "That question isn't in this quiz." };
   const { attempt, question: q } = found;
+  // A deleted quiz is gone: reporting must not take a miss back out of weak topics (as for overrides).
+  if (!(await liveQuiz(repo, q.quizId))) return { ok: false, error: "This quiz isn't here any more." };
   if (!q.removedAt) {
     await repo.updateQuestion(q.id, { removedAt: new Date().toISOString() });
     const a = (await repo.listAnswers({ attemptIds: [attempt.id] })).find((x) => x.questionId === q.id);
@@ -460,6 +462,7 @@ export async function removeQuestion(raw: unknown): Promise<ActionResult<{ finis
   const repo = await getRepo();
   const found = await attemptQuestion(repo, parsed.data.attemptId, parsed.data.questionId);
   if (!found) return { ok: false, error: "That question isn't in this quiz." };
+  if (!(await liveQuiz(repo, found.question.quizId))) return { ok: false, error: "This quiz isn't here any more." };
   if (!found.question.removedAt) await repo.updateQuestion(found.question.id, { removedAt: new Date().toISOString() });
   return settleAfterChange(repo, found.attempt);
 }
