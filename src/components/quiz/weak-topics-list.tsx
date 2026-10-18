@@ -38,7 +38,8 @@ export function WeakTopicsList({ subject, open: initialOpen, gotIt: initialGot, 
 }) {
   const [open, setOpen] = useState(initialOpen);
   const [gotIt, setGotIt] = useState(initialGot);
-  const [showGot, setShowGot] = useState(initialOpen.length === 0);
+  /** null: open by default only when everything is cleared. */
+  const [showGotPick, setShowGot] = useState<boolean | null>(null);
   const [make, setMake] = useState<QuizPreset | null>(null);
   const [allClearParty, setAllClearParty] = useState(false);
   const practiseAllRef = useRef<HTMLButtonElement>(null);
@@ -100,6 +101,7 @@ export function WeakTopicsList({ subject, open: initialOpen, gotIt: initialGot, 
   );
 
   const empty = open.length === 0;
+  const showGot = showGotPick ?? empty;
   return (
     <div className="flex flex-col gap-6" style={subjectStyle(subject.colour)}>
       {header}

@@ -325,8 +325,8 @@ export async function checkAnswer(raw: unknown): Promise<ActionResult<CheckResul
   if (created && nextTopic) await repo.saveWeakTopic(q.subjectId, nextTopic, current?.id);
 
   const [questions, answers] = await Promise.all([questionsMap(repo, quiz.id), repo.listAnswers({ attemptIds: [attempt.id] })]);
+  // No revalidatePath here: the quiz screen keeps its own state, and a refresh would remount it.
   const finished = await settleAttempt(repo, attempt, questions, answers);
-  if (finished) revalidatePath(`/subjects/${quiz.subjectId}`);
   return { ok: true, feedback: await feedbackFor(repo, q, slot, answer), finished };
 }
 
@@ -391,7 +391,6 @@ async function settleAfterChange(repo: Repo, attempt: QuizAttempt): Promise<Acti
   const [questions, answers] = await Promise.all([questionsMap(repo, attempt.quizId), repo.listAnswers({ attemptIds: [attempt.id] })]);
   const finished = await settleAttempt(repo, attempt, questions, answers);
   const remaining = [...questions.values()].filter((q) => !q.removedAt).length;
-  revalidatePath(`/subjects/${attempt.subjectId}`);
   return { ok: true, finished, remaining };
 }
 

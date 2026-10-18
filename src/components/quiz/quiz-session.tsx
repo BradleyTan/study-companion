@@ -352,7 +352,7 @@ export function QuizSession({ subject, quizId, title, start }: { subject: Subjec
     <>
       {topBar}
       <motion.section
-        key={q.id} aria-labelledby={promptId}
+        key={q.id} aria-labelledby={promptId} data-testid="question" data-type={q.type} data-prompt={q.prompt}
         initial={calm ? { opacity: 0 } : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
         transition={calm ? { duration: 0.15 } : { type: "spring", stiffness: 300, damping: 26 }}
         className="mx-auto flex w-full max-w-[680px] flex-col gap-4 sm:w-[600px] lg:w-[680px]"
