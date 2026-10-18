@@ -143,7 +143,8 @@ test("the daily limit: the chip shows from 3 left, then the composer becomes the
   await expect(page.getByRole("textbox", { name: "Ask a question about Physics" })).toHaveCount(0);
   // Not-covered replies would still be free, but nothing can be sent until tomorrow.
   await page.reload();
-  await expect(page.getByTestId("chat-limit")).toBeVisible();
+  // Scoped to #main: while the page streams in, React holds a hidden copy outside it for a moment.
+  await expect(page.locator("#main").getByTestId("chat-limit")).toBeVisible();
   await expect(page.getByRole("article", { name: "You asked" })).toHaveCount(20);
 });
 
