@@ -1,7 +1,7 @@
 import "server-only";
 import { aiConfig, CLOUDFLARE_MODEL, GROQ_MODELS } from "@/lib/ai/providers";
 import type { AiBudget } from "@/lib/ai/run";
-import { APP_BUDGET, DAILY_LIMITS, quotaFrom, type AiKind, type Quota } from "@/lib/limits/ai";
+import { appBudgetFor, DAILY_LIMITS, quotaFrom, type AiKind, type Quota } from "@/lib/limits/ai";
 import { localDayKey, safeTimeZone } from "@/lib/srs/due";
 import type { Repo } from "./repo/types";
 
@@ -15,7 +15,10 @@ export async function studentDay(repo: Repo, now = new Date()): Promise<string> 
 export function appBudget(repo: Repo, now = new Date()): AiBudget {
   const day = utcDay(now);
   return {
-    reserve: (provider, model) => repo.reserveAppBudget(day, model, APP_BUDGET[provider].requests, APP_BUDGET[provider].tokens),
+    reserve: (provider, model) => {
+      const b = appBudgetFor(provider, model);
+      return repo.reserveAppBudget(day, model, b.requests, b.tokens);
+    },
     addTokens: (_provider, model, tokens) => repo.addAppTokens(day, model, tokens),
   };
 }
@@ -25,8 +28,10 @@ export async function appAllowanceLeft(repo: Repo, kind: AiKind, now = new Date(
   const cfg = aiConfig();
   if (!cfg.groqKey) return true;
   const day = utcDay(now);
-  if (await repo.appBudgetLeft(day, GROQ_MODELS[kind], APP_BUDGET.groq.requests, APP_BUDGET.groq.tokens)) return true;
-  return cfg.cloudflare ? repo.appBudgetLeft(day, CLOUDFLARE_MODEL, APP_BUDGET.cloudflare.requests, APP_BUDGET.cloudflare.tokens) : false;
+  const groq = appBudgetFor("groq", GROQ_MODELS[kind]);
+  if (await repo.appBudgetLeft(day, GROQ_MODELS[kind], groq.requests, groq.tokens)) return true;
+  const cf = appBudgetFor("cloudflare", CLOUDFLARE_MODEL);
+  return cfg.cloudflare ? repo.appBudgetLeft(day, CLOUDFLARE_MODEL, cf.requests, cf.tokens) : false;
 }
 
 /** What the quota chip shows; always the server's numbers. */
