@@ -351,6 +351,9 @@ export async function overrideAnswer(raw: unknown): Promise<ActionResult<CheckRe
   const found = await attemptQuestion(repo, parsed.data.attemptId, parsed.data.questionId);
   if (!found) return { ok: false, error: "That question isn't in this quiz." };
   const { attempt, question: q, slot } = found;
+  // A reported question already took its miss back; a deleted quiz is gone (QA step 3).
+  if (q.removedAt) return { ok: false, error: "That question was taken out of this quiz." };
+  if (!(await liveQuiz(repo, q.quizId))) return { ok: false, error: "This quiz isn't here any more." };
   const a = (await repo.listAnswers({ attemptIds: [attempt.id] })).find((x) => x.questionId === q.id);
   if (!a) return { ok: false, error: "Answer the question first." };
   if (a.overridden || a.correct) return { ok: true, feedback: await feedbackFor(repo, q, slot, a), finished: !!attempt.finishedAt };

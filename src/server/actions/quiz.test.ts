@@ -246,6 +246,30 @@ describe("taking a quiz", () => {
     expect((await repo.getQuestion(q.id))!.accepted).toContain("ATP synthase");
   });
 
+  it("refuses an override on a reported question or a deleted quiz (the miss is not taken back twice)", async () => {
+    const { quizId, subjectId } = await made("fill", 5);
+    const first = await started(quizId);
+    const q = first.questions[0];
+    await actions.checkAnswer({ attemptId: first.attemptId, questionId: q.id, clientKey: crypto.randomUUID(), text: "ATP synthase" });
+    const r2 = await actions.startAttempt({ quizId, fresh: true });
+    if (!r2.ok) throw new Error(r2.error);
+    const second = r2.view;
+    await actions.checkAnswer({ attemptId: second.attemptId, questionId: q.id, clientKey: crypto.randomUUID(), text: "ATP synthase" });
+    expect((await repo.listWeakTopics(subjectId))[0].missCount).toBe(2);
+    await actions.reportQuestion({ attemptId: second.attemptId, questionId: q.id, reason: "wrong_answer" });
+    expect((await repo.listWeakTopics(subjectId))[0].missCount).toBe(1);
+    expect((await actions.overrideAnswer({ attemptId: second.attemptId, questionId: q.id })).ok).toBe(false);
+    expect((await repo.listWeakTopics(subjectId))[0].missCount).toBe(1);
+    expect((await repo.getQuestion(q.id))!.accepted).not.toContain("ATP synthase");
+
+    const other = await made("fill", 5);
+    const view = await started(other.quizId);
+    const q2 = view.questions[0];
+    await actions.checkAnswer({ attemptId: view.attemptId, questionId: q2.id, clientKey: crypto.randomUUID(), text: "ATP synthase" });
+    await actions.deleteQuiz(other.quizId);
+    expect((await actions.overrideAnswer({ attemptId: view.attemptId, questionId: q2.id })).ok).toBe(false);
+  });
+
   it("refuses an override on a right answer's question from another quiz", async () => {
     const a = await made();
     const viewA = await started(a.quizId);
