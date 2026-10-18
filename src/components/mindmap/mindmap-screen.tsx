@@ -58,6 +58,21 @@ export function MindmapScreen({ subject, initial, quota: initialQuota, options, 
   const [animate, setAnimate] = useState(false);
   const [layoutKey, setLayoutKey] = useState(0);
   const [save, setSave] = useState<Save>("idle");
+  // A map made somewhere else (another tab) arrives with a refresh: show it from the start. The map
+  // this screen has just made comes back with the same createdAt, so a refresh landing late never
+  // resets the screen under the student (an open passage, a layout save on its way; QA step 3).
+  const serverAt = initial?.createdAt ?? null;
+  const [shownAt, setShownAt] = useState(serverAt);
+  if (serverAt !== shownAt) {
+    setShownAt(serverAt);
+    if (serverAt && serverAt !== view?.createdAt) {
+      setView(initial);
+      setPanel(null);
+      setAnimate(false);
+      setLayoutKey((k) => k + 1);
+      setSave("idle");
+    }
+  }
   const [hint, setHint] = useState(false);
   const [line, setLine] = useState(0);
   const [announce, setAnnounce] = useState("");

@@ -224,3 +224,50 @@ for (const [name, voices, text] of [
     await expectNoA11yViolations(page);
   });
 }
+
+// QA step 3 (docs/qa/step-3.md): the refresh after making a mindmap used to remount the whole
+// screen when it landed (the page keyed it on the map's createdAt), closing the passage panel and
+// dropping a layout save still waiting to be sent. In a busy full e2e run the refresh lands seconds
+// late, so step2.spec.ts "mindmap: make, open a passage, move a topic" failed now and then.
+test("mindmap: a late refresh after making it keeps the open passage and the layout save", async ({ page }) => {
+  await subjectWithNote(page, "Geology");
+  const subjectUrl = page.url().replace(/\/notes\/.*$/, "");
+  await page.goto(`${subjectUrl}/mindmap`);
+  await expect(page.getByRole("button", { name: "Make a mindmap" })).toBeVisible();
+  // From now on, hold back every page refresh (RSC GET) by 3 s, like a busy server.
+  let held = 0;
+  await page.route(/\/mindmap/, async (route) => {
+    const req = route.request();
+    if (req.method() === "GET" && req.headers()["rsc"]) {
+      held++;
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+    await route.continue();
+  });
+  await page.getByRole("button", { name: "Make a mindmap" }).click();
+  const topic = page.locator('.react-flow__node[data-id="n1"]');
+  await expect(topic).toBeVisible({ timeout: 15_000 });
+  const gotIt = page.getByRole("button", { name: "Got it" });
+  if (await gotIt.isVisible()) await gotIt.click(); // touch hint (phones), set when the screen mounted
+
+  // Open a passage and move a topic while the refresh is still on its way.
+  await topic.focus();
+  await page.keyboard.press("Enter");
+  const panel = page.getByTestId("passage-panel");
+  await expect(panel.getByRole("heading")).toBeVisible();
+  await panel.getByRole("button", { name: "Close" }).click();
+  await topic.focus();
+  await page.keyboard.press("Shift+ArrowRight");
+  await page.keyboard.press("Enter");
+  await expect(panel.getByRole("heading")).toBeVisible();
+  await expect.poll(() => held).toBeGreaterThan(0);
+  // After the refresh has landed, the panel is still open and the move was saved.
+  await page.waitForTimeout(3500);
+  await expect(panel.getByRole("heading")).toBeVisible();
+  await expect(page.getByTestId("quota-chip").first()).toHaveText("2 of 3 left today");
+  await page.unroute(/\/mindmap/);
+  const moved = await topic.evaluate((el) => (el as HTMLElement).style.transform);
+  await page.reload();
+  await expect(topic).toBeVisible();
+  await expect.poll(() => topic.evaluate((el) => (el as HTMLElement).style.transform)).toBe(moved);
+});

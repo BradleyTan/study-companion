@@ -24,8 +24,10 @@ export default async function MindmapPage({ params }: PageProps<"/subjects/[id]/
   // "Changed" compares the map's hash with the same selection's hash today.
   const initial = map ? { ...mindmapView(map, mindmapInput(subject.name, options, chunks, map.sources).hash), sources: map.sources } : null;
   return (
+    // Keyed on the subject, not the map: the refresh after making a map must not remount the
+    // screen under the student (MindmapScreen adopts a map made elsewhere itself).
     <MindmapScreen
-      key={map?.createdAt ?? "none"}
+      key={subject.id}
       subject={{ id: subject.id, name: subject.name, colour: subject.colour, emoji: subject.emoji }}
       initial={initial}
       quota={quota}
