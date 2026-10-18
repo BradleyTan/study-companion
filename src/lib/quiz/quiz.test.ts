@@ -16,6 +16,9 @@ describe("weak topics: tracking rules", () => {
   it("matches topics case-insensitively and trimmed", () => {
     expect(topicKey("  Krebs   Cycle ")).toBe("krebs cycle");
     expect(topicKey("KREBS cycle")).toBe(topicKey("krebs cycle"));
+    // Same as the database's lower(btrim(topic)) (checked on Postgres 16): no NFKC folding, or a
+    // topic like "Ca²⁺" is looked up as "ca2+", missed, and the insert breaks the unique key.
+    for (const [t, db] of [["Ca²⁺", "ca²⁺"], ["ﬁbre", "ﬁbre"], ["ＡＴＰ", "ａｔｐ"], ["Équilibre", "équilibre"], ["Straße", "straße"], ["ΔG", "δg"]]) expect(topicKey(t)).toBe(db);
   });
 
   it("a first miss creates the topic with one miss and remembers the passage", () => {

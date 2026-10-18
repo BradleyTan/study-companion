@@ -1,9 +1,13 @@
 // Weak-topic tracking (weak-topics.md "Tracking rules"). Pure: the server reads the topic's
 // row, applies one of these and writes the result back.
 
-/** A topic matches case-insensitively and trimmed, per subject. */
+/**
+ * A topic matches case-insensitively and trimmed, per subject. Must equal the database's
+ * generated `topic_key` (lower(btrim(topic)); stored topics already have single spaces), or a
+ * lookup misses the row and the insert hits the unique key: no NFKC here ("Ca²⁺" stays "ca²⁺").
+ */
 export function topicKey(topic: string): string {
-  return topic.normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase();
+  return topic.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
 export const TOPIC_MAX = 40;
