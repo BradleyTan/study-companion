@@ -213,3 +213,33 @@ describe("day separators", () => {
     expect(dayLabel("2026-10-18T02:00:00Z", "America/New_York", now)).toBe("Saturday");
   });
 });
+
+describe("normaliseChatReply: CPU on hostile replies (security review S3-1)", () => {
+  // A reply is the model's text, and a hostile note can steer it. Every pattern must stay linear.
+  const hostile: Record<string, string> = {
+    "ref, then a long run of spaces": `[1,${" ".repeat(20_000)}x`,
+    "p, then a long run of spaces": `[p${" ".repeat(20_000)}x`,
+    "# after spaces": `[p ${" ".repeat(10_000)}#${" ".repeat(10_000)}x`,
+    "unclosed tags": "<a".repeat(10_000),
+    "unclosed images": "![a](".repeat(4_000),
+    "unclosed links": "[a](".repeat(5_000),
+    "open brackets": `[${"a[".repeat(10_000)}`,
+  };
+  for (const [name, text] of Object.entries(hostile)) {
+    it(`stays fast: ${name}`, () => {
+      const start = performance.now();
+      normaliseChatReply({ covered: true, answer: text, reveal: text }, P, { quiz: true });
+      expect(performance.now() - start).toBeLessThan(500);
+    });
+  }
+
+  it("still reads every way of writing a ref group", () => {
+    for (const ref of ["[p1]", "[P1]", "[1]", "[ p1 ]", "[p 1]", "[#1]", "[p#1]", "[passage 1]", "【p1】", "[p1, p2]", "[p1; p2]", "[p1 and p2]", "[p1 & p2]", "[ 1 ,  2 ]"]) {
+      const r = reply(`Mitochondria have a double membrane ${ref}.`);
+      expect(r?.kind, ref).toBe("answer");
+      expect(r?.kind === "answer" && r.citations[0].chunkId, ref).toBe("c-mito");
+    }
+    const two = reply("Mitochondria have a double membrane [p1, p2].");
+    expect(two?.kind === "answer" && two.citations.map((c) => c.chunkId)).toEqual(["c-mito", "c-osmo"]);
+  });
+});

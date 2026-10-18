@@ -28,7 +28,9 @@ export type ChatReply =
   | { kind: "not_covered"; dropped: number };
 
 // A group of refs as the model writes them: [p2], [p1, p3], [P2; p4], [2], 【p1】, [passage 3].
-const ONE_REF = String.raw`(?:p|passage)?\s*#?\s*\d{1,3}`;
+// Every ref starts with a non-space ("p", "#" or a digit) and each run of spaces can only be
+// matched one way, so a long run of spaces can't backtrack (S3-1: `\s*#?\s*` took seconds).
+const ONE_REF = String.raw`(?:(?:p|passage)\s*)?(?:#\s*)?\d{1,3}`;
 const REF_GROUP = new RegExp(String.raw`[\[【]\s*(${ONE_REF}(?:\s*(?:,|;|&|and)\s*${ONE_REF})*)\s*[\]】]`, "gi");
 // Private-use characters: never typed by students, removed from the model's text first.
 const OPEN = "";
@@ -43,9 +45,9 @@ const ABBREV = /\b(e\.g|i\.e|etc|vs|approx|cf|fig|figs|eq|no|dr|prof|st)\./gi;
 function cleanMarkdown(s: string): string {
   return s
     .replace(PRIVATE, "")
-    .replace(/<\/?[a-z][^>]*>/gi, " ")             // HTML tags
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")          // images
-    .replace(/\[([^\]]+)\]\((?:[^)]*)\)/g, "$1")    // links: keep the words
+    .replace(/<\/?[a-z][^<>]*>/gi, " ")            // HTML tags (stops at the next "<": linear)
+    .replace(/!\[[^[\]]*\]\([^()]*\)/g, " ")       // images
+    .replace(/\[([^[\]]+)\]\([^()]*\)/g, "$1")     // links: keep the words
     .replace(/https?:\/\/\S+/gi, " ")               // bare links
     .replace(/`+/g, "")                             // code marks
     .replace(/__(.+?)__/g, "**$1**")
@@ -104,9 +106,9 @@ function citedSentences(raw: string, byRef: Map<string, Passage>, drop: () => vo
   for (const sen of sentences(s)) {
     const ids: string[] = [];
     for (const m of sen.matchAll(MARKERS)) {
-      for (const r of m[1].split(/\s*(?:,|;|&|and)\s*/i)) {
-        const num = /(\d{1,3})/.exec(r)?.[1];
-        const p = num ? byRef.get(`p${Number(num)}`) : undefined;
+      // Each ref in a group holds exactly one number (separators and "p"/"passage" have none).
+      for (const [num] of m[1].matchAll(/\d{1,3}/g)) {
+        const p = byRef.get(`p${Number(num)}`);
         if (p && !ids.includes(p.chunkId)) ids.push(p.chunkId);
       }
     }
