@@ -102,6 +102,7 @@ describe("student B can't reach student A's Step 2 data through server actions",
     vi.stubGlobal("fetch", vi.fn(async () => reply({ cards: [
       { front: "What is studied?", back: "Enzymes", passage: a.chunkId, quote: "Enzymes is studied in this course." },
       { front: "Zebra?", back: "Quantum", passage: a.chunkId },
+      { front: "What is studied in this course?", back: "Enzymes", passage: "p1", quote: "Enzymes is studied in this course." },
     ] })));
     await b.repo.updateNote(b.noteId, { title: "Enzymes 2", contentJson: {}, contentText: text("Enzymes") + " More." });
     const r = await makeFlashcards({ subjectId: b.subjectId, source: { type: "note", id: b.noteId }, count: 10 });

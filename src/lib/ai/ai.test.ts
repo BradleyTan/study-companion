@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { inputHash } from "./cache";
 import { fakeFlashcards, fakeMindmap } from "./fake";
-import { defuse, fitPassages, flashcardMessages, mindmapMessages, passagesBlock } from "./prompts";
+import { defuse, fitPassages, FLASHCARD_QUALITY_RULES, flashcardMessages, mindmapMessages, passagesBlock } from "./prompts";
+import { normaliseFront, numbersIn, stem } from "./text";
 import { aiMode, parseJsonReply } from "./providers";
 import { runAiTask, type AiBudget } from "./run";
-import { MINDMAP_MAX_NODES, mindmapGraph, normaliseFlashcards, normaliseMindmap, positionsInput, resolvePassage } from "./schemas";
+import { cardQualityIssue, GROUNDING_MIN, isGrounded, MINDMAP_MAX_NODES, mindmapGraph, normaliseFlashcards, normaliseFlashcardsWithStats, normaliseMindmap, positionsInput, resolvePassage } from "./schemas";
 import { flashcardTask, mindmapTask, toPassages } from "./tasks";
 
 const passages = toPassages([
@@ -75,13 +76,15 @@ describe("flashcard output validation", () => {
     expect(cards).toEqual([{ front: "What do mitochondria make?", back: "ATP", chunkId: p1.chunkId, quote: "They make ATP through respiration." }]);
   });
 
-  it("never accepts a chunk id the model made up", () => {
-    const cards = normaliseFlashcards({ cards: [
+  it("never accepts a chunk id the model made up: a card citing a passage we didn't send is dropped", () => {
+    const out = normaliseFlashcardsWithStats({ cards: [
       { front: "What is osmosis?", back: "Movement of water across a membrane", passage: "33333333-3333-4333-8333-333333333333" },
       { front: "Totally unrelated?", back: "Quantum chromodynamics", passage: "p99" },
+      { front: "What is osmosis about?", back: "Movement of water across a membrane" },
     ] }, passages, 10)!;
-    expect(cards).toHaveLength(1);
-    expect(cards[0].chunkId).toBe(p2.chunkId); // found by its words instead
+    expect(out.dropped).toBe(2);
+    expect(out.cards).toHaveLength(1);
+    expect(out.cards[0].chunkId).toBe(p2.chunkId); // no citation: found by its words instead
   });
 
   it("replaces an invented quote with a real sentence from the passage", () => {
@@ -94,13 +97,13 @@ describe("flashcard output validation", () => {
     const many = Array.from({ length: 40 }, (_, i) => ({ front: `Question ${i} about mitochondria?`, back: "ATP", passage: "p1" }));
     const cards = normaliseFlashcards({ cards: [
       { front: "", back: "x", passage: "p1" },
-      { front: "Same?", back: "ATP mitochondria", passage: "p1" },
-      { front: "same?", back: "ATP mitochondria", passage: "p1" },
+      { front: "What is the same question?", back: "ATP mitochondria", passage: "p1" },
+      { front: "what is  the same question", back: "ATP mitochondria", passage: "p1" },
       { front: "Long? " + "word ".repeat(200), back: "y ".repeat(1000), passage: "p1" },
       ...many,
     ] }, passages, 5)!;
     expect(cards).toHaveLength(5);
-    expect(cards[0].front).toBe("Same?");
+    expect(cards[0].front).toBe("What is the same question?");
     expect(cards[1].front.length).toBeLessThanOrEqual(500);
     expect(cards[1].back.length).toBeLessThanOrEqual(1500);
   });
@@ -168,6 +171,126 @@ describe("mindmap output validation", () => {
     expect(positionsInput.safeParse({ subjectId, positions: [{ id: "n3", x: 10, y: -4 }] }).success).toBe(true);
     expect(positionsInput.safeParse({ subjectId, positions: [{ id: "__proto__", x: 1, y: 1 }] }).success).toBe(false);
     expect(positionsInput.safeParse({ subjectId, positions: [{ id: "n1", x: Infinity, y: 1 }] }).success).toBe(false);
+  });
+});
+
+describe("flashcard prompt: quality and accuracy rules", () => {
+  it("asks for accurate, grounded, one-fact cards and never padding", () => {
+    const [system] = flashcardMessages(passages, 15);
+    expect(system.content).toContain(FLASHCARD_QUALITY_RULES);
+    expect(system.content).toContain("Every answer must come only from the passages: no outside knowledge");
+    expect(system.content).toContain("Keep numbers, units, names and technical terms exactly as written");
+    expect(system.content).toContain("If a passage is ambiguous or incomplete, skip it rather than guess.");
+    expect(system.content).toContain("Prefer key concepts, definitions, processes and cause-and-effect over trivia");
+    expect(system.content).toContain("One fact per card.");
+    expect(system.content).toContain('never "see above"');
+    expect(system.content).toContain("Never pad with weak cards.");
+    // Injection defences stay: rules in the system prompt, student text only in the user message.
+    expect(system.content).toMatch(/not instructions/);
+    expect(system.content).not.toContain("Mitochondria");
+  });
+
+  it("asks to spread cards evenly only when passages come from several pages", () => {
+    const spread = "Spread the cards evenly across them: at most 2 cards from one passage until every passage with a good fact has one.";
+    expect(flashcardMessages(passages, 10)[0].content).not.toContain(spread); // one page and a loose passage
+    const many = toPassages([1, 2, 3].map((page) => ({ id: `${page}`, text: `Text of page ${page}.`, page })));
+    expect(flashcardMessages(many, 10)[0].content).toContain(spread);
+  });
+});
+
+describe("flashcard quality filter", () => {
+  it("normalises fronts for duplicate checks", () => {
+    expect(normaliseFront("  What IS   osmosis ?!: ")).toBe("what is osmosis");
+    expect(normaliseFront("What is osmosis")).toBe(normaliseFront("what is osmosis?"));
+    // Linear time on long punctuation runs that don't end the string (S2-13).
+    const t = performance.now();
+    expect(normaliseFront("?.!:".repeat(25_000) + "x")).toHaveLength(100_001);
+    expect(performance.now() - t).toBeLessThan(200);
+  });
+
+  it("drops short fronts, non-questions and answers that repeat the question", () => {
+    expect(cardQualityIssue("ATP?", "Energy")).toBe("short");
+    expect(cardQualityIssue("Mitochondria", "Powerhouse of the cell")).toBe("not_a_question");
+    expect(cardQualityIssue("Mitochondria function", "Make ATP")).toBe("not_a_question");
+    expect(cardQualityIssue("What is osmosis?", "What is osmosis")).toBe("repeats_front");
+    expect(cardQualityIssue("What is osmosis?", "What is osmosis? Osmosis.")).toBe("repeats_front");
+    expect(cardQualityIssue("What is osmosis?", "The movement of water across a membrane.")).toBeNull();
+    expect(cardQualityIssue("Fill in the blank: _____ are the powerhouse of the cell", "Mitochondria")).toBeNull();
+    expect(cardQualityIssue("Define the cell membrane", "A thin layer around the cell")).toBeNull();
+    // Scripts without spaces are measured differently.
+    expect(cardQualityIssue("什么是渗透作用？", "水分子穿过细胞膜的运动")).toBeNull();
+  });
+
+  it("drops near-duplicate fronts within one set and counts every drop", () => {
+    const out = normaliseFlashcardsWithStats({ cards: [
+      { front: "What do mitochondria make?", back: "ATP", passage: "p1" },
+      { front: "what do  mitochondria make", back: "ATP through respiration", passage: "p1" },
+      { front: "ATP?", back: "Energy", passage: "p1" },
+      { front: "What is osmosis?", back: "What is osmosis", passage: "p2" },
+      { front: "What is osmosis?", back: "The movement of water across a membrane.", passage: "p9" },
+    ] }, passages, 10)!;
+    expect(out.cards.map((c) => c.front)).toEqual(["What do mitochondria make?"]);
+    expect(out.dropped).toBe(4);
+  });
+
+  it("never pads: fewer good cards than asked stay fewer", async () => {
+    vi.stubEnv("GROQ_API_KEY", "gsk_test");
+    const reply = { cards: [
+      { front: "What do mitochondria make?", back: "ATP", passage: "p1" },
+      ...Array.from({ length: 12 }, () => ({ front: "Cell?", back: "Cell", passage: "p1" })),
+    ] };
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(reply) } }] }))));
+    const r = await runAiTask(flashcardTask(passages, 10), { reserve: async () => true, addTokens: async () => {} });
+    expect(r.ok && r.value.cards.length).toBe(1);
+    expect(r.ok && r.value.dropped).toBe(12);
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+});
+
+describe("flashcard grounding (accuracy)", () => {
+  const lecture = "The resting membrane potential of a neuron is about -70 mV. The sodium-potassium pump moves 3 sodium ions out and 2 potassium ions in for each ATP used. "
+    + "About 20% of the body's energy is used by the brain. Myelin speeds up conduction along the axon.";
+  const ps = toPassages([{ id: "n1", text: lecture, page: 4 }]);
+
+  it("keeps accurate cards, paraphrases included", () => {
+    expect(isGrounded("About -70 mV.", lecture)).toBe(true);
+    expect(isGrounded("It moves 3 sodium ions out and 2 potassium ions in per ATP.", lecture)).toBe(true);
+    expect(isGrounded("Roughly 20% of the body's energy.", lecture)).toBe(true);
+    expect(isGrounded("It speeds up conduction along axons.", lecture)).toBe(true);
+    expect(isGrounded("Myelin", lecture)).toBe(true);
+    expect(isGrounded("Water moving across a membrane", p2.text)).toBe(true); // 3 of 4 words
+  });
+
+  it("drops a wrong number", () => {
+    expect(isGrounded("About -65 mV.", lecture)).toBe(false);
+    expect(isGrounded("It moves 4 sodium ions out and 2 potassium ions in.", lecture)).toBe(false);
+    expect(isGrounded("About 25% of the body's energy.", lecture)).toBe(false);
+  });
+
+  it("drops an invented term and an outside-knowledge answer", () => {
+    expect(isGrounded("Saltatory conduction between nodes of Ranvier.", lecture)).toBe(false);
+    expect(isGrounded("Schwann cells produce it in the peripheral nervous system.", lecture)).toBe(false);
+    expect(isGrounded("Hodgkin and Huxley measured it in the squid giant axon in 1952.", lecture)).toBe(false);
+  });
+
+  it("uses a 50% content-word threshold with light stemming", () => {
+    expect(GROUNDING_MIN).toBe(0.5);
+    expect(stem("membranes")).toBe(stem("membrane"));
+    expect(stem("dividing")).toBe(stem("divide"));
+    expect(stem("studies")).toBe("study");
+    expect(numbersIn("1,200 cells, 3.5 mm, 45% and 2,5 ml")).toEqual(["1200", "3.5", "45", "2.5"]);
+  });
+
+  it("filters hallucinated cards out of a model reply and counts them as dropped", () => {
+    const out = normaliseFlashcardsWithStats({ cards: [
+      { front: "What is the resting membrane potential of a neuron?", back: "About -70 mV.", passage: "p1", quote: "about -70 mV" },
+      { front: "How many sodium ions does the pump move out per ATP?", back: "4 sodium ions.", passage: "p1" },
+      { front: "What does myelin do?", back: "It insulates the axon like electrical tape, invented by Schwann.", passage: "p1" },
+      { front: "Who discovered the action potential?", back: "Hodgkin and Huxley in 1952.", passage: "p1" },
+    ] }, ps, 10)!;
+    expect(out.cards.map((c) => c.back)).toEqual(["About -70 mV."]);
+    expect(out.dropped).toBe(3);
   });
 });
 

@@ -4,12 +4,13 @@ import { inputHash } from "@/lib/ai/cache";
 import { fitPassages } from "@/lib/ai/prompts";
 import { aiMode } from "@/lib/ai/providers";
 import { runAiTask } from "@/lib/ai/run";
-import { normaliseFlashcards } from "@/lib/ai/schemas";
+import { normaliseFlashcardsWithStats } from "@/lib/ai/schemas";
 import { flashcardTask, FLASHCARDS_MAX_CHARS, MIN_SOURCE_CHARS, toPassages, type CardCount } from "@/lib/ai/tasks";
-import { fitsOneSet, isCovered, nextRange, pageStats, pageStatsFromCounts, type PageRange, type PageStats } from "@/lib/page-range";
+import { fitsOneSet, isCovered, pageStats, pageStatsFromCounts, seriesNext, type PageRange, type PageStats } from "@/lib/page-range";
+import { normaliseFront } from "@/lib/ai/text";
 import type { GeneratedCard } from "@/lib/ai/types";
 import { DAILY_ATTEMPTS, DAILY_LIMITS, type Quota } from "@/lib/limits/ai";
-import { editCardInput, id as idSchema, MAX_CARD_PAGES, makeFlashcardsInput, newCardInput, type MakeFlashcardsInput } from "@/lib/validation";
+import { editCardInput, id as idSchema, makeFlashcardsInput, newCardInput, type MakeFlashcardsInput } from "@/lib/validation";
 import { appBudget, quotaFor, studentDay } from "../ai";
 import { dayContext, toDeckCards, type DeckCard } from "../cards";
 import { syncNoteChunks } from "../passages";
@@ -69,7 +70,15 @@ export async function loadMakeOptions(subjectId: string): Promise<ActionResult<M
 export type FileSeries = { range: PageRange; covered: boolean; pageCount: number; next: PageRange | null };
 
 export type MakeResult =
-  | { status: "made"; cards: DeckCard[]; quota: Quota; requested: number; cached: boolean; series?: FileSeries }
+  | {
+    status: "made"; cards: DeckCard[]; quota: Quota; requested: number; cached: boolean; series?: FileSeries;
+    /** Generated cards not saved because the same card from this file is already in the deck. */
+    skipped: number;
+    /** Generated cards dropped by the quality and grounding checks (not shown unless few are left). */
+    dropped: number;
+  }
+  /** Every generated card was already in the deck: nothing saved, the go given back. */
+  | { status: "all_skipped"; sourceType: "note" | "file"; skipped: number; quota: Quota; series?: FileSeries }
   | { status: "too_short"; sourceType: "note" | "file"; quota: Quota }
   | { status: "limit"; quota: Quota }
   | { status: "allowance"; quota: Quota }
@@ -101,11 +110,27 @@ async function sourceChunks(repo: Repo, subjectId: string, source: MakeFlashcard
   if (source.fromPage > pageCount) return { error: `Pick a ${unit} between 1 and ${pageCount}.` };
   const range = { from: source.fromPage, to: Math.min(source.toPage, pageCount) };
   const chunks = all.filter((c) => c.page === null || (c.page >= range.from && c.page <= range.to));
-  // Same fit rule as the dialog (src/lib/page-range.ts); without page counts, the next 20 pages.
-  const series: FileSeries = stats.pageChars
-    ? { range, pageCount, covered: isCovered(stats.pageChars, stats.looseChars, range), next: nextRange(stats.pageChars, stats.looseChars, range.to) }
-    : { range, pageCount, covered: stats.totalChars <= FLASHCARDS_MAX_CHARS, next: range.to < pageCount ? { from: range.to + 1, to: Math.min(pageCount, range.to + MAX_CARD_PAGES) } : null };
+  // Same rules as the dialog (src/lib/page-range.ts): a best-fit set continues by the fit rule, any other keeps its size.
+  const covered = stats.pageChars ? isCovered(stats.pageChars, stats.looseChars, range) : stats.totalChars <= FLASHCARDS_MAX_CHARS;
+  const series: FileSeries = { range, pageCount, covered, next: seriesNext(stats.pageChars, stats.looseChars, range, pageCount) };
   return { chunks, noteId: null, sourceId: file.id, series };
+}
+
+/**
+ * Fronts of the AI cards already in this subject from the same note or file (not deleted),
+ * normalised. Hand-written cards and other sources are never compared (flashcards.md
+ * "Overlapping ranges"; notes too since 2026-10-17).
+ */
+function existingFronts(deck: { noteId: string | null; sourceId: string | null; front: string; origin: string }[], link: { noteId: string | null; sourceId: string | null }): Set<string> {
+  const same = (c: { noteId: string | null; sourceId: string | null }) =>
+    (link.sourceId !== null && c.sourceId === link.sourceId) || (link.noteId !== null && c.noteId === link.noteId);
+  return new Set(deck.filter((c) => c.origin === "ai" && same(c)).map((c) => normaliseFront(c.front)));
+}
+
+/** Splits generated cards into new ones and ones already in the deck. Not exported: this file's exports are public actions. */
+function splitDuplicates(cards: GeneratedCard[], have: Set<string>): { fresh: GeneratedCard[]; skipped: number } {
+  const fresh = cards.filter((c) => !have.has(normaliseFront(c.front)));
+  return { fresh, skipped: cards.length - fresh.length };
 }
 
 function cardsToSave(cards: GeneratedCard[], chunks: ChunkRow[], subjectId: string, hash: string, link: { noteId: string | null; sourceId: string | null }) {
@@ -134,9 +159,11 @@ export async function makeFlashcards(raw: unknown): Promise<ActionResult<{ resul
 
   const totalChars = found.chunks.reduce((n, c) => n + c.text.length, 0);
   if (totalChars < MIN_SOURCE_CHARS) return { ok: true, result: { status: "too_short", sourceType: source.type, quota: await quota() } };
-  if ((await repo.listFlashcards({ subjectId })).length >= MAX_CARDS_PER_SUBJECT) {
+  const deck = await repo.listFlashcards({ subjectId });
+  if (deck.length >= MAX_CARDS_PER_SUBJECT) {
     return { ok: false, error: `A subject can hold up to ${MAX_CARDS_PER_SUBJECT} cards. Delete some first.` };
   }
+  const have = existingFronts(deck, { noteId: found.noteId, sourceId: found.sourceId });
 
   const picked = fitPassages(found.chunks, FLASHCARDS_MAX_CHARS);
   const passages = toPassages(picked);
@@ -151,11 +178,14 @@ export async function makeFlashcards(raw: unknown): Promise<ActionResult<{ resul
     // Only this subject's cards count: the same text can live in two subjects.
     const existing = (await repo.findFlashcardsByHash(hash)).filter((c) => c.subjectId === subjectId);
     if (existing.length) return { ok: true, result: { status: "already", count: existing.length, quota: await quota(), ...series } };
-    const cards = normaliseFlashcards(cached.output, passages, Math.min(count + 5, 25));
-    if (cards && cards.length) {
-      const saved = await repo.createFlashcards(cardsToSave(cards, picked, subjectId, hash, link));
+    const norm = normaliseFlashcardsWithStats(cached.output, passages, Math.min(count + 5, 25));
+    if (norm && norm.cards.length) {
+      const { fresh, skipped } = splitDuplicates(norm.cards, have);
+      // Cached output costs nothing, so "didn't use up a go" holds.
+      if (!fresh.length) return { ok: true, result: { status: "all_skipped", sourceType: source.type, skipped, quota: await quota(), ...series } };
+      const saved = await repo.createFlashcards(cardsToSave(fresh, picked, subjectId, hash, link));
       revalidatePath(`/subjects/${subjectId}`);
-      return { ok: true, result: { status: "made", cards: await toDeckCards(repo, saved, ctx), quota: await quota(), requested: count, cached: true, ...series } };
+      return { ok: true, result: { status: "made", cards: await toDeckCards(repo, saved, ctx), quota: await quota(), requested: count, cached: true, skipped, dropped: norm.dropped, ...series } };
     }
   }
 
@@ -163,21 +193,32 @@ export async function makeFlashcards(raw: unknown): Promise<ActionResult<{ resul
   const day = await studentDay(repo);
   if (!(await repo.reserveAi(day, "flashcards", DAILY_LIMITS.flashcards, DAILY_ATTEMPTS.flashcards))) return { ok: true, result: { status: "limit", quota: await quota() } };
   let ok = false;
+  let settled = false;
   let tokens = { input: 0, output: 0 };
   try {
     const out = await runAiTask(flashcardTask(passages, count as CardCount), appBudget(repo));
     if (!out.ok) return { ok: true, result: { status: out.reason, quota: await quota() } };
     tokens = { input: out.inputTokens, output: out.outputTokens };
-    const saved = await repo.createFlashcards(cardsToSave(out.value, picked, subjectId, hash, link));
+    const cacheIt = () => (JSON.stringify(out.raw).length <= MAX_CACHE_BYTES ? repo.putAiCache("flashcards", hash, out.model, out.raw) : Promise.resolve());
+    const { fresh, skipped } = splitDuplicates(out.value.cards, have);
+    if (!fresh.length) {
+      // Every card is already in the deck: save nothing and give the go back (the finally below
+      // settles it as failed, which still counts toward the tries cap). Cached, so asking again is free.
+      await cacheIt();
+      await repo.settleAi(day, "flashcards", false, tokens.input, tokens.output);
+      settled = true; // only once it worked: if settling throws, the finally below tries again
+      return { ok: true, result: { status: "all_skipped", sourceType: source.type, skipped, quota: await quota(), ...series } };
+    }
+    const saved = await repo.createFlashcards(cardsToSave(fresh, picked, subjectId, hash, link));
     if (!saved.length) return { ok: true, result: { status: "failed", quota: await quota() } };
     ok = true;
-    if (JSON.stringify(out.raw).length <= MAX_CACHE_BYTES) await repo.putAiCache("flashcards", hash, out.model, out.raw);
+    await cacheIt();
     revalidatePath(`/subjects/${subjectId}`);
     // Settle before reading the quota back, so the chip shows the go just used.
     await repo.settleAi(day, "flashcards", true, tokens.input, tokens.output);
-    return { ok: true, result: { status: "made", cards: await toDeckCards(repo, saved, ctx), quota: await quota(), requested: count, cached: false, ...series } };
+    return { ok: true, result: { status: "made", cards: await toDeckCards(repo, saved, ctx), quota: await quota(), requested: count, cached: false, skipped, dropped: out.value.dropped, ...series } };
   } finally {
-    if (!ok) await repo.settleAi(day, "flashcards", false, tokens.input, tokens.output);
+    if (!ok && !settled) await repo.settleAi(day, "flashcards", false, tokens.input, tokens.output);
   }
 }
 

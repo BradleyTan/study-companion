@@ -68,3 +68,47 @@ export function parsePrefs(raw: string | null): ReadAloudPrefs {
     return DEFAULT_PREFS;
   }
 }
+
+// ---- science notation, said out loud ----------------------------------------------------------
+// Speech engines skip or garble ₂, ⁺, ⇌ and Greek letters. What is spoken is rewritten (what is
+// shown and highlighted is not): "C₆H₁₂O₆" → "C 6 H 12 O 6", "Ca²⁺" → "Ca 2 plus",
+// "10⁸" → "10 to the power 8", "E = mc²" → "E equals m c squared", "ΔG" → "delta G".
+
+const SUB_DIGITS = "₀₁₂₃₄₅₆₇₈₉";
+const SUP_DIGITS = "⁰¹²³⁴⁵⁶⁷⁸⁹";
+const GREEK_NAMES: Record<string, string> = {
+  α: "alpha", β: "beta", γ: "gamma", δ: "delta", Δ: "delta", ε: "epsilon", θ: "theta", κ: "kappa", λ: "lambda",
+  μ: "mu", µ: "mu", ν: "nu", π: "pi", ρ: "rho", σ: "sigma", Σ: "sigma", τ: "tau", φ: "phi", χ: "chi", ψ: "psi", ω: "omega", Ω: "omega",
+};
+const MICRO_UNITS: Record<string, string> = { m: "micrometres", g: "micrograms", l: "microlitres", L: "microlitres", mol: "micromoles", s: "seconds", M: "micromolar" };
+
+const digitsOf = (s: string, set: string) => [...s].map((c) => (set.includes(c) ? String(set.indexOf(c)) : c)).join("");
+
+/** Text for the speech engine: notation spelled out, everything else unchanged. */
+export function speakable(text: string): string {
+  return text
+    // µm, µg, µmol… before Greek letters are named.
+    .replace(/(?<=\d\s?)[µμ](mol|m|g|l|L|s|M)\b/g, (_, u: string) => ` ${u === "s" ? "microseconds" : MICRO_UNITS[u]}`)
+    // [H⁺] is a concentration.
+    .replace(/\[([^\]\s]*[⁺⁻][^\]\s]*)\]/g, " concentration of $1 ")
+    // Charges: Ca²⁺ → "Ca 2 plus", HCO₃⁻ → "HCO 3 minus", H⁺ → "H plus".
+    .replace(/([⁰¹²³⁴⁵⁶⁷⁸⁹]*)([⁺⁻])(?![⁰¹²³⁴⁵⁶⁷⁸⁹])/g, (_, d: string, sign: string) => ` ${d ? `${digitsOf(d, SUP_DIGITS)} ` : ""}${sign === "⁺" ? "plus" : "minus"} `)
+    // Powers: x² squared, x³ cubed, 10⁸ / L⁻¹ "to the power".
+    .replace(/(?<![⁻⁰¹²³⁴⁵⁶⁷⁸⁹])²(?![⁰¹²³⁴⁵⁶⁷⁸⁹])/g, " squared ")
+    .replace(/(?<![⁻⁰¹²³⁴⁵⁶⁷⁸⁹])³(?![⁰¹²³⁴⁵⁶⁷⁸⁹])/g, " cubed ")
+    .replace(/(⁻?)([⁰¹²³⁴⁵⁶⁷⁸⁹]+)/g, (_, minus: string, d: string) => ` to the power ${minus ? "minus " : ""}${digitsOf(d, SUP_DIGITS)} `)
+    // Subscripts: H₂O → "H 2 O".
+    .replace(/[₀₁₂₃₄₅₆₇₈₉]+/g, (d) => ` ${digitsOf(d, SUB_DIGITS)} `)
+    .replace(/[α-ωΑ-Ωµ]/g, (c) => (GREEK_NAMES[c] ? ` ${GREEK_NAMES[c]} ` : c))
+    .replace(/⇌|⇄|↔/g, " is in equilibrium with ")
+    .replace(/→|⟶/g, " gives ")
+    .replace(/°C\b/g, " degrees Celsius").replace(/°F\b/g, " degrees Fahrenheit").replace(/°/g, " degrees ")
+    .replace(/(^|[\s(=[])[−-](?=\d)|(^|[\s(=])−(?=\p{L})/gu, (_, a?: string, b?: string) => `${a ?? b ?? ""}minus `)
+    .replace(/\s[−–]\s/g, " minus ")
+    .replace(/\s=\s|(?<=\S)=(?=\S)/g, " equals ")
+    .replace(/±/g, " plus or minus ").replace(/×/g, " times ").replace(/≈/g, " about ")
+    .replace(/(?<=\d)–(?=\d)/g, " to ")
+    .replace(/·/g, " ")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}

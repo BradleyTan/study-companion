@@ -56,21 +56,22 @@ describe("long-file series (QA)", () => {
 
   it("quota running out mid-series: the last go still says what is next, then limit; a repeat stays free", async () => {
     const subjectId = await setup();
-    const src = await file(subjectId, 30);
+    // 15 sets a day (DAILY_LIMITS.flashcards), 5 pages each.
+    const src = await file(subjectId, 80);
     let next = { from: 1, to: 5 };
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 15; i++) {
       const r = await makeFlashcards({ subjectId, source: { type: "file", id: src, fromPage: next.from, toPage: next.to }, count: 10 });
       if (!r.ok || r.result.status !== "made") throw new Error(`set ${i + 1} not made`);
-      expect(r.result.quota.left).toBe(4 - i);
+      expect(r.result.quota.left).toBe(14 - i);
       expect(r.result.series?.next).not.toBeNull();
       next = r.result.series!.next!;
     }
-    expect(next).toEqual({ from: 26, to: 30 });
-    const sixth = await makeFlashcards({ subjectId, source: { type: "file", id: src, fromPage: 26, toPage: 30 }, count: 10 });
-    expect(sixth.ok && sixth.result.status).toBe("limit");
+    expect(next).toEqual({ from: 76, to: 80 });
+    const over = await makeFlashcards({ subjectId, source: { type: "file", id: src, fromPage: 76, toPage: 80 }, count: 10 });
+    expect(over.ok && over.result.status).toBe("limit");
     const repeat = await makeFlashcards({ subjectId, source: { type: "file", id: src, fromPage: 1, toPage: 5 }, count: 10 });
     expect(repeat.ok && repeat.result.status).toBe("already");
-    expect(await used()).toBe(5);
+    expect(await used()).toBe(15);
   });
 
   it("sets of one file never repeat a card front", async () => {

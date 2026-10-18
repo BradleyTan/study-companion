@@ -3,27 +3,64 @@
 // instructions, and anything that looks like our delimiters is defused first.
 import type { ChatMessage, Passage } from "./types";
 
-export const PROMPT_VERSION = 1;
+/** Part of every cache key: bumped when a prompt changes so replies made with an older prompt aren't reused. */
+export const PROMPT_VERSION = 2;
 
 // Characters that render as nothing (zero-width, bidi controls, fillers, variation selectors).
 const INVISIBLE = /[\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0]/g;
 const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
-// <passage>, </passages …>, and the same written as HTML entities.
-const TAG = "(?:<|&lt;?|&#0*60;?|&#x0*3c;?)\\s*\\\\?\\/?\\s*passages?\\b[^>]*(?:>|&gt;?)?";
+// <passage>, </passages …>, and the same written as HTML entities. The slash part is one
+// optional group that must start with a slash, so a "<" before a long run of spaces can't
+// backtrack quadratically (security review S2-15).
+const TAG = "(?:<|&lt;?|&#0*60;?|&#x0*3c;?)\\s*(?:[\\\\/]{1,2}\\s*)?passages?\\b[^>]*(?:>|&gt;?)?";
 const OPEN_CLOSE = /<|&lt;?|&#0*60;?|&#x0*3c;?|>|&gt;?/gi;
+
+/** One invisible character (non-global copy of INVISIBLE, safe for .test). */
+const INVISIBLE_ONE = new RegExp(INVISIBLE.source);
+
+/** A tag's own brackets made harmless: look-alike "<" / ">" (and their entities) become ‹ ›, invisibles go. */
+function defuseSpan(span: string): string {
+  let out = "";
+  for (const ch of span) {
+    if (INVISIBLE_ONE.test(ch)) continue;
+    const f = ch.normalize("NFKC");
+    out += f === "<" ? "‹" : f === ">" ? "›" : ch;
+  }
+  return out.replace(OPEN_CLOSE, (c) => (c.startsWith(">") || c.toLowerCase().startsWith("&g") ? "›" : "‹"));
+}
 
 /**
  * Stops a passage from closing its own block or opening a fake one. Disguised delimiters
- * count too: when the text only spells a delimiter after folding look-alikes (full-width or
- * small "<", full-width letters) and removing invisible characters, the folded text is sent
- * instead, so the delimiter is defused like a plain one. Other text is left as written
- * (folding everything would break quote checks on PDF ligatures like "ﬁ").
+ * count too: the text is matched after folding look-alikes (full-width or small "<", full-width
+ * letters) and removing invisible characters, and only the matched tag is changed: its brackets
+ * become ‹ › and invisible characters inside it are removed. Everything else is left exactly as
+ * written, so science notation (10⁸, H₂O) and PDF ligatures ("ﬁ") reach the model unchanged
+ * (QA L5: folding the whole passage turned 10⁸ into 108).
  */
 export function defuse(text: string): string {
-  let t = text.replace(CONTROL, "");
-  const folded = t.normalize("NFKC").replace(INVISIBLE, "");
-  if (folded !== t && new RegExp(TAG, "i").test(folded)) t = folded;
-  return t.replace(new RegExp(TAG, "gi"), (m) => m.replace(OPEN_CLOSE, (c) => (c.startsWith(">") || c.toLowerCase().startsWith("&g") ? "›" : "‹")));
+  const t = text.replace(CONTROL, "");
+  // The folded text, with the index in `t` of the character each folded character came from.
+  let folded = "";
+  const from: number[] = [];
+  let at = 0;
+  for (const ch of t) {
+    const f = ch.normalize("NFKC").replace(INVISIBLE, "");
+    for (let k = 0; k < f.length; k++) { folded += f[k]; from.push(at); }
+    at += ch.length;
+  }
+  from.push(t.length);
+  let out = "";
+  let last = 0;
+  for (const m of folded.matchAll(new RegExp(TAG, "gi"))) {
+    const start = from[m.index];
+    const end = from[m.index + m[0].length];
+    if (start < last) continue;
+    out += t.slice(last, start) + defuseSpan(t.slice(start, end));
+    last = end;
+  }
+  // Then the text as written, as before the folding pass existed: "</passageＸ>" or "</passage¹>"
+  // only match unfolded (folding glues the letter on and \b no longer ends "passage") (S2-15).
+  return (out + t.slice(last)).replace(new RegExp(TAG, "gi"), defuseSpan);
 }
 
 export function passagesBlock(passages: Passage[]): string {
@@ -40,7 +77,20 @@ const DATA_RULES = [
   "Reply with a single JSON object and nothing else.",
 ].join("\n");
 
+/** How flashcards should be written: quality matters as much as quantity (Bradley, 2026-10-17). */
+export const FLASHCARD_QUALITY_RULES = [
+  "Accuracy first. Every answer must come only from the passages: no outside knowledge, nothing the passages don't say. Keep numbers, units, names and technical terms exactly as written in the passage. If a passage is ambiguous or incomplete, skip it rather than guess.",
+  "Copy scientific names, gene and protein names, chemical formulas, equations, symbols and units exactly as the passage writes them, character for character: keep subscripts and superscripts as Unicode characters (H₂O, C₆H₁₂O₆, Ca²⁺, SO₄²⁻, 10⁸, mol·L⁻¹), Greek letters (α-helix, ΔG), arrows (→, ⇌), minus signs (−70 mV) and capitals (BRCA1, p53, Homo sapiens, E. coli). Never round, convert units or rewrite an equation. Plain text only: no Markdown, LaTeX, HTML or italics markers.",
+  "Prefer key concepts, definitions, processes and cause-and-effect over trivia (page headings, lecture numbers, who said what in passing).",
+  "One fact per card. Each answer must stand alone: never \"see above\", \"as mentioned\" or a reference to another card.",
+  "The answer must not repeat the question; it must add the fact being asked for.",
+].join("\n");
+
+/** Spread across the passages when they come from several pages (a quick sample of a range). */
+const SPREAD_RULE = "The passages come from different pages. Spread the cards evenly across them: at most 2 cards from one passage until every passage with a good fact has one.";
+
 export function flashcardMessages(passages: Passage[], count: number): ChatMessage[] {
+  const pages = new Set(passages.map((p) => p.page).filter((p) => p !== null));
   return [
     {
       role: "system",
@@ -48,7 +98,9 @@ export function flashcardMessages(passages: Passage[], count: number): ChatMessa
         "You write study flashcards for a university student.",
         DATA_RULES,
         'JSON shape: {"cards":[{"front":"question","back":"answer","passage":"p1","quote":"exact words from that passage"}]}',
-        `Write about ${count} cards; fewer if the passages only support fewer good cards. Each front is one clear question (under 200 characters). Each back is a short, complete answer (under 400 characters). "passage" is the id of the passage the card comes from. "quote" is a short exact quote from that passage (under 200 characters) that supports the answer. No duplicate questions.`,
+        `Write about ${count} cards; fewer if the passages only support fewer good cards. Never pad with weak cards. Each front is one clear question (under 200 characters). Each back is a short, complete answer (under 400 characters). "passage" is the id of the passage the card comes from. "quote" is a short exact quote from that passage (under 200 characters) that supports the answer. No duplicate questions.`,
+        FLASHCARD_QUALITY_RULES,
+        ...(pages.size > 1 ? [SPREAD_RULE] : []),
       ].join("\n\n"),
     },
     { role: "user", content: `${passagesBlock(passages)}\n\nMake about ${count} flashcards from the passages above.` },

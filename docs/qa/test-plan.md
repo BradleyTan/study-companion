@@ -14,8 +14,10 @@ Rules
 - From Step 2: new screens are also checked with axe in dark mode with reduced motion.
 - Server actions with quota, idempotency or ownership rules get action-level Vitest tests against the demo repo (`src/server/actions/*.test.ts`, `getRepo` mocked).
 - e2e helpers never branch on an `isVisible()` snapshot of something still loading: wait for one of the candidates first (`createSubject`, `rowAction`). Before signing off, run the suite at least twice, once with `--workers=4`.
+- AI card quality (from 2026-10-17, Bradley: quantity and quality equally, captured information accurate): every change to the prompt, `isGrounded`, `cardQualityIssue`, `src/lib/ai/text.ts` or `src/lib/extract/` must keep `src/lib/ai/card-quality.qa.test.ts` green. It holds a labelled sample of realistic cards (good paraphrases vs wrong numbers, invented terms, outside knowledge) and a science sample run through the real path (PDF fixture → extraction → passages → filter). Update its expected false drops/keeps and the sign-off when the filter improves.
+- Science notation (formulas with sub/superscripts, equations, Greek letters, binomial names, gene names, units, signs) must survive extraction, grounding, display and read-aloud: `e2e/fixtures/science-lecture.pdf` (`python3 e2e/fixtures/make-science-lecture.py`) and `e2e/step2-science.spec.ts`.
 - AI features: the local stand-in generator runs only in demo mode, tests and `npm run dev`; a production build without a key must say "AI isn't set up yet" (unit-tested).
 
 Standing checklist for later steps (from the QA brief): FSRS interval maths, due-today across time zones, generation edge cases (empty notes, huge PDFs, scanned PDFs, non-English, prompt-injection text), double taps and retried requests (idempotency), timer accuracy in background tabs, calendar sync conflicts.
 
-Sign-offs: `docs/qa/step-1.md`, `docs/qa/step-2.md`, `docs/qa/step-2-page-series.md`.
+Sign-offs: `docs/qa/step-1.md`, `docs/qa/step-2.md`, `docs/qa/step-2-page-series.md`, `docs/qa/flashcard-pages-50.md`.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { findLoose, findPassage } from "@/lib/text/find";
-import { groupVoices, parsePrefs, pickVoice, splitSentences } from "./sentences";
+import { groupVoices, parsePrefs, pickVoice, speakable, splitSentences } from "./sentences";
 
 describe("splitSentences", () => {
   it("splits sentences with offsets that point back into the text", () => {
@@ -65,5 +65,23 @@ describe("findPassage", () => {
   });
   it("returns null when nothing matches", () => {
     expect(findPassage(hay, "Something else entirely here.")).toBeNull();
+  });
+});
+
+describe("speakable (science notation read aloud)", () => {
+  it("spells out formulas, charges, powers, equations, Greek letters and units", () => {
+    expect(speakable("C₆H₁₂O₆")).toBe("C 6 H 12 O 6");
+    expect(speakable("Ca²⁺ and HCO₃⁻ and H⁺")).toBe("Ca 2 plus and HCO 3 minus and H plus");
+    expect(speakable("E = mc²")).toBe("E equals mc squared");
+    expect(speakable("3.0 × 10⁸ m/s")).toBe("3.0 times 10 to the power 8 m/s");
+    expect(speakable("5.5 mmol·L⁻¹")).toBe("5.5 mmol L to the power minus 1");
+    expect(speakable("10⁻³ M and 10²³")).toBe("10 to the power minus 3 M and 10 to the power 23");
+    expect(speakable("ΔG = ΔH − TΔS")).toBe("delta G equals delta H minus T delta S");
+    expect(speakable("H₂CO₃ ⇌ H⁺ + HCO₃⁻")).toBe("H 2 CO 3 is in equilibrium with H plus + HCO 3 minus");
+    expect(speakable("6CO₂ + 6H₂O → C₆H₁₂O₆ + 6O₂")).toBe("6CO 2 + 6H 2 O gives C 6 H 12 O 6 + 6O 2");
+    expect(speakable("The α-helix and β-sheets")).toBe("The alpha -helix and beta -sheets");
+    expect(speakable("−70 mV at 37 °C, pH 7.35–7.45, cells 10–30 µm")).toBe("minus 70 mV at 37 degrees Celsius, pH 7.35 to 7.45, cells 10 to 30 micrometres");
+    expect(speakable("pH = −log[H⁺]")).toBe("pH equals minus log concentration of H plus");
+    expect(speakable("Plain sentence, nothing to change.")).toBe("Plain sentence, nothing to change.");
   });
 });
