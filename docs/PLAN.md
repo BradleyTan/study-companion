@@ -48,7 +48,7 @@ All tables: `id uuid pk`, `user_id uuid not null`, `created_at`, `updated_at`, R
 | `timetable_slots` | subject_id, starts_at, ends_at, recurrence, google_event_id, etag, sync_state | |
 | `calendar_connections` | provider, encrypted_refresh_token, scope, calendar_id | tokens encrypted (pgsodium/Vault) |
 | `ai_usage` | day, kind, count, attempts, input_tokens, output_tokens | daily quota (successful goes and tries) + token tracking |
-| `ai_cache` | input_hash, kind, model, output_json | avoids paying twice for the same notes |
+| `ai_cache` | input_hash, kind, model, output_json | avoids paying twice for the same notes; server-only (a cached quiz holds its answers; Step 3 security review) |
 
 ## 3. Build steps and tasks
 

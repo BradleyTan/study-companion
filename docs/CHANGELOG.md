@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-18 · Step 3 security review
+- **Quiz answers can't be read early from the AI cache:** students can no longer read `ai_cache` (a cached quiz reply holds every answer). The server reads it with the secret key, pinned to the student. A question's source quote is hidden until it is answered too. Migration `20261018000003_step3_security_review.sql` (not yet applied to the live project; apply it before deploying).
+- **Chat CPU:** a reply with a long run of spaces inside a citation bracket no longer ties up the server for seconds (S3-1).
+- **Report a problem / Remove from quiz** are refused on a deleted quiz.
+- **Privacy page:** says that Ask your notes sends the question and the last few messages with the passages.
+- **Tests:** the database test stub grants like Supabase does by default, and the grant tests check every table and function. New `src/server/actions/security-step3.test.ts` (student B against every Step 3 action). Review: `docs/security/step-3-review.md`.
+
 ## 2026-10-18 · Step 3 QA
 - **Answers stay hidden:** the results of an unfinished quiz attempt are no longer sent (they carried every right answer, accepted answer and explanation).
 - **Fill-in typos:** "watch the spelling" no longer accepts a different science term one letter away (afferent/efferent, nitrate/nitrite, ethane/ethene, lactose/lactase, ligase/lipase, neuron/neutron, S phase/M phase, vitamin D/E, β/α cells). Common misspellings (hypothalmus, glycolisis, mitochondira) still count. "five" counts as 5.
