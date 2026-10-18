@@ -419,6 +419,101 @@ set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
 select pg_temp.check((select miss_count from public.weak_topics) = 1, 'A weak topic unchanged by B');
 select pg_temp.check((select count(*) from public.quizzes) = 1, 'A quiz not deleted by B');
 
+-- ===== Step 3 part 2: chat messages (server-written, read-only to students) and retrieval
+reset role;
+insert into public.subjects (id, user_id, name, colour, emoji) values ('5b000000-0000-0000-0000-000000000001', 'bbbbbbbb-0000-0000-0000-000000000002', 'B subject', 'sky', '🧬');
+-- a question and its answer go in together (the answer points at the question)
+insert into public.chat_messages (id, user_id, subject_id, role, kind, content, client_key, reply_to, citations_json, created_at) values
+  ('5a000000-0000-0000-0000-0000000000d7', 'aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'user', 'question', 'What makes ATP?', '0c000000-0000-4000-8000-000000000001', null, '[]', now()),
+  ('5a000000-0000-0000-0000-0000000000d8', 'aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'assistant', 'answer', 'Mitochondria make ATP. [1]', null, '5a000000-0000-0000-0000-0000000000d7',
+    '[{"n":1,"chunkId":"5a000000-0000-0000-0000-0000000000c1","noteId":"5a000000-0000-0000-0000-0000000000a1","sourceId":null,"page":null,"label":"Cells (note)","quote":"Mitochondria make ATP"}]', now() + interval '1 millisecond');
+-- shape checks
+do $$ begin
+  insert into public.chat_messages (user_id, subject_id, role, kind, content) values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'user', 'question', repeat('x', 501));
+  raise exception 'RLS TEST FAILED: 501-character question accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.chat_messages (user_id, subject_id, role, kind, content) values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'assistant', 'answer', 'x');
+  raise exception 'RLS TEST FAILED: answer without its question accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.chat_messages (user_id, subject_id, role, kind, content, reply_to) values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'user', 'answer', 'x', '5a000000-0000-0000-0000-0000000000d7');
+  raise exception 'RLS TEST FAILED: student message with an answer kind accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.chat_messages (user_id, subject_id, role, kind, content, reply_to, citations_json) values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'assistant', 'answer', 'x', '5a000000-0000-0000-0000-0000000000d7',
+    (select jsonb_agg(jsonb_build_object('n', g)) from generate_series(1, 13) g));
+  raise exception 'RLS TEST FAILED: 13 citations accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.chat_messages (user_id, subject_id, role, kind, content, client_key) values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'user', 'question', 'again', '0c000000-0000-4000-8000-000000000001');
+  raise exception 'RLS TEST FAILED: client key reused';
+exception when unique_violation then null; end $$;
+-- even the server can't put B's message in A's subject or under A's question (composite FKs)
+do $$ begin
+  insert into public.chat_messages (user_id, subject_id, role, kind, content) values ('bbbbbbbb-0000-0000-0000-000000000002', '5a000000-0000-0000-0000-000000000001', 'user', 'question', 'x');
+  raise exception 'RLS TEST FAILED: server put a B message in A subject';
+exception when foreign_key_violation then null; end $$;
+do $$ begin
+  insert into public.chat_messages (user_id, subject_id, role, kind, content, reply_to) values ('bbbbbbbb-0000-0000-0000-000000000002', '5b000000-0000-0000-0000-000000000001', 'assistant', 'answer', 'x', '5a000000-0000-0000-0000-0000000000d7');
+  raise exception 'RLS TEST FAILED: server put a B answer under A question';
+exception when foreign_key_violation then null; end $$;
+-- cap: at most 1000 messages per subject
+insert into public.chat_messages (user_id, subject_id, role, kind, content)
+  select 'aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'user', 'question', 'filler' from generate_series(3, 1000);
+do $$ begin
+  insert into public.chat_messages (user_id, subject_id, role, kind, content) values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'user', 'question', 'one too many');
+  raise exception 'RLS TEST FAILED: 1001st chat message accepted';
+exception when check_violation then null; end $$;
+delete from public.chat_messages where content = 'filler';
+-- an embedding on A's passage (gte-small vectors are 384 numbers)
+update public.chunks set embedding = array_fill(0.05::real, array[384])::extensions.vector where id = '5a000000-0000-0000-0000-0000000000c1';
+reset role;
+
+-- A reads own chat but can't write it
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+select pg_temp.check((select count(*) from public.chat_messages) = 2, 'A sees own chat');
+do $$ begin
+  insert into public.chat_messages (subject_id, role, kind, content) values ('5a000000-0000-0000-0000-000000000001', 'user', 'question', 'direct');
+  raise exception 'RLS TEST FAILED: student inserted a chat message directly';
+exception when insufficient_privilege then null; end $$;
+update public.chat_messages set content = 'forged', feedback = 'wrong';
+delete from public.chat_messages;
+select pg_temp.check((select count(*) from public.chat_messages where content = 'Mitochondria make ATP. [1]' and feedback is null) = 1, 'student cannot rewrite an answer');
+select pg_temp.check((select count(*) from public.chat_messages) = 2, 'student cannot delete chat directly');
+-- retrieval: A finds own passages by embedding and by keywords
+select pg_temp.check((select count(*) from public.match_chunks('5a000000-0000-0000-0000-000000000001', array_fill(0.05::real, array[384])::extensions.vector, 6)) = 1, 'A matches own embedded passage');
+select pg_temp.check((select similarity > 0.99 from public.match_chunks('5a000000-0000-0000-0000-000000000001', array_fill(0.05::real, array[384])::extensions.vector, 6)), 'cosine similarity of the same vector is 1');
+select pg_temp.check((select count(*) from public.match_chunks('5a000000-0000-0000-0000-000000000001', array_fill(0.05::real, array[384])::extensions.vector, 1000)) <= 20, 'match_chunks caps the row count');
+select pg_temp.check((select count(*) from public.search_chunks('5a000000-0000-0000-0000-000000000001', 'What do mitochondria make?', 30, false)) >= 1, 'A finds own passage by keywords');
+select pg_temp.check((select count(*) from public.search_chunks('5a000000-0000-0000-0000-000000000001', 'What is the energy currency?', 30, false) where id = '5a000000-0000-0000-0000-0000000000c1') = 1, 'keyword search sees the embedded passage');
+select pg_temp.check((select count(*) from public.search_chunks('5a000000-0000-0000-0000-000000000001', 'What is the energy currency?', 30, true) where id = '5a000000-0000-0000-0000-0000000000c1') = 0, 'unembedded-only search skips it');
+select pg_temp.check((select count(*) from public.search_chunks('5a000000-0000-0000-0000-000000000001', 'the of and', 30, false)) = 0, 'a query of stop words finds nothing');
+select pg_temp.check((select count(*) from public.search_chunks('5a000000-0000-0000-0000-000000000001', $q$') | ('x' & !'y$q$, 30, false)) >= 0, 'query syntax in the question is plain text');
+
+-- B sees, finds and changes none of it
+set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
+select pg_temp.check((select count(*) from public.chat_messages) = 0, 'B cannot see A chat');
+select pg_temp.check((select count(*) from public.match_chunks('5a000000-0000-0000-0000-000000000001', array_fill(0.05::real, array[384])::extensions.vector, 6)) = 0, 'B cannot match A passages');
+select pg_temp.check((select count(*) from public.search_chunks('5a000000-0000-0000-0000-000000000001', 'mitochondria ATP', 30, false)) = 0, 'B cannot search A passages');
+update public.chat_messages set feedback = 'wrong';
+delete from public.chat_messages;
+reset role;
+set role anon;
+do $$ begin
+  perform public.match_chunks('5a000000-0000-0000-0000-000000000001', array_fill(0.05::real, array[384])::extensions.vector, 6);
+  raise exception 'RLS TEST FAILED: anon called match_chunks';
+exception when insufficient_privilege then null; end $$;
+do $$ begin
+  perform public.search_chunks('5a000000-0000-0000-0000-000000000001', 'atp', 30, false);
+  raise exception 'RLS TEST FAILED: anon called search_chunks';
+exception when insufficient_privilege then null; end $$;
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+select pg_temp.check((select count(*) from public.chat_messages where feedback is null) = 2, 'A chat unchanged by B');
+
 -- ===== anon sees nothing
 reset request.jwt.claim.sub;
 set role anon;
@@ -438,13 +533,14 @@ select pg_temp.check((select graph_json from public.mindmaps) = '{"version":1,"n
 delete from public.notes where id = '5a000000-0000-0000-0000-0000000000a1';
 select pg_temp.check((select note_id is null and chunk_id is null and source_quote is not null from public.flashcards where id = '5a000000-0000-0000-0000-0000000000f1'), 'card survives note delete');
 select pg_temp.check((select note_id is null and chunk_id is null and source_quote is not null from public.questions where id = '5a000000-0000-0000-0000-0000000000e1'), 'question survives note delete');
+select pg_temp.check((select citations_json->0->>'quote' = 'Mitochondria make ATP' from public.chat_messages where role = 'assistant'), 'chat answer keeps its quote after the note is deleted');
 
 -- deleting a subject cascades to notes, sources, chunks
 delete from public.subjects where id = '5a000000-0000-0000-0000-000000000001';
 select pg_temp.check((select count(*) from public.notes) + (select count(*) from public.sources) + (select count(*) from public.chunks)
   + (select count(*) from public.flashcards) + (select count(*) from public.card_reviews) + (select count(*) from public.mindmaps)
   + (select count(*) from public.quizzes) + (select count(*) from public.questions) + (select count(*) from public.quiz_attempts)
-  + (select count(*) from public.answers) + (select count(*) from public.weak_topics) = 0, 'subject delete cascades');
+  + (select count(*) from public.answers) + (select count(*) from public.weak_topics) + (select count(*) from public.chat_messages) = 0, 'subject delete cascades');
 
 reset role;
 -- deleting a user removes their profile

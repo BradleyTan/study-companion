@@ -16,6 +16,16 @@ select pg_temp.check(not has_table_privilege('authenticated', 'public.' || t, 'i
   from unnest(array['quizzes', 'questions', 'quiz_attempts', 'answers', 'weak_topics']) t;
 select pg_temp.check(not has_table_privilege('anon', 'public.' || t, 'select'), 'anon cannot read ' || t)
   from unnest(array['quizzes', 'questions', 'quiz_attempts', 'answers', 'weak_topics']) t;
+-- Step 3 part 2: chat messages are read-only to students; retrieval functions are for signed-in students only.
+select pg_temp.check(not has_table_privilege('authenticated', 'public.chat_messages', 'insert') and not has_table_privilege('authenticated', 'public.chat_messages', 'update')
+  and not has_table_privilege('authenticated', 'public.chat_messages', 'delete'), 'students cannot write chat_messages');
+select pg_temp.check(not has_table_privilege('anon', 'public.chat_messages', 'select'), 'anon cannot read chat_messages');
+select pg_temp.check(has_function_privilege('authenticated', 'public.match_chunks(uuid, extensions.vector, integer)', 'execute'), 'students can call match_chunks');
+select pg_temp.check(not has_function_privilege('anon', 'public.match_chunks(uuid, extensions.vector, integer)', 'execute'), 'anon cannot call match_chunks');
+select pg_temp.check(has_function_privilege('authenticated', 'public.search_chunks(uuid, text, integer, boolean)', 'execute'), 'students can call search_chunks');
+select pg_temp.check(not has_function_privilege('anon', 'public.search_chunks(uuid, text, integer, boolean)', 'execute'), 'anon cannot call search_chunks');
+select pg_temp.check((select prosecdef = false from pg_proc where proname = 'match_chunks') and (select prosecdef = false from pg_proc where proname = 'search_chunks'), 'retrieval functions are SECURITY INVOKER');
+select pg_temp.check(not has_function_privilege('authenticated', 'public.enforce_chat_cap()', 'execute'), 'students cannot call the chat cap trigger function');
 
 set role authenticated;
 set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
