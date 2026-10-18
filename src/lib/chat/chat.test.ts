@@ -200,3 +200,16 @@ describe("local stand-in and prompt", () => {
     expect(user.content).not.toContain('<passage id="p9">');
   });
 });
+
+describe("day separators", () => {
+  it("says Today, a weekday within the week, else the date", async () => {
+    const { dayLabel } = await import("./day");
+    const now = new Date("2026-10-18T10:00:00Z"); // a Sunday
+    expect(dayLabel("2026-10-18T01:00:00Z", "Europe/London", now)).toBe("Today");
+    expect(dayLabel("2026-10-13T12:00:00Z", "Europe/London", now)).toBe("Tuesday");
+    expect(dayLabel("2026-10-01T12:00:00Z", "Europe/London", now)).toBe("1 Oct");
+    expect(dayLabel("2025-12-24T12:00:00Z", "Europe/London", now)).toBe("24 Dec 2025");
+    // Late evening in New York is already "today" there only by its own clock.
+    expect(dayLabel("2026-10-18T02:00:00Z", "America/New_York", now)).toBe("Saturday");
+  });
+});

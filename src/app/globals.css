@@ -298,6 +298,69 @@ dialog.side-panel[open]:not(:modal) { position: fixed; inset: 0 0 0 auto; z-inde
 .chip-good { background: var(--success); color: var(--on-colour); }
 }
 
+/* ---- Step 3 part 2: ask your notes (chat.md) ---- */
+@layer components {
+.chat-log { display: flex; flex-direction: column; gap: 1rem; width: 100%; max-width: 760px; margin-inline: auto; }
+.bubble-user { align-self: flex-end; max-width: 85%; padding: 0.6rem 0.9rem; background: var(--highlight); color: var(--on-colour);
+  border: 2.5px solid var(--ink); border-radius: 8px 8px 2px 8px; box-shadow: 3px 3px 0 var(--shadow); white-space: pre-wrap; overflow-wrap: anywhere; }
+.bubble-user[data-pending="true"] { opacity: 0.6; }
+.bubble-answer { position: relative; max-width: 92%; padding: 0.75rem 1rem; background: var(--card); color: var(--ink); border: 2.5px solid var(--ink);
+  border-left: 6px solid var(--subject); border-radius: 8px; box-shadow: 4px 4px 0 var(--shadow); font-size: 16px; line-height: 1.55; overflow-wrap: anywhere; }
+.bubble-answer .answer-text { max-width: 65ch; }
+.bubble-answer .answer-text p + p, .bubble-answer .answer-text p + ul, .bubble-answer .answer-text p + ol, .bubble-answer .answer-text ul + p, .bubble-answer .answer-text ol + p { margin-top: 0.6rem; }
+.bubble-answer .answer-text ul { list-style: disc; padding-left: 1.25rem; }
+.bubble-answer .answer-text ol { list-style: decimal; padding-left: 1.25rem; }
+.bubble-answer .answer-text li + li { margin-top: 0.25rem; }
+.bubble-missing { max-width: 92%; padding: 0.75rem 1rem; background: var(--card); color: var(--ink); border: 2.5px dashed var(--ink); border-radius: 8px; }
+@media (min-width: 640px) {
+  .bubble-user { max-width: 75%; }
+  .bubble-answer, .bubble-missing { max-width: 80%; }
+}
+.answer-row { display: flex; align-items: flex-start; gap: 0.5rem; }
+.answer-avatar { display: none; flex: none; width: 24px; height: 24px; font-size: 18px; line-height: 24px; text-align: center; margin-top: 0.25rem; }
+@media (min-width: 640px) { .answer-avatar { display: inline-block; } }
+
+/* citation chip: 24 px to look at, 44 px to hit */
+.cite-chip { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; padding: 0 0.3rem;
+  margin: 0 0.1rem; vertical-align: 0.1em; background: var(--card); color: var(--ink); border: 1.5px solid var(--ink); border-radius: 999px;
+  font-size: 12px; font-weight: 700; line-height: 1; cursor: pointer; }
+.cite-chip::after { content: ""; position: absolute; inset: -10px; }
+.cite-chip:hover, .cite-chip[aria-expanded="true"] { background: var(--highlight); color: var(--on-colour); }
+.cite-num { display: inline-flex; align-items: center; justify-content: center; flex: none; min-width: 24px; height: 24px; padding: 0 0.3rem;
+  border: 1.5px solid var(--ink); border-radius: 999px; font-size: 12px; font-weight: 700; }
+.sources { margin-top: 0.75rem; padding-top: 0.6rem; border-top: 2px dashed color-mix(in srgb, var(--ink) 45%, transparent); }
+
+/* citation preview: popover from 640 px (bottom sheet on phones) */
+dialog.cite-popover { position: fixed; margin: 0; padding: 0; width: min(360px, calc(100vw - 32px)); max-height: min(70dvh, 480px); z-index: 50;
+  background: var(--card); color: var(--ink); border: 2.5px solid var(--ink); border-radius: 8px; box-shadow: 4px 4px 0 var(--shadow); overflow: auto; }
+
+/* typing indicator */
+.typing-dots { display: inline-flex; gap: 6px; align-items: center; height: 24px; }
+.typing-dots > span { width: 8px; height: 8px; border-radius: 999px; background: var(--ink); animation: dot-bounce 1s ease-in-out infinite; }
+.typing-dots > span:nth-child(2) { animation-delay: 0.15s; }
+.typing-dots > span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes dot-bounce { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-5px); } }
+.typing-text { display: none; }
+@keyframes msg-in { from { opacity: 0; transform: translateY(8px); } }
+.msg-in { animation: msg-in 200ms ease-out both; }
+@keyframes answer-pop { from { opacity: 0; transform: scale(0.96); } }
+.answer-pop { animation: answer-pop 350ms cubic-bezier(.3, 1.8, .5, 1) both; transform-origin: left top; }
+
+/* composer: sticky at the bottom, above the iOS home bar */
+.composer { position: sticky; bottom: 0; z-index: 20; background: var(--paper); border-top: 2.5px solid var(--ink);
+  padding: 0.6rem 0 calc(0.6rem + env(safe-area-inset-bottom, 0px)); }
+.composer textarea { resize: none; line-height: 1.5; max-height: calc(5 * 1.5em + 1rem + 5px); overflow-y: auto; }
+.suggestions { display: flex; gap: 0.5rem; overflow-x: auto; padding: 0.25rem 0.25rem 0.75rem; scrollbar-width: thin; scroll-snap-type: x proximity; }
+.suggestions > * { flex: none; scroll-snap-align: start; }
+@media (min-width: 640px) { .suggestions { flex-wrap: wrap; justify-content: center; overflow-x: visible; } }
+.day-chip { align-self: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .typing-dots { display: none; }
+  .typing-text { display: inline; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .mm-node.mm-root { rotate: 0deg; }
   .tile { rotate: 0deg; }

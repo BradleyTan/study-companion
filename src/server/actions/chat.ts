@@ -1,5 +1,6 @@
 "use server";
 import { createHash } from "node:crypto";
+import { revalidatePath } from "next/cache";
 import { inputHash } from "@/lib/ai/cache";
 import type { ChatTurn } from "@/lib/ai/prompts";
 import { aiMode } from "@/lib/ai/providers";
@@ -109,6 +110,7 @@ export async function askQuestion(raw: unknown): Promise<ActionResult<{ result: 
       await makeRoom(repo, subjectId);
       const saved = await repo.addChatExchange(subjectId, { clientKey, question, answer, after: history.at(-1)?.createdAt });
       const [q, a] = await chatViews(repo, subjectId, [saved.question, saved.answer], lookup);
+      fresh(subjectId);
       return { q, a };
     };
     const answered = async (answer: NewChatAnswer, modelRan: boolean) => {
@@ -154,6 +156,15 @@ export async function askQuestion(raw: unknown): Promise<ActionResult<{ result: 
   }
 }
 
+/**
+ * The browser keeps the chat page for Back; without this, Back from a cited passage would show the
+ * chat as it was first loaded. The open chat keeps its own state (props only seed it).
+ */
+function fresh(subjectId: string) {
+  revalidatePath(`/subjects/${subjectId}`);
+  revalidatePath(`/subjects/${subjectId}/ask`);
+}
+
 /** Older messages, for "Show earlier messages". */
 export async function loadOlderChat(raw: unknown): Promise<ActionResult<{ messages: ChatMessageView[]; hasOlder: boolean }>> {
   const parsed = olderChatInput.safeParse(raw);
@@ -170,6 +181,7 @@ export async function clearChat(subjectId: string): Promise<ActionResult> {
   const repo = await getRepo();
   if (!(await repo.getSubject(subjectId))) return { ok: false, error: "Subject not found." };
   await repo.clearChat(subjectId);
+  fresh(subjectId);
   return { ok: true };
 }
 

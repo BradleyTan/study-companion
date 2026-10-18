@@ -10,15 +10,16 @@ export type QuizTileInfo = { quizzes: number; best: { score: number; total: numb
 /**
  * Study tools on the subject page (subject.md, Steps 2–3): the Review tile on its own row, then
  * Flashcards, Mindmap, Quizzes and Ask your notes (2 × 2 on phones, one row of four from 640 px).
- * Ask your notes is part 2 of Step 3: until then its tile is shown disabled ("Coming soon").
  */
-export function StudyTools({ subjectId, due, cards, mindmapUpdatedAt, quiz }: {
+export function StudyTools({ subjectId, due, cards, mindmapUpdatedAt, quiz, chat }: {
   subjectId: string;
   due: number | null;
   cards: number | null;
   mindmapUpdatedAt: string | null | undefined;
   /** null: the counts didn't load (the tile shows without its sub-line). */
   quiz: QuizTileInfo | null;
+  /** null: the counts didn't load. */
+  chat: { left: number; asked: boolean } | null;
 }) {
   const { play } = useSound();
   const minutes = due ? Math.max(1, Math.ceil((due * 20) / 60)) : 0;
@@ -32,6 +33,7 @@ export function StudyTools({ subjectId, due, cards, mindmapUpdatedAt, quiz }: {
     : quiz.unfinished ? `Quizzes, finish your quiz, ${quiz.unfinished.answered} of ${quiz.unfinished.total}`
     : quiz.quizzes === 0 ? "Quizzes, test yourself"
     : `Quizzes${quiz.best ? `, best ${quiz.best.score} out of ${quiz.best.total}` : ""}, ${quiz.quizzes === 1 ? "1 quiz" : `${quiz.quizzes} quizzes`}`;
+  const chatLine = !chat ? null : chat.asked ? `${plural(chat.left, "question")} left today` : "Ask anything in your notes";
   return (
     <nav aria-label="Study tools" className="flex flex-col gap-4">
       {!!due && (
@@ -57,10 +59,11 @@ export function StudyTools({ subjectId, due, cards, mindmapUpdatedAt, quiz }: {
           <span className="flex items-center gap-2 text-lg font-bold"><span aria-hidden="true">📝</span>Quizzes</span>
           {quizLine && <span className="hint">{quizLine}</span>}
         </Link>
-        <div className="tile opacity-70" style={{ ["--r" as string]: "1deg" }} data-testid="ask-tile">
+        <Link href={`/subjects/${subjectId}/ask`} className="tile lift" style={{ ["--r" as string]: "1deg" }} data-testid="ask-tile"
+          aria-label={`Ask your notes${chatLine ? `, ${chatLine}` : ""}`} onClick={() => play("click")}>
           <span className="flex items-center gap-2 text-lg font-bold"><span aria-hidden="true">💬</span>Ask your notes</span>
-          <span className="hint">Coming soon</span>
-        </div>
+          {chatLine && <span className="hint">{chatLine}</span>}
+        </Link>
       </div>
     </nav>
   );
