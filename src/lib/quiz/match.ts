@@ -151,13 +151,63 @@ export function withinOneEdit(a: string, b: string): boolean {
   return s.slice(i) === l.slice(i + 1);
 }
 
-const letters = (s: string) => (s.match(/\p{L}/gu) ?? []).length;
+const VOWEL = /^[aeiou]$/;
+
+/**
+ * Whether `given` is a plausible misspelling of the word `expected`, not a different word.
+ * Science is full of real terms one letter apart (afferent/efferent, nitrate/nitrite,
+ * ethane/ethene, lactose/lactase, nucleotide/nucleoside, ligase/lipase, insulin/inulin,
+ * neuron/neutron, absorption/adsorption; QA step 3), so plain edit distance 1 is not enough:
+ * - the word has 6+ plain letters (no digits, Greek letters or symbols) and the first letter is right;
+ * - two neighbouring letters swapped ("mitochondira");
+ * - a vowel or one of a double letter left out or added ("hypothalmus", "acommodate");
+ * - "y" and "i" mixed up ("glycolisis");
+ * - any other wrong letter only in the middle of a word of 7+ letters: never in the first two
+ *   letters (ab-/ad-, en-/ex-) or the last four, where the endings that change the meaning are
+ *   (-ate/-ite, -ane/-ene/-yne, -ide/-ine, -ose/-ase, -tide/-side, -onic/-opic).
+ */
+export function plausibleTypo(given: string, expected: string): boolean {
+  const g = given;
+  const e = expected;
+  if (g === e || !/^[a-z]{6,}$/.test(e) || !/^[a-z]+$/.test(g) || g[0] !== e[0] || !withinOneEdit(g, e)) return false;
+  if (g.length === e.length) {
+    const diff: number[] = [];
+    for (let i = 0; i < e.length; i++) if (g[i] !== e[i]) diff.push(i);
+    if (diff.length === 2) return true; // a swap of neighbours (withinOneEdit checked it)
+    const i = diff[0];
+    if (/^[yi]$/.test(g[i]) && /^[yi]$/.test(e[i])) return true;
+    return e.length >= 7 && i >= 2 && i < e.length - 4;
+  }
+  // One letter more or less: it must be a vowel or a doubled letter.
+  const [short, long] = g.length < e.length ? [g, e] : [e, g];
+  let i = 0;
+  while (i < short.length && short[i] === long[i]) i++;
+  const extra = long[i];
+  return i > 0 && (VOWEL.test(extra) || extra === long[i - 1] || extra === long[i + 1]);
+}
+
+/** One typo in exactly one word; every other word the same. */
+function typoMatch(g: string, e: string): boolean {
+  const gw = g.replace(/-/g, " ").split(" ");
+  const ew = e.replace(/-/g, " ").split(" ");
+  if (gw.length !== ew.length) return false;
+  const differ = ew.map((w, i) => (w === gw[i] ? -1 : i)).filter((i) => i >= 0);
+  return differ.length === 1 && plausibleTypo(gw[differ[0]], ew[differ[0]]);
+}
+
+/** A whole answer written as a number word ("five") counts as its number. */
+const NUMBER_WORDS: Record<string, number> = {
+  zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
+  thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20, thirty: 30,
+  forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90, hundred: 100,
+};
+const numberWord = (s: string) => (Object.hasOwn(NUMBER_WORDS, s) ? String(NUMBER_WORDS[s]) : s);
 
 // ---- the matcher ---------------------------------------------------------------
 
 function exactMatch(given: string, expected: string): boolean {
-  const g = normaliseAnswer(given);
-  const e = normaliseAnswer(expected);
+  const g = numberWord(normaliseAnswer(given));
+  const e = numberWord(normaliseAnswer(expected));
   if (!g || !e) return false;
   const eq = parseQuantity(e);
   if (eq) {
@@ -182,9 +232,9 @@ export function matchFill(given: string, answer: string, accepted: readonly stri
   if (!g) return { correct: false, typo: false, expected: null };
   for (const o of options) {
     const e = normaliseAnswer(o);
-    // Numbers must be exact; one typo only in words of 6+ letters.
-    if (parseQuantity(e) || /\d/.test(e) || letters(e) < 6) continue;
-    if (withinOneEdit(g, e)) return { correct: true, typo: true, expected: o };
+    // Numbers must be exact; one plausible typo only, in one word of 6+ letters.
+    if (parseQuantity(e) || /\d/.test(e)) continue;
+    if (typoMatch(g, e)) return { correct: true, typo: true, expected: o };
   }
   return { correct: false, typo: false, expected: null };
 }

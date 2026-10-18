@@ -59,8 +59,9 @@ describe("matchFill: singular and plural of the last word", () => {
   });
   it("only the last word may change number", () => {
     expect(right("cells walls", "cell wall")).toBe(false);
-    // One extra letter is still within the one-typo allowance, and says so.
-    expect(matchFill("cells wall", "cell wall").typo).toBe(true);
+    // The typo allowance is for one word of 6+ letters ("cell" is too short), so this is a miss.
+    expect(right("cells wall", "cell wall")).toBe(false);
+    expect(matchFill("plasma membrnae", "plasma membrane").typo).toBe(true);
   });
   it("short words don't get plural forms that turn them into other words", () => {
     expect(numberForms("is").has("i")).toBe(false);
@@ -124,6 +125,32 @@ describe("matchFill: one typo for longer words", () => {
     expect(right("cel", "cell")).toBe(false);
     expect(right("osmsis", "osmosis")).toBe(true); // 7 letters
     expect(right("lipd", "lipid")).toBe(false); // 5 letters
+  });
+  it("never accepts a different science term one letter away (QA step 3)", () => {
+    const pairs: [string, string][] = [
+      ["afferent", "efferent"], ["efferent", "afferent"], ["absorption", "adsorption"], ["nitrate", "nitrite"], ["sulfate", "sulfite"],
+      ["chloride", "chlorine"], ["ethane", "ethene"], ["ethene", "ethyne"], ["alkane", "alkene"], ["propane", "propene"],
+      ["nucleotide", "nucleoside"], ["cytosine", "cytokine"], ["ligase", "lipase"], ["insulin", "inulin"], ["inulin", "insulin"],
+      ["isotonic", "isotopic"], ["neutron", "neuron"], ["neuron", "neutron"], ["lactose", "lactase"], ["maltase", "maltose"],
+      ["sucrose", "sucrase"], ["dilute", "diluted"], ["proton", "photon"], ["phosphate", "phosphite"],
+      ["S phase", "M phase"], ["vitamin D", "vitamin E"], ["β-cells", "α-cells"], ["type 1", "type 2"],
+      ["hypotonic", "hypertonic"], ["hypertonic", "hypotonic"], ["meiosis", "mitosis"], ["mitosis", "meiosis"],
+      ["exocytosis", "endocytosis"], ["haploid", "diploid"], ["anion", "cation"], ["lysosome", "lysozyme"], ["xylem", "phloem"],
+      ["tRNA", "mRNA"], ["G1", "G2"], ["37 °C", "38 °C"], ["-70 mV", "70 mV"], ["7.35", "7.45"], ["30 μm", "30 mm"],
+    ];
+    for (const [given, answer] of pairs) expect(right(given, answer), `${given} for ${answer}`).toBe(false);
+  });
+  it("still forgives common misspellings (QA step 3)", () => {
+    for (const [given, answer] of [
+      ["hypothalmus", "hypothalamus"], ["photosynthsis", "photosynthesis"], ["glycolisis", "glycolysis"], ["mitochondira", "mitochondria"],
+      ["chlorophyl", "chlorophyll"], ["cytoplasm", "cytoplasm"], ["phospholipd bilayer", "phospholipid bilayer"], ["Golgi aparatus", "Golgi apparatus"],
+      ["endoplasmic retculum", "endoplasmic reticulum"], ["acetylcholine", "acetylcholine"],
+    ]) expect(right(given, answer), `${given} for ${answer}`).toBe(true);
+  });
+  it("counts a number word as its number", () => {
+    expect(right("five", "5")).toBe(true);
+    expect(right("5", "Five")).toBe(true);
+    expect(right("four", "5")).toBe(false);
   });
   it("marks an exact match as no typo", () => {
     expect(matchFill("osmosis", "osmosis").typo).toBe(false);
