@@ -382,6 +382,13 @@ select pg_temp.check((select count(*) from public.questions) = 2, 'A sees own qu
 select pg_temp.check((select count(*) from public.quiz_attempts) = 1, 'A sees own attempt');
 select pg_temp.check((select count(*) from public.answers) = 1, 'A sees own answer');
 select pg_temp.check((select count(*) from public.weak_topics) = 1, 'A sees own weak topic');
+-- S3-2: A's cached quiz reply (with its answers) is invisible to A, even with every table
+-- privilege granted (RLS alone: the cache has no student policy).
+reset role;
+insert into public.ai_cache (user_id, kind, input_hash, model, output_json)
+  values ('aaaaaaaa-0000-0000-0000-000000000001', 'quiz', 'qh', 'openai/gpt-oss-120b', '{"questions":[{"answer":"Energy currency"}]}');
+set role authenticated;
+select pg_temp.check((select count(*) from public.ai_cache) = 0, 'A cannot read own cached quiz answers');
 do $$ begin
   insert into public.quizzes (subject_id, title, kind, requested, input_hash) values ('5a000000-0000-0000-0000-000000000001', 't', 'mcq', 5, 'h');
   raise exception 'RLS TEST FAILED: student inserted a quiz directly';

@@ -543,7 +543,8 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
       return !data || ((data.requests as number) < maxRequests && (data.tokens as number) < maxTokens);
     },
     async getAiCache(kind, inputHash) {
-      const { data, error } = await db.from("ai_cache").select("model, output_json").eq("kind", kind).eq("input_hash", inputHash).maybeSingle();
+      // Server-only table (a cached quiz holds its answers): secret key, pinned to the student.
+      const { data, error } = await admin().from("ai_cache").select("model, output_json").eq("user_id", userId).eq("kind", kind).eq("input_hash", inputHash).maybeSingle();
       fail(error, "getAiCache");
       return data ? { model: data.model as string, output: data.output_json } : null;
     },
