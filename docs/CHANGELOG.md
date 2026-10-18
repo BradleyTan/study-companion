@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-10-18 · Step 3 QA
+- **Answers stay hidden:** the results of an unfinished quiz attempt are no longer sent (they carried every right answer, accepted answer and explanation).
+- **Fill-in typos:** "watch the spelling" no longer accepts a different science term one letter away (afferent/efferent, nitrate/nitrite, ethane/ethene, lactose/lactase, ligase/lipase, neuron/neutron, S phase/M phase, vitamin D/E, β/α cells). Common misspellings (hypothalmus, glycolisis, mitochondira) still count. "five" counts as 5.
+- **Accuracy:** quiz fill-ins, explanations and chat sentences that swap one passage term or number for another ("Mitosis produces four haploid gametes", "work best at 45 °C", "3′ to 5′") are dropped; a species the notes never name is not grounded; "Two" and "2" can't both be options. Labelled sample `src/lib/ai/quiz-chat-quality.qa.test.ts`.
+- **Weak topics:** "I think my answer is right" on an older miss no longer wipes right answers or a "got it" that came after it.
+- **Retake:** "Retake this quiz" no longer refuses every answer with "That answer was already used" (answer keys were cached per question, not per attempt).
+- **Weak topics on Supabase:** a topic such as "Ca²⁺" no longer breaks checking an answer (the app's topic key folded it to "ca2+", the database's did not).
+- **Edit question:** "1,200" in "Other answers that count" stays one answer; a question with more than 6 other answers can be edited again (up to the database's 10). "I was right" is refused on a reported question or a deleted quiz (it took the miss back twice).
+- **Mindmap:** the refresh after making a map no longer remounts the screen (it closed an open passage and could drop a layout save); this was the flaky `step2.spec.ts` mindmap test.
+- **Tests:** `e2e/step3-qa.spec.ts` (dark mode + reduced motion axe on every Step 3 screen, answers never in the browser before checking, HTML in notes stays text, practise after a resumed quiz), a delayed-refresh mindmap test in `e2e/step2-qa.spec.ts`, and unit tests above. Sign-off: `docs/qa/step-3.md`.
+
 ## 2026-10-18 · Step 3 part 2: ask your notes
 - **Ask your notes** (`/subjects/[id]/ask`): a chat that answers only from the subject's notes and ready lecture files. Every sentence carries a numbered citation chip; a chip opens the passage in place (popover from 640 px, bottom sheet on phones) with the cited sentence marked and "Open in note/file" (`passageHref`). Sources list under each answer, "Source deleted" with the saved quote when a note or file is gone.
 - **Honest when it doesn't know:** with no passage close enough the reply is "Your notes don't cover that yet, so I won't guess.", with the closest passages it found; no AI call and no question used.
