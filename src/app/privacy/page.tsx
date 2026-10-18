@@ -19,7 +19,8 @@ export default function PrivacyPage() {
           <li>Your subjects, notes and the lecture files you upload, plus the text we read out of those files.</li>
           <li>Your settings, like sound and theme.</li>
           <li>Your flashcards, the grades you give them when you review (to schedule the next review), and your mindmaps.</li>
-          <li>How many AI flashcards and mindmaps you made each day (for the daily limit), and a copy of what the AI sent back, so the same text never uses up your allowance twice.</li>
+          <li>Your quizzes, the answers you give (to score them and keep your list of weak topics), and your weak topics.</li>
+          <li>How many AI flashcards, quizzes and mindmaps you made each day (for the daily limit), and a copy of what the AI sent back, so the same text never uses up your allowance twice.</li>
           <li>Later features will add your quiz answers, study sessions and timetable. We&apos;ll update this page when they arrive.</li>
         </ul>
 
