@@ -123,7 +123,8 @@ export const editQuestionInput = z.object({
   correctIndex: z.int().min(0).max(3).optional(),
   /** Fill in the blank. */
   answer: z.string().trim().min(1, "Add the answer.").max(60, "Keep the answer under 60 characters.").optional(),
-  accepted: z.array(z.string().trim().min(1).max(60)).max(6).optional(),
+  // Up to the database's 10 (3 from the model plus answers counted as right with "I was right").
+  accepted: z.array(z.string().trim().min(1).max(60, "Keep each answer under 60 characters.")).max(10, "Keep it to 10 other answers.").optional(),
 });
 
 // ---- Step 3 part 2: ask your notes (chat.md) ---------------------------------------------

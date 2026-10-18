@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
+import { splitAccepted } from "@/lib/quiz/match";
 import { BAND_TITLE, celebrates } from "@/lib/quiz/order";
 import { attemptResults, editQuestion, removeQuestion } from "@/server/actions/quiz";
 import type { SubjectLite } from "@/server/cards";
@@ -180,7 +181,7 @@ function QuestionEditor({ row, onCancel, onSaved }: { row: ResultRow; onCancel: 
     setSaving(true);
     const res = await editQuestion(row.type === "mcq"
       ? { questionId: row.questionId, prompt, explanation, options, correctIndex: correct }
-      : { questionId: row.questionId, prompt, explanation, answer, accepted: accepted.split(",").map((s) => s.trim()).filter(Boolean) }).catch(() => null);
+      : { questionId: row.questionId, prompt, explanation, answer, accepted: splitAccepted(accepted) }).catch(() => null);
     setSaving(false);
     if (!res || !res.ok) { play("boop"); setError(res && !res.ok ? res.error : "Couldn't save. Try again."); return; }
     await onSaved();

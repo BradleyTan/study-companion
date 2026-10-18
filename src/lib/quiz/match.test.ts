@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchFill, normaliseAnswer, numberForms, parseQuantity, withinOneEdit } from "./match";
+import { matchFill, splitAccepted, normaliseAnswer, numberForms, parseQuantity, withinOneEdit } from "./match";
 
 const right = (given: string, answer: string, accepted: string[] = []) => matchFill(given, answer, accepted).correct;
 
@@ -162,5 +162,15 @@ describe("matchFill: one typo for longer words", () => {
     expect(withinOneEdit("abc", "bac")).toBe(true);
     expect(withinOneEdit("abc", "cba")).toBe(false);
     expect(withinOneEdit("abc", "abcde")).toBe(false);
+  });
+});
+
+describe("splitAccepted: the comma separated field in Edit question", () => {
+  it("keeps thousands separators inside one answer", () => {
+    expect(splitAccepted("1,200, twelve hundred")).toEqual(["1,200", "twelve hundred"]);
+    expect(splitAccepted("6,000,000 , 6 million")).toEqual(["6,000,000", "6 million"]);
+    expect(splitAccepted("1,2,3")).toEqual(["1", "2", "3"]);
+    expect(splitAccepted("1,2000")).toEqual(["1", "2000"]);
+    expect(splitAccepted("ATP, adenosine triphosphate,,  ")).toEqual(["ATP", "adenosine triphosphate"]);
   });
 });

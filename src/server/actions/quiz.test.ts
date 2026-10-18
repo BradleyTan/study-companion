@@ -287,6 +287,17 @@ describe("taking a quiz", () => {
     const saved = (await repo.getQuestion(q.id))!;
     expect(saved).toMatchObject({ answer: "c", correctIndex: 2, edited: true });
   });
+
+  it("edits a fill-in that already has up to 10 other answers (overrides add to the model's 3)", async () => {
+    const { quizId } = await made("fill", 5);
+    const q = (await repo.listQuestions({ quizId })).find((x) => x.type === "fill")!;
+    const accepted = Array.from({ length: 10 }, (_, i) => `answer ${i + 1}`);
+    await repo.updateQuestion(q.id, { accepted });
+    const ok = await actions.editQuestion({ questionId: q.id, prompt: q.prompt, explanation: "Because.", answer: q.answer, accepted });
+    expect(ok.ok).toBe(true);
+    expect((await repo.getQuestion(q.id))!.accepted).toEqual(accepted);
+    expect((await actions.editQuestion({ questionId: q.id, prompt: q.prompt, explanation: "", answer: q.answer, accepted: [...accepted, "eleven"] })).ok).toBe(false);
+  });
 });
 
 describe("weak topics and the re-mix", () => {

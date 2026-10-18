@@ -238,3 +238,11 @@ export function matchFill(given: string, answer: string, accepted: readonly stri
   }
   return { correct: false, typo: false, expected: null };
 }
+
+/**
+ * The "Other answers that count (comma separated)" field: a comma separates answers except as a
+ * thousands separator ("1,200, twelve hundred" is two answers, not "1" and "200").
+ */
+export function splitAccepted(field: string): string[] {
+  return field.split(/(?<!\d),|,(?!\d{3}(?!\d))/).map((s) => s.trim()).filter(Boolean);
+}
