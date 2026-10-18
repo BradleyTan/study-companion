@@ -3,7 +3,7 @@
 // mapped through the server's own list, answers grounded in the cited passage, and weak
 // questions dropped, never replaced.
 import { z } from "zod";
-import { interleave, type QuizKind } from "../quiz/order";
+import { BLANK, interleave, type QuizKind } from "../quiz/order";
 import { topicKey, TOPIC_MAX } from "../quiz/weak";
 import { bestSentence, groundedNearQuote, isGrounded, QUOTE_MAX, resolvePassage, wrongRangeEnd } from "./schemas";
 import { canonical, clip, collapse, containsLoose, normaliseFront, numbersIn, passageFacts, stem, words } from "./text";
@@ -17,7 +17,7 @@ export const ACCEPTED_MAX = 3;
 export const EXPLANATION_MAX = 400;
 /** Fewer good questions than this and the quiz counts as "too little text" (go refunded). */
 export const MIN_GOOD_QUESTIONS = 3;
-export const BLANK = "____";
+export { BLANK };
 
 const ref = z.union([z.string(), z.number()]).transform(String);
 const text = z.union([z.string(), z.number()]).transform(String);

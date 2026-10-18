@@ -6,8 +6,9 @@ import { timeAgo } from "@/lib/time";
 import type { Quota } from "@/lib/limits/ai";
 import {
   coveredCount, coverageText, defaultRange, effectiveCoverage, firstUnmade, madeSoFarText, mergeRanges, modeOf, overlapOf, pagesSpoken, pagesText,
-  pagesTitle, parseCoverage, quickPicks, rangeError, rangeHint, refit, type Coverage, type PageRange, type PageUnit, type RefitMode,
+  pagesTitle, parseCoverage, rangeError, rangeHint, type Coverage, type PageRange, type PageUnit, type RefitMode,
 } from "@/lib/page-range";
+import { FLASHCARDS_MAX_CHARS } from "@/lib/limits/ai";
 import { deleteCard, loadMakeOptions, makeFlashcards, restoreCard, updateCard, type FileSeries, type MakeOptions, type MakeResult } from "@/server/actions/flashcards";
 import type { DeckCard } from "@/server/cards";
 import { useSound } from "../sound-provider";
@@ -15,6 +16,7 @@ import { useActionToast } from "../ui/action-toast";
 import { Button } from "../ui/button";
 import { ProgressBar } from "../ui/progress-bar";
 import { QuotaChip } from "../ui/quota-chip";
+import { PageRangeFields } from "../ui/page-range-fields";
 import { CardEditor } from "./card-editor";
 
 export type MakePreset = { type: "note" | "file"; id: string };
@@ -107,7 +109,6 @@ export function MakeFlashcardsDialog({ subjectId, subjectName, open, onClose, pr
   const [coverage, setCoverage] = useState<{ fileId: string; list: Coverage; stored: boolean } | null>(null);
   /** Files with a sampled set made in this dialog ("(some passages sampled)"). */
   const sampledFiles = useRef(new Set<string>());
-  const [spokenHint, setSpokenHint] = useState("");
   /** After "Next: pages 7–12" it is one more press: the Make button takes focus when Step 1 mounts. */
   const [focusMake, setFocusMake] = useState(false);
   const [line, setLine] = useState(0);
@@ -191,15 +192,6 @@ export function MakeFlashcardsDialog({ subjectId, subjectName, open, onClose, pr
   const overlapText = overlap === "all"
     ? `You've made cards from these ${unit}s before. Cards you already have will be skipped.`
     : overlap === "some" ? "Cards you already have will be skipped." : null;
-  const snap = hint?.kind === "sampled" ? hint.snap : null;
-  const fromNum = /^\d+$/.test(fields.from.trim()) ? Math.min(Math.max(1, Number(fields.from)), pageCount) : 1;
-  const picks = rangeFile ? quickPicks(rangeFile.pageChars, rangeFile.looseChars, pageCount, fromNum, unit) : [];
-  const hintText = [soFar, hint?.text, snap ? `Want every passage? Use ${pagesSpoken(snap, unit)}.` : null, overlapText].filter(Boolean).join(" ");
-  // Announce the hint 600 ms after the last keystroke, not on every digit.
-  useEffect(() => {
-    const t = setTimeout(() => setSpokenHint(hintText), 600);
-    return () => clearTimeout(t);
-  }, [hintText]);
 
   /** Merges a made (or already made) set into the file's pages covered and works out the progress to show. */
   function recordSet(file: FileOption, s: FileSeries): SeriesView {
@@ -336,8 +328,6 @@ export function MakeFlashcardsDialog({ subjectId, subjectName, open, onClose, pr
     body = (<><p role="alert" className="error-text">{phase.text}</p><div className="flex justify-end"><Button onClick={close}>Close</Button></div></>);
   } else if (phase.kind === "choose" && opts) {
     const chosenTitle = choice?.type === "note" ? opts.notes.find((n) => n.id === choice.id)?.title : opts.files.find((f) => f.id === choice?.id)?.name;
-    const Unit = unit === "slide" ? "Slide" : "Page";
-    const describedBy = (field: "from" | "to") => [rangeErr?.field === field ? `${uid}-range-err` : "", `${uid}-range-hint`].filter(Boolean).join(" ");
     body = (
       <form className="flex flex-col gap-4" noValidate onSubmit={(e) => { e.preventDefault(); submit(); }}>
         {showList ? (
@@ -386,76 +376,11 @@ export function MakeFlashcardsDialog({ subjectId, subjectName, open, onClose, pr
           </p>
         )}
         {rangeFile && (
-          <fieldset className="flex flex-col gap-2">
-            <legend className="label">{Unit}s</legend>
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="sr-only" htmlFor={`${uid}-from`}>First {unit}</label>
-              <input
-                id={`${uid}-from`} ref={fromRef} type="number" inputMode="numeric" className="input w-24" min={1} max={pageCount} value={fields.from}
-                aria-invalid={rangeErr?.field === "from" || undefined} aria-describedby={describedBy("from")}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setRangeErr(null);
-                  // A new first page re-fits the last page by the pressed pick (or keeps the size); a typed last page is left alone.
-                  const n = Number(v);
-                  if (/^\d+$/.test(v.trim()) && n >= 1 && n <= pageCount) {
-                    const r = refit(mode, rangeFile.pageChars, rangeFile.looseChars, pageCount, n);
-                    setFields({ from: v, to: String(r.to) });
-                  } else setFields((f) => ({ ...f, from: v }));
-                }}
-              />
-              <span>to</span>
-              <label className="sr-only" htmlFor={`${uid}-to`}>Last {unit}</label>
-              <input
-                id={`${uid}-to`} ref={toRef} type="number" inputMode="numeric" className="input w-24" min={1} max={pageCount} value={fields.to}
-                aria-invalid={rangeErr?.field === "to" || undefined} aria-describedby={describedBy("to")}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setRangeErr(null);
-                  setFields((f) => ({ ...f, to: v }));
-                  const r = { from: Number(fields.from), to: Number(v) };
-                  if (rangeError(fields.from, v, pageCount, unit) === null) setMode(modeOf(rangeFile.pageChars, rangeFile.looseChars, r));
-                }}
-              />
-              <span className="text-ink-soft">of {pageCount}</span>
-            </div>
-            {picks.length > 0 && (
-              <div role="group" aria-label={`Quick pick for ${unit}s`} className="seg flex w-full" data-testid="quick-picks">
-                {picks.map((p) => (
-                  <button
-                    key={p.id} type="button" aria-label={p.name} className="flex-1 whitespace-nowrap px-2"
-                    aria-pressed={fieldsOk && fieldRange.from === p.range.from && fieldRange.to === p.range.to}
-                    onClick={() => {
-                      play("click");
-                      setRangeErr(null);
-                      setFields({ from: String(p.range.from), to: String(p.range.to) });
-                      setMode(p.id === "fit" ? { kind: "fit" } : { kind: "size", size: p.range.to - p.range.from + 1 });
-                    }}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            )}
-            {rangeErr && <p id={`${uid}-range-err`} className="error-text w-fit">{rangeErr.text}</p>}
-            <div id={`${uid}-range-hint`} className="hint" data-testid="range-hint">
-              {soFar && <p>{soFar}</p>}
-              {hint && <p>{hint.text}</p>}
-              {snap && (
-                <p>
-                  Want every passage?{" "}
-                  <button
-                    type="button" className="min-h-11 font-bold text-ink underline underline-offset-2"
-                    onClick={() => { play("click"); setFields((f) => ({ ...f, to: String(snap.to) })); setMode({ kind: "fit" }); }}
-                  >
-                    Use {pagesText(snap, unit)}
-                  </button>
-                </p>
-              )}
-              {overlapText && <p>{overlapText}</p>}
-            </div>
-            <p className="sr-only" role="status">{spokenHint}</p>
-          </fieldset>
+          <PageRangeFields
+            uid={uid} file={rangeFile} pageCount={pageCount} unit={unit} budget={FLASHCARDS_MAX_CHARS} noun="Cards"
+            fields={fields} setFields={setFields} mode={mode} setMode={setMode} error={rangeErr} setError={setRangeErr}
+            fromRef={fromRef} toRef={toRef} before={soFar} after={overlapText}
+          />
         )}
         <fieldset className="flex flex-col gap-1">
           <legend className="label">Number of cards</legend>

@@ -1,6 +1,8 @@
 // Question order, option shuffling and scoring (quiz-builder.md, quiz.md). Pure.
 
 export type QuestionType = "mcq" | "fill";
+/** The blank in a fill-in prompt. */
+export const BLANK = "____";
 export type QuizKind = "mcq" | "fill" | "mixed";
 export const QUIZ_KINDS = ["mcq", "fill", "mixed"] as const;
 export const QUIZ_COUNTS = [5, 10, 15] as const;

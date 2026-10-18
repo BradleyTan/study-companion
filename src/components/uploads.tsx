@@ -7,6 +7,7 @@ import { MAX_UPLOAD_BYTES } from "@/lib/validation";
 import { deleteSource, getDownloadUrl, processUpload, startUpload, uploadDemoFile } from "@/server/actions/sources";
 import type { Source } from "@/server/repo/types";
 import { MakeFlashcardsDialog } from "./flashcards/make-dialog";
+import { MakeQuizDialog } from "./quiz/make-quiz-dialog";
 import { useSound } from "./sound-provider";
 import { Button } from "./ui/button";
 import { RowMenu } from "./ui/row-menu";
@@ -125,6 +126,9 @@ function SourceRow({ source, subjectName }: { source: Source; subjectName: strin
     else { setError(res.error); play("boop"); }
   });
   const make = () => { setEverMade(true); setMaking(true); };
+  const [quizzing, setQuizzing] = useState(false);
+  const [everQuizzed, setEverQuizzed] = useState(false);
+  const makeQuiz = () => { setEverQuizzed(true); setQuizzing(true); };
   return (
     <li className="sticker-flat flex flex-wrap items-center gap-2 p-3">
       <span className="chip">{source.kind.toUpperCase()}</span>
@@ -136,7 +140,7 @@ function SourceRow({ source, subjectName }: { source: Source; subjectName: strin
       {source.extractStatus === "no_text" && <span className="hint basis-full">Handwritten and scanned files will be supported later.</span>}
       {confirm ? (
         <div className="flex basis-full flex-wrap items-center justify-end gap-2">
-          <span className="hint">Flashcards made from it stay in your deck, with their quotes.</span>
+          <span className="hint">Flashcards and quizzes made from it stay, with their quotes.</span>
           <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>Keep</Button>
           <Button
             size="sm" variant="danger" sound="tear" disabled={pending}
@@ -150,14 +154,22 @@ function SourceRow({ source, subjectName }: { source: Source; subjectName: strin
           <div className="hidden gap-1 sm:flex">
             <Button size="sm" onClick={download}>Download</Button>
             {ready && <Button size="sm" onClick={make} aria-label={`Make flashcards from ${source.fileName}`}>Make flashcards</Button>}
-            <Button size="sm" variant="ghost" onClick={() => setConfirm(true)} aria-label={`Delete ${source.fileName}`}>Delete</Button>
           </div>
+          {/* Tablet and laptop: "Make a quiz" and "Delete" sit in "⋯" so the row doesn't overflow (subject.md). */}
+          <RowMenu
+            className="hidden sm:block"
+            label={`More for ${source.fileName}`}
+            items={[
+              ...(ready ? [{ label: "Make a quiz", onSelect: makeQuiz }] : []),
+              { label: "Delete", onSelect: () => setConfirm(true), danger: true },
+            ]}
+          />
           <RowMenu
             className="sm:hidden"
             label={`More for ${source.fileName}`}
             items={[
               { label: "Download", onSelect: download },
-              ...(ready ? [{ label: "Make flashcards", onSelect: make }] : []),
+              ...(ready ? [{ label: "Make flashcards", onSelect: make }, { label: "Make a quiz", onSelect: makeQuiz }] : []),
               { label: "Delete", onSelect: () => setConfirm(true), danger: true },
             ]}
           />
@@ -166,6 +178,9 @@ function SourceRow({ source, subjectName }: { source: Source; subjectName: strin
       {error && <p role="alert" className="error-text basis-full">{error}</p>}
       {everMade && (
         <MakeFlashcardsDialog subjectId={source.subjectId} subjectName={subjectName} open={making} onClose={() => setMaking(false)} preset={{ type: "file", id: source.id }} />
+      )}
+      {everQuizzed && (
+        <MakeQuizDialog subjectId={source.subjectId} subjectName={subjectName} open={quizzing} onClose={() => setQuizzing(false)} preset={{ type: "file", id: source.id }} />
       )}
     </li>
   );

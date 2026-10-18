@@ -256,9 +256,53 @@ dialog.side-panel[open]:not(:modal) { position: fixed; inset: 0 0 0 auto; z-inde
 .sheet-handle { width: 48px; height: 5px; border-radius: 3px; background: var(--ink-soft); margin: 8px auto 0; }
 }
 
+/* ---- Step 3: quizzes and weak topics ---- */
+@layer components {
+/* MCQ option sticker: native radio inside, key cap on the left (quiz.md) */
+.option { position: relative; display: flex; align-items: center; gap: 0.75rem; width: 100%; min-height: 56px; padding: 0.6rem 0.9rem;
+  background: var(--card); color: var(--ink); border: 2.5px solid var(--ink); border-radius: 8px; box-shadow: 3px 3px 0 var(--shadow);
+  font-weight: 700; text-align: left; cursor: pointer; transition: box-shadow 120ms ease, background-color 120ms ease; }
+.option:has(input:checked) { background: var(--highlight); color: var(--on-colour); box-shadow: 1px 1px 0 var(--shadow); }
+.option:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 3px; }
+.option[data-state="right"] { background: var(--success); color: var(--on-colour); box-shadow: 1px 1px 0 var(--shadow); }
+.option[data-state="wrong"] { background: var(--danger); color: var(--on-colour); box-shadow: 1px 1px 0 var(--shadow); }
+.option[data-state] { cursor: default; }
+.option-key { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+  border: 2px solid currentColor; border-radius: 6px; font-size: 0.85rem; }
+@media (hover: none) { .option-key { border-color: transparent; width: auto; } }
+.badge { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 999px;
+  background: var(--card); color: var(--ink); border: 2px solid var(--ink); font-weight: 700; }
+.state-label { font-size: 0.8rem; font-weight: 700; }
+
+/* fill in the blank: the inline gap mirrors what is typed */
+.blank-gap { display: inline-block; min-width: 6em; padding: 0 0.25em; border-bottom: 3px solid var(--subject); text-align: center; color: var(--ink-soft); }
+.input-wrong { background: var(--danger); color: var(--on-colour); }
+.input-right { background: var(--success); color: var(--on-colour); }
+
+/* generating: a quiz sheet whose three answer bubbles tick in turn */
+.quiz-sheet { position: relative; width: 140px; padding: 14px; display: flex; flex-direction: column; gap: 10px; rotate: -2deg; }
+.quiz-bubble { display: flex; align-items: center; gap: 8px; }
+.quiz-bubble > span:first-child { width: 18px; height: 18px; border: 2px solid var(--ink); border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; }
+.quiz-bubble > span:last-child { height: 6px; flex: 1; background: var(--grid); border-radius: 3px; }
+.tick-path { stroke: var(--ink); stroke-width: 3; fill: none; stroke-dasharray: 20; stroke-dashoffset: 20; animation: tick-in 1.6s ease-in-out infinite; }
+@keyframes tick-in { 0%, 15% { stroke-dashoffset: 20; } 45%, 100% { stroke-dashoffset: 0; } }
+
+/* weak topics: sticky notes with a subject band and recent-tries dots */
+.topic-note { position: relative; background: var(--card); color: var(--ink); border: 2.5px solid var(--ink); border-left-width: 8px; border-left-color: var(--subject);
+  border-radius: 8px; box-shadow: 4px 4px 0 var(--shadow); rotate: var(--r, 0deg); }
+.try-dot { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 999px; border: 1.5px solid var(--ink);
+  color: var(--on-colour); font-size: 9px; font-weight: 700; line-height: 1; }
+.try-right { background: var(--success); } .try-miss { background: var(--danger); }
+.strip { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0.75rem; background: var(--card); border: 2.5px solid var(--ink);
+  border-left-width: 8px; border-left-color: var(--subject); border-radius: 8px; }
+.chip-good { background: var(--success); color: var(--on-colour); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .mm-node.mm-root { rotate: 0deg; }
   .tile { rotate: 0deg; }
+  .topic-note, .quiz-sheet { rotate: 0deg; }
+  .tick-path { stroke-dashoffset: 0; }
   .mark-fade { animation: none !important; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .lift:hover { transform: none; }
