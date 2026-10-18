@@ -296,6 +296,129 @@ do $$ begin
 exception when insufficient_privilege then null; end $$;
 set role authenticated;
 
+-- ===== Step 3: quizzes, questions, attempts, answers, weak topics (server-written, read-only to students)
+reset role;
+set role service_role;
+insert into public.quizzes (id, user_id, subject_id, title, kind, requested, input_hash)
+  values ('5a000000-0000-0000-0000-0000000000d1', 'aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'Cells · Mixed', 'mixed', 5, 'qh');
+insert into public.questions (id, user_id, quiz_id, subject_id, ordinal, type, prompt, options_json, correct_index, answer, explanation, topic, note_id, chunk_id, source_quote)
+  values ('5a000000-0000-0000-0000-0000000000e1', 'aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000d1', '5a000000-0000-0000-0000-000000000001', 0, 'mcq',
+    'What is ATP?', '["Energy currency","A protein","A sugar","A lipid"]', 0, 'Energy currency', 'ATP is the energy currency of the cell', 'ATP', '5a000000-0000-0000-0000-0000000000a1', '5a000000-0000-0000-0000-0000000000c1', 'ATP is the energy currency');
+insert into public.questions (id, user_id, quiz_id, subject_id, ordinal, type, prompt, answer, accepted_json, explanation, topic)
+  values ('5a000000-0000-0000-0000-0000000000e2', 'aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000d1', '5a000000-0000-0000-0000-000000000001', 1, 'fill',
+    '____ is the energy currency of the cell.', 'ATP', '["adenosine triphosphate"]', 'From the note.', 'ATP');
+insert into public.quiz_attempts (id, user_id, quiz_id, subject_id, order_json)
+  values ('5a000000-0000-0000-0000-0000000000a7', 'aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000d1', '5a000000-0000-0000-0000-000000000001', '[{"q":"5a000000-0000-0000-0000-0000000000e1","o":[2,0,3,1]}]');
+insert into public.answers (user_id, attempt_id, question_id, subject_id, client_key, given, choice, correct)
+  values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000a7', '5a000000-0000-0000-0000-0000000000e1', '5a000000-0000-0000-0000-000000000001', '0a000000-0000-4000-8000-000000000001', 'A protein', 1, false);
+insert into public.weak_topics (user_id, subject_id, topic, miss_count, last_missed_at, chunk_ids, recent)
+  values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'ATP', 1, now(), '{5a000000-0000-0000-0000-0000000000c1}', '{false}');
+-- one answer per question per attempt, and a client key answers once
+do $$ begin
+  insert into public.answers (user_id, attempt_id, question_id, subject_id, client_key, correct)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000a7', '5a000000-0000-0000-0000-0000000000e1', '5a000000-0000-0000-0000-000000000001', '0a000000-0000-4000-8000-000000000002', true);
+  raise exception 'RLS TEST FAILED: second answer to one question in an attempt';
+exception when unique_violation then null; end $$;
+do $$ begin
+  insert into public.answers (user_id, attempt_id, question_id, subject_id, client_key, correct)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000a7', '5a000000-0000-0000-0000-0000000000e2', '5a000000-0000-0000-0000-000000000001', '0a000000-0000-4000-8000-000000000001', true);
+  raise exception 'RLS TEST FAILED: client key reused';
+exception when unique_violation then null; end $$;
+-- topics are one row per subject, case-insensitively
+do $$ begin
+  insert into public.weak_topics (user_id, subject_id, topic) values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', '  atp ');
+  raise exception 'RLS TEST FAILED: duplicate weak topic accepted';
+exception when unique_violation then null; end $$;
+-- shape checks: multiple choice needs 4 options and a right one; fill-ins have none
+do $$ begin
+  insert into public.questions (user_id, quiz_id, subject_id, ordinal, type, prompt, options_json, correct_index, answer, topic)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000d1', '5a000000-0000-0000-0000-000000000001', 2, 'mcq', 'q', '["a","b","c"]', 0, 'a', 't');
+  raise exception 'RLS TEST FAILED: 3-option question accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.questions (user_id, quiz_id, subject_id, ordinal, type, prompt, answer, topic)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000d1', '5a000000-0000-0000-0000-000000000001', 2, 'mcq', 'q', 'a', 't');
+  raise exception 'RLS TEST FAILED: multiple choice without options accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.weak_topics (user_id, subject_id, topic, chunk_ids) values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'many',
+    array(select gen_random_uuid() from generate_series(1, 11)));
+  raise exception 'RLS TEST FAILED: 11 remembered passages accepted';
+exception when check_violation then null; end $$;
+-- even the server can't link a B quiz, question or answer to A's rows (composite FKs)
+do $$ begin
+  insert into public.quizzes (user_id, subject_id, title, kind, requested, input_hash) values ('bbbbbbbb-0000-0000-0000-000000000002', '5a000000-0000-0000-0000-000000000001', 't', 'mcq', 5, 'h');
+  raise exception 'RLS TEST FAILED: server put a B quiz in A subject';
+exception when foreign_key_violation then null; end $$;
+do $$ begin
+  insert into public.answers (user_id, attempt_id, question_id, subject_id, client_key, correct)
+    values ('bbbbbbbb-0000-0000-0000-000000000002', '5a000000-0000-0000-0000-0000000000a7', '5a000000-0000-0000-0000-0000000000e2', '5a000000-0000-0000-0000-000000000001', gen_random_uuid(), true);
+  raise exception 'RLS TEST FAILED: server put a B answer on A attempt';
+exception when foreign_key_violation then null; end $$;
+-- caps: at most 20 questions in a quiz
+insert into public.questions (user_id, quiz_id, subject_id, ordinal, type, prompt, answer, topic)
+  select 'aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000d1', '5a000000-0000-0000-0000-000000000001', g, 'fill', 'q ____', 'a', 't' from generate_series(2, 19) g;
+do $$ begin
+  insert into public.questions (user_id, quiz_id, subject_id, ordinal, type, prompt, answer, topic)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000d1', '5a000000-0000-0000-0000-000000000001', 0, 'fill', 'q', 'a', 't');
+  raise exception 'RLS TEST FAILED: 21st question accepted';
+exception when check_violation then null; end $$;
+delete from public.questions where quiz_id = '5a000000-0000-0000-0000-0000000000d1' and ordinal >= 2;
+-- caps: at most 50 attempts per quiz
+insert into public.quiz_attempts (user_id, quiz_id, subject_id, order_json)
+  select 'aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000d1', '5a000000-0000-0000-0000-000000000001', '[]' from generate_series(2, 50);
+do $$ begin
+  insert into public.quiz_attempts (user_id, quiz_id, subject_id, order_json) values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000d1', '5a000000-0000-0000-0000-000000000001', '[]');
+  raise exception 'RLS TEST FAILED: 51st attempt accepted';
+exception when check_violation then null; end $$;
+delete from public.quiz_attempts where order_json = '[]'::jsonb;
+reset role;
+
+-- A reads own rows, but can't write any of them
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+select pg_temp.check((select count(*) from public.quizzes) = 1, 'A sees own quiz');
+select pg_temp.check((select count(*) from public.questions) = 2, 'A sees own questions');
+select pg_temp.check((select count(*) from public.quiz_attempts) = 1, 'A sees own attempt');
+select pg_temp.check((select count(*) from public.answers) = 1, 'A sees own answer');
+select pg_temp.check((select count(*) from public.weak_topics) = 1, 'A sees own weak topic');
+do $$ begin
+  insert into public.quizzes (subject_id, title, kind, requested, input_hash) values ('5a000000-0000-0000-0000-000000000001', 't', 'mcq', 5, 'h');
+  raise exception 'RLS TEST FAILED: student inserted a quiz directly';
+exception when insufficient_privilege then null; end $$;
+do $$ begin
+  insert into public.answers (attempt_id, question_id, subject_id, client_key, correct)
+    values ('5a000000-0000-0000-0000-0000000000a7', '5a000000-0000-0000-0000-0000000000e2', '5a000000-0000-0000-0000-000000000001', gen_random_uuid(), true);
+  raise exception 'RLS TEST FAILED: student inserted an answer directly';
+exception when insufficient_privilege then null; end $$;
+do $$ begin
+  insert into public.weak_topics (subject_id, topic) values ('5a000000-0000-0000-0000-000000000001', 'x');
+  raise exception 'RLS TEST FAILED: student inserted a weak topic directly';
+exception when insufficient_privilege then null; end $$;
+update public.answers set correct = true;
+update public.quiz_attempts set score = 5, total = 5, finished_at = now();
+update public.weak_topics set cleared_at = now(), miss_count = 0;
+update public.questions set answer = 'x';
+delete from public.weak_topics;
+delete from public.answers;
+delete from public.quizzes;
+select pg_temp.check((select not correct from public.answers), 'student cannot mark own answer right');
+select pg_temp.check((select finished_at is null from public.quiz_attempts), 'student cannot finish an attempt directly');
+select pg_temp.check((select cleared_at is null and miss_count = 1 from public.weak_topics), 'student cannot clear a weak topic directly');
+select pg_temp.check((select count(*) from public.quizzes) + (select count(*) from public.answers) + (select count(*) from public.weak_topics) = 3, 'student cannot delete Step 3 rows directly');
+
+-- B sees and changes none of it
+set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
+select pg_temp.check((select count(*) from public.quizzes) + (select count(*) from public.questions) + (select count(*) from public.quiz_attempts)
+  + (select count(*) from public.answers) + (select count(*) from public.weak_topics) = 0, 'B cannot see A quiz rows');
+update public.weak_topics set miss_count = 99;
+delete from public.quizzes;
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+select pg_temp.check((select miss_count from public.weak_topics) = 1, 'A weak topic unchanged by B');
+select pg_temp.check((select count(*) from public.quizzes) = 1, 'A quiz not deleted by B');
+
 -- ===== anon sees nothing
 reset request.jwt.claim.sub;
 set role anon;
@@ -314,11 +437,14 @@ select pg_temp.check((select graph_json from public.mindmaps) = '{"version":1,"n
 -- deleting the note keeps the card and its quote, clearing the links
 delete from public.notes where id = '5a000000-0000-0000-0000-0000000000a1';
 select pg_temp.check((select note_id is null and chunk_id is null and source_quote is not null from public.flashcards where id = '5a000000-0000-0000-0000-0000000000f1'), 'card survives note delete');
+select pg_temp.check((select note_id is null and chunk_id is null and source_quote is not null from public.questions where id = '5a000000-0000-0000-0000-0000000000e1'), 'question survives note delete');
 
 -- deleting a subject cascades to notes, sources, chunks
 delete from public.subjects where id = '5a000000-0000-0000-0000-000000000001';
 select pg_temp.check((select count(*) from public.notes) + (select count(*) from public.sources) + (select count(*) from public.chunks)
-  + (select count(*) from public.flashcards) + (select count(*) from public.card_reviews) + (select count(*) from public.mindmaps) = 0, 'subject delete cascades');
+  + (select count(*) from public.flashcards) + (select count(*) from public.card_reviews) + (select count(*) from public.mindmaps)
+  + (select count(*) from public.quizzes) + (select count(*) from public.questions) + (select count(*) from public.quiz_attempts)
+  + (select count(*) from public.answers) + (select count(*) from public.weak_topics) = 0, 'subject delete cascades');
 
 reset role;
 -- deleting a user removes their profile
