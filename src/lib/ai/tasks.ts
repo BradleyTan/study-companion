@@ -1,10 +1,12 @@
-// The two Step 2 generations, as tasks for runAiTask.
-import { fakeFlashcards, fakeMindmap } from "./fake";
-import { flashcardMessages, mindmapMessages } from "./prompts";
+// The generations (Step 2 flashcards and mindmaps, Step 3 quizzes), as tasks for runAiTask.
+import { fakeFlashcards, fakeMindmap, fakeQuiz } from "./fake";
+import { flashcardMessages, mindmapMessages, quizMessages } from "./prompts";
 import { GROQ_MODELS } from "./providers";
 import type { AiTask } from "./run";
 import { normaliseFlashcardsWithStats, normaliseMindmap, type NormalisedCards } from "./schemas";
+import { normaliseQuizWithStats, type NormalisedQuiz } from "./quiz";
 import type { MindmapGraph, Passage } from "./types";
+import type { QuizKind } from "../quiz/order";
 
 // Flashcard budgets live in limits/ai.ts so the dialog can use them too (page-range hints).
 export { FLASHCARDS_MAX_CHARS, MIN_SOURCE_CHARS } from "../limits/ai";
@@ -42,4 +44,21 @@ export function mindmapTask(passages: Passage[], subjectName: string): AiTask<Mi
 /** Gives passages the short refs (p1, p2, …) the model uses. */
 export function toPassages(chunks: { id: string; text: string; page: number | null }[]): Passage[] {
   return chunks.map((c, i) => ({ chunkId: c.id, text: c.text, page: c.page, ref: `p${i + 1}` }));
+}
+
+/**
+ * Quiz generation (quiz-builder.md): Groq gpt-oss-120b. Never padded: questions that fail the
+ * quality or grounding checks are dropped, and the server treats fewer than 3 as "too little text".
+ */
+export function quizTask(passages: Passage[], opts: { count: number; kind: QuizKind; topics: string[]; focus: string[] }): AiTask<NormalisedQuiz> {
+  return {
+    groqModel: GROQ_MODELS.quiz,
+    messages: quizMessages(passages, opts),
+    maxTokens: 4000,
+    parse: (json) => {
+      const out = normaliseQuizWithStats(json, passages, { kind: opts.kind, max: opts.count, topics: [...opts.topics, ...opts.focus] });
+      return out && out.questions.length ? out : null;
+    },
+    fake: () => fakeQuiz(passages, opts.count, opts.kind),
+  };
 }

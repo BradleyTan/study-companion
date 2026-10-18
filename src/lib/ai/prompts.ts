@@ -145,3 +145,53 @@ export function fitPassages<T extends { text: string }>(list: T[], maxChars: num
   }
   return picked.length ? picked : [list[0]];
 }
+
+/** How quiz questions should be written (quiz-builder.md "Quality rules"; Bradley: accuracy as important as quantity). */
+export const QUIZ_QUALITY_RULES = [
+  "Accuracy first. Every question and answer must come only from the passages: no outside knowledge. Keep numbers, units, names and technical terms exactly as written in the passage. If a passage is ambiguous or incomplete, skip it rather than guess.",
+  "Copy scientific names, formulas, equations, symbols and units exactly as the passage writes them (H₂O, Ca²⁺, 10⁸, α-helix, ΔG, −70 mV). Plain text only: no Markdown, LaTeX or HTML.",
+  "Ask about key concepts, definitions, processes and cause-and-effect, not trivia (headings, lecture numbers, who said what in passing). Never ask two questions about the same fact.",
+  "Multiple choice (\"mcq\"): exactly 4 options and exactly 1 correct. The 3 wrong options are plausible, of similar length and form to the right one, taken from related ideas in the passages, and clearly wrong according to the passages. Never \"all of the above\", \"none of the above\", \"both A and B\" or joke options. \"answer\" repeats the right option word for word.",
+  `Fill in the blank ("fill"): "prompt" is one sentence with exactly one blank written ${"____"}. "answer" is the missing 1 to 4 words, or a number with its unit, copied exactly from the passage. "accepted" lists up to 3 other answers that are equally right (a synonym, an abbreviation, the singular or plural), or is empty. The answer's words must not appear anywhere else in the sentence.`,
+  "\"topic\" names the concept being tested in 1 to 4 words (under 40 characters), such as \"Krebs cycle\" or \"Osmosis\". When one of the existing topic names fits, use it exactly, so the same idea keeps one name.",
+  "\"explanation\" is 1 or 2 sentences, from the same passage, saying why the answer is right.",
+  "\"quote\" is a short exact quote from the cited passage (under 200 characters) that supports the answer.",
+].join("\n");
+
+const KIND_RULE: Record<"mcq" | "fill" | "mixed", string> = {
+  mcq: "Every question is multiple choice (\"type\": \"mcq\").",
+  fill: "Every question is fill in the blank (\"type\": \"fill\").",
+  mixed: "About half the questions are multiple choice (\"mcq\") and half fill in the blank (\"fill\"), alternating.",
+};
+
+/**
+ * Quiz prompt. Existing topic names and focus topics are the student's own data (they came
+ * from earlier replies about their notes), so they go in the user message as quoted, defused JSON.
+ */
+export function quizMessages(passages: Passage[], opts: { count: number; kind: "mcq" | "fill" | "mixed"; topics: string[]; focus: string[] }): ChatMessage[] {
+  const pages = new Set(passages.map((p) => p.page).filter((p) => p !== null));
+  const list = (xs: string[]) => JSON.stringify(xs.slice(0, 40).map((t) => defuse(t.slice(0, 40))));
+  return [
+    {
+      role: "system",
+      content: [
+        "You write quiz questions that test a university student's understanding of their own notes.",
+        DATA_RULES,
+        'JSON shape: {"questions":[{"type":"mcq","prompt":"question","options":["option","option","option","option"],"answer":"the right option, word for word","passage":"p1","quote":"exact words from that passage","topic":"short topic name","explanation":"why the answer is right"},{"type":"fill","prompt":"A sentence with one ____ in it.","answer":"missing words","accepted":[],"passage":"p2","quote":"exact words","topic":"short topic name","explanation":"why"}]}',
+        `Write about ${opts.count} questions; fewer if the passages only support fewer good ones. Never pad with weak questions. Each prompt is under 300 characters. "passage" is the id of the one passage the question comes from. ${KIND_RULE[opts.kind]}`,
+        QUIZ_QUALITY_RULES,
+        ...(pages.size > 1 ? ["The passages come from different pages. Spread the questions evenly across them: at most 2 questions from one passage until every passage with a good fact has one."] : []),
+        ...(opts.focus.length ? ["Every question tests one of the focus topics. Use the focus topic's name as its \"topic\"."] : []),
+      ].join("\n\n"),
+    },
+    {
+      role: "user",
+      content: [
+        `Existing topic names (data): ${list(opts.topics)}`,
+        ...(opts.focus.length ? [`Focus topics (data): ${list(opts.focus)}`] : []),
+        passagesBlock(passages),
+        `Write about ${opts.count} quiz questions from the passages above.`,
+      ].join("\n\n"),
+    },
+  ];
+}

@@ -44,7 +44,7 @@ export function resolvePassage(raw: string | null | undefined, passages: Passage
   return passages.find((p) => p.ref === `p${Number(m[1])}`) ?? null;
 }
 
-function bestSentence(passage: Passage, about: string): string {
+export function bestSentence(passage: Passage, about: string): string {
   const list = sentences(passage.text);
   let best = list[0] ?? passage.text;
   let score = -1;
