@@ -401,6 +401,9 @@ export async function attemptResults(attemptId: string): Promise<ActionResult<{ 
   const attempt = await repo.getAttempt(attemptId);
   const quiz = attempt ? await liveQuiz(repo, attempt.quizId) : null;
   if (!attempt || !quiz) return { ok: false, error: "Results not found." };
+  // Results carry every right answer: never before the attempt is finished (quiz.md "answers are
+  // not sent until the student has answered").
+  if (!attempt.finishedAt) return { ok: false, error: "Finish the quiz to see your results." };
   return { ok: true, results: await resultsView(repo, quiz, attempt) };
 }
 

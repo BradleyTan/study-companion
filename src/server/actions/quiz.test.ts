@@ -160,6 +160,30 @@ describe("taking a quiz", () => {
     }
     for (const q of view.questions) expect(Object.keys(q).sort()).toEqual(["id", "options", "prompt", "topic", "type"]);
     expect(view.feedback).toEqual({});
+    // Results (every right answer) only once the attempt is finished (QA step 3).
+    const early = await actions.attemptResults(view.attemptId);
+    expect(early.ok).toBe(false);
+    expect(JSON.stringify(early)).not.toContain((await repo.listQuestions({ quizId }))[0].answer);
+  });
+
+  it("a second check of an answered question, with a new client key, returns the first answer (QA step 3)", async () => {
+    const { quizId, subjectId } = await made("mcq", 5);
+    const view = await started(quizId);
+    const q = view.questions[0];
+    const first = await actions.checkAnswer({ attemptId: view.attemptId, questionId: q.id, clientKey: crypto.randomUUID(), ...(await wrongAnswer(view, q.id)) });
+    const second = await actions.checkAnswer({ attemptId: view.attemptId, questionId: q.id, clientKey: crypto.randomUUID(), ...(await rightAnswer(view, q.id)) });
+    expect(first.ok && second.ok && second.feedback.answerId).toBe(first.ok && first.feedback.answerId);
+    expect(second.ok && second.feedback.correct).toBe(false);
+    expect((await repo.listWeakTopics(subjectId))[0].missCount).toBe(1);
+    // Two taps at once with different keys still save one answer and one miss.
+    const q2 = view.questions[1];
+    const wrong = await wrongAnswer(view, q2.id);
+    await Promise.all([1, 2].map(() => actions.checkAnswer({ attemptId: view.attemptId, questionId: q2.id, clientKey: crypto.randomUUID(), ...wrong })));
+    expect((await repo.listAnswers({ attemptIds: [view.attemptId] })).filter((a) => a.questionId === q2.id)).toHaveLength(1);
+    // A client key already used for another question is refused, not reused.
+    const used = (await repo.listAnswers({ attemptIds: [view.attemptId] }))[0];
+    const reuse = await actions.checkAnswer({ attemptId: view.attemptId, questionId: view.questions[2].id, clientKey: used.clientKey, choice: 0 });
+    expect(reuse.ok).toBe(false);
   });
 
   it("checks right and wrong answers, saves once per client key, and tracks weak topics", async () => {
