@@ -165,3 +165,28 @@ test("practise what I missed after a resumed quiz keeps the results and the new 
   await expect(practise).toBeVisible();
   await expect(page.getByTestId("question")).toHaveCount(0);
 });
+
+// Retake reused the first attempt's answer keys, so every answer in the retake was refused with
+// "That answer was already used. Reload the quiz." (code review of step 3).
+test("retake this quiz: answers in the new attempt are checked, not refused", async ({ page }) => {
+  await subjectWithNote(page, "Ecology");
+  const dialog = await makeQuiz(page);
+  await dialog.getByRole("link", { name: "Start quiz" }).click();
+  for (let round = 0; round < 2; round++) {
+    for (;;) {
+      await page.getByTestId("question").getByRole("button", { name: "I don't know" }).click();
+      const fb = page.getByTestId("feedback");
+      await expect(fb).toBeVisible();
+      await expect(page.getByText("That answer was already used")).toHaveCount(0);
+      const next = fb.getByRole("button", { name: /^(Next question|See results)$/ });
+      const last = (await next.textContent()) === "See results";
+      await next.click();
+      if (last) break;
+    }
+    await expect(page.getByText(/You scored|Good practice\./).first()).toBeVisible();
+    if (round === 0) {
+      await page.getByRole("button", { name: "Retake this quiz" }).first().click();
+      await expect(page.getByTestId("question")).toBeVisible();
+    }
+  }
+});

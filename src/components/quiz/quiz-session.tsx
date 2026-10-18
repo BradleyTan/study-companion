@@ -141,8 +141,10 @@ export function QuizSession({ subject, quizId, title, start }: { subject: Subjec
   const submit = useCallback(async (dontKnow: boolean) => {
     if (!view || !q || fb || checking) return;
     if (!dontKnow && (q.type === "mcq" ? choice === null : !text.trim())) return;
-    let key = keys.current.get(q.id);
-    if (!key) { key = crypto.randomUUID(); keys.current.set(q.id, key); }
+    // One key per attempt and question: a retake asks the same questions in a new attempt.
+    const slot = `${view.attemptId}:${q.id}`;
+    let key = keys.current.get(slot);
+    if (!key) { key = crypto.randomUUID(); keys.current.set(slot, key); }
     const payload = { attemptId: view.attemptId, questionId: q.id, clientKey: key, ...(dontKnow ? { dontKnow: true } : q.type === "mcq" ? { choice: choice! } : { text }) };
     setChecking(true);
     setActionErr(null);
