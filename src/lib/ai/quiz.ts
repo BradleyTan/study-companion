@@ -97,7 +97,7 @@ export function normaliseQuizWithStats(json: unknown, passages: Passage[], opts:
       : /^(?:fill|blank|gap|cloze)/i.test(q.type ?? "") ? "fill" : options.length ? "mcq" : q.prompt.includes("__") ? "fill" : null;
     if (!type || (opts.kind !== "mixed" && type !== opts.kind)) { drop("type"); continue; }
 
-    let prompt = clip(type === "fill" ? standardBlanks(q.prompt) : q.prompt, QUESTION_PROMPT_MAX);
+    const prompt = clip(type === "fill" ? standardBlanks(q.prompt) : q.prompt, QUESTION_PROMPT_MAX);
     const answerRaw = clip(q.answer, type === "fill" ? FILL_ANSWER_MAX + 20 : OPTION_MAX);
     if (prompt.length < 12 || !answerRaw) { drop("short"); continue; }
 

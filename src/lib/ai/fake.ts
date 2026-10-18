@@ -71,7 +71,7 @@ function fakeTopic(s: string): string {
   const def = DEFINITION.exec(s.replace(/[.!?]+$/, ""));
   const raw = def
     ? def[1].replace(/^(the|a|an)\s+/i, "").split(/\s+/).slice(0, 3).join(" ")
-    : words(s).filter((w) => /^\p{L}+$/u.test(w)).sort((a, b) => b.length - a.length || a.localeCompare(b)).slice(0, 2).join(" ");
+    : [...new Set(words(s).filter((w) => /^\p{L}+$/u.test(w)).map((w) => w.toLowerCase()))].sort((a, b) => b.length - a.length || a.localeCompare(b)).slice(0, 2).join(" ");
   return clip(raw.charAt(0).toUpperCase() + raw.slice(1), 40);
 }
 
