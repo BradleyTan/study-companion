@@ -79,3 +79,16 @@ While the Pomodoro timer runs: only `chime` plays, decorative motion follows red
 
 ### Breakpoints used by Step 2 specs
 Phone < 640 px (designed at 375), tablet 640–899, laptop ≥ 900 (matches the 900 px split already used on the subject page).
+
+## Step 3 additions (quizzes, weak topics, ask your notes)
+
+No new colour tokens: right/wrong reuse `--success` / `--danger` with `--on-colour` text, selected options use `--highlight`. Correct and wrong are always also shown with ✓ / ✗ badges and words ("Right answer", "Your answer").
+
+### Motion
+- Correct answer: ✓ badge pop (350 ms spring) + a 10-piece paper burst from the option, 600 ms. Off under reduced motion and in focus mode.
+- Wrong answer: one gentle shake of the question sticker, `translateX` 0 → -6 → 6 → -4 → 4 → 0 px, 320 ms ease-out, never looping. Off under reduced motion and in focus mode (badges and text still show).
+- Quiz results: confetti (Step 2 rules) only at ≥ 70 %.
+- Chat: sent message 200 ms slide-up fade; answer 350 ms pop; typing dots 1 s loop (static text under reduced motion / focus mode).
+
+### New components
+`OptionButton` (MCQ option sticker with key cap and ✓/✗ states), `BlankInput` (fill-in sentence with inline gap + input), `FeedbackPanel`, `ScoreSticker`, `StreakTag`, `TopicNote` (weak-topic sticky note with recent-tries dots), `ChatBubble` (student / answer / not-covered), `CitationChip` + `CitationPreview` (popover ≥ 640 px, `BottomSheet` on phone), `Composer`. `SourceQuote`, `QuotaChip`, `ProgressBar`, `Confetti` and the page-range fields are reused from Step 2.
