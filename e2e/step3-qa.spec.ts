@@ -130,3 +130,38 @@ test("HTML typed into a note stays text in a chat answer and its citation previe
   expect(await page.locator('main img[src="x"], main b').count()).toBe(0);
   await expect(preview).toContainText("Osmosis is the movement of water");
 });
+
+// The quiz page was keyed on the attempt it found, and making a quiz refreshes the page. After a
+// resumed attempt was finished, "Practise what I missed" → Make quiz refreshed into "no unfinished
+// attempt": the screen remounted, the "Quiz ready!" dialog vanished and a new attempt started.
+test("practise what I missed after a resumed quiz keeps the results and the new quiz's dialog", async ({ page }) => {
+  await subjectWithNote(page, "Zoology");
+  const dialog = await makeQuiz(page);
+  await dialog.getByRole("link", { name: "Start quiz" }).click();
+  const q = page.getByTestId("question");
+  await expect(q).toBeVisible();
+  await q.getByRole("button", { name: "I don't know" }).click();
+  await page.getByTestId("feedback").getByRole("button", { name: "Next question" }).click();
+  await expect(q).toBeVisible();
+  // Come back later (a reload resumes the attempt).
+  await page.reload();
+  await expect(q).toBeVisible();
+  for (;;) {
+    await page.getByTestId("question").getByRole("button", { name: "I don't know" }).click();
+    const next = page.getByTestId("feedback").getByRole("button", { name: /^(Next question|See results)$/ });
+    const last = (await next.textContent()) === "See results";
+    await next.click();
+    if (last) break;
+  }
+  const practise = page.getByRole("button", { name: "Practise what I missed" });
+  await expect(practise).toBeVisible();
+  await practise.click();
+  const make = page.locator("dialog[open]");
+  await make.getByRole("button", { name: "Make quiz" }).click();
+  await expect(make.getByRole("heading", { name: /^Quiz ready!/ })).toBeVisible({ timeout: 15_000 });
+  // The refresh after making it has landed; nothing was reset.
+  await page.waitForLoadState("networkidle");
+  await expect(make.getByRole("heading", { name: /^Quiz ready!/ })).toBeVisible();
+  await expect(practise).toBeVisible();
+  await expect(page.getByTestId("question")).toHaveCount(0);
+});
