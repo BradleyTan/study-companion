@@ -35,7 +35,8 @@ export default function PrivacyPage() {
         <h2>AI and your notes</h2>
         <p>
           When you ask for flashcards, quizzes, mindmaps or answers from your notes, the relevant passages are sent to Groq, which runs the AI
-          model (or to Cloudflare if Groq is busy). Neither keeps your text to train models; Groq may hold it for up to 30 days only to
+          model (or to Cloudflare if Groq is busy). For &ldquo;Ask your notes&rdquo;, your question and the last few messages of that
+          subject&apos;s chat go with them, so follow-up questions make sense. Neither keeps your text to train models; Groq may hold it for up to 30 days only to
           investigate abuse. We chose these providers because they don&apos;t use your notes for training. AI only runs when you ask for it.
         </p>
         <h2>Read aloud</h2>
