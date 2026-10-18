@@ -296,6 +296,231 @@ do $$ begin
 exception when insufficient_privilege then null; end $$;
 set role authenticated;
 
+-- ===== Step 3: quizzes, questions, attempts, answers, weak topics (server-written, read-only to students)
+reset role;
+set role service_role;
+insert into public.quizzes (id, user_id, subject_id, title, kind, requested, input_hash)
+  values ('5a000000-0000-0000-0000-0000000000d1', 'aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'Cells · Mixed', 'mixed', 5, 'qh');
+insert into public.questions (id, user_id, quiz_id, subject_id, ordinal, type, prompt, options_json, correct_index, answer, explanation, topic, note_id, chunk_id, source_quote)
+  values ('5a000000-0000-0000-0000-0000000000e1', 'aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000d1', '5a000000-0000-0000-0000-000000000001', 0, 'mcq',
+    'What is ATP?', '["Energy currency","A protein","A sugar","A lipid"]', 0, 'Energy currency', 'ATP is the energy currency of the cell', 'ATP', '5a000000-0000-0000-0000-0000000000a1', '5a000000-0000-0000-0000-0000000000c1', 'ATP is the energy currency');
+insert into public.questions (id, user_id, quiz_id, subject_id, ordinal, type, prompt, answer, accepted_json, explanation, topic)
+  values ('5a000000-0000-0000-0000-0000000000e2', 'aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000d1', '5a000000-0000-0000-0000-000000000001', 1, 'fill',
+    '____ is the energy currency of the cell.', 'ATP', '["adenosine triphosphate"]', 'From the note.', 'ATP');
+insert into public.quiz_attempts (id, user_id, quiz_id, subject_id, order_json)
+  values ('5a000000-0000-0000-0000-0000000000a7', 'aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000d1', '5a000000-0000-0000-0000-000000000001', '[{"q":"5a000000-0000-0000-0000-0000000000e1","o":[2,0,3,1]}]');
+insert into public.answers (user_id, attempt_id, question_id, subject_id, client_key, given, choice, correct)
+  values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000a7', '5a000000-0000-0000-0000-0000000000e1', '5a000000-0000-0000-0000-000000000001', '0a000000-0000-4000-8000-000000000001', 'A protein', 1, false);
+insert into public.weak_topics (user_id, subject_id, topic, miss_count, last_missed_at, chunk_ids, recent)
+  values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'ATP', 1, now(), '{5a000000-0000-0000-0000-0000000000c1}', '{false}');
+-- one answer per question per attempt, and a client key answers once
+do $$ begin
+  insert into public.answers (user_id, attempt_id, question_id, subject_id, client_key, correct)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000a7', '5a000000-0000-0000-0000-0000000000e1', '5a000000-0000-0000-0000-000000000001', '0a000000-0000-4000-8000-000000000002', true);
+  raise exception 'RLS TEST FAILED: second answer to one question in an attempt';
+exception when unique_violation then null; end $$;
+do $$ begin
+  insert into public.answers (user_id, attempt_id, question_id, subject_id, client_key, correct)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000a7', '5a000000-0000-0000-0000-0000000000e2', '5a000000-0000-0000-0000-000000000001', '0a000000-0000-4000-8000-000000000001', true);
+  raise exception 'RLS TEST FAILED: client key reused';
+exception when unique_violation then null; end $$;
+-- topics are one row per subject, case-insensitively
+do $$ begin
+  insert into public.weak_topics (user_id, subject_id, topic) values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', '  atp ');
+  raise exception 'RLS TEST FAILED: duplicate weak topic accepted';
+exception when unique_violation then null; end $$;
+-- shape checks: multiple choice needs 4 options and a right one; fill-ins have none
+do $$ begin
+  insert into public.questions (user_id, quiz_id, subject_id, ordinal, type, prompt, options_json, correct_index, answer, topic)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000d1', '5a000000-0000-0000-0000-000000000001', 2, 'mcq', 'q', '["a","b","c"]', 0, 'a', 't');
+  raise exception 'RLS TEST FAILED: 3-option question accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.questions (user_id, quiz_id, subject_id, ordinal, type, prompt, answer, topic)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000d1', '5a000000-0000-0000-0000-000000000001', 2, 'mcq', 'q', 'a', 't');
+  raise exception 'RLS TEST FAILED: multiple choice without options accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.weak_topics (user_id, subject_id, topic, chunk_ids) values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'many',
+    array(select gen_random_uuid() from generate_series(1, 11)));
+  raise exception 'RLS TEST FAILED: 11 remembered passages accepted';
+exception when check_violation then null; end $$;
+-- even the server can't link a B quiz, question or answer to A's rows (composite FKs)
+do $$ begin
+  insert into public.quizzes (user_id, subject_id, title, kind, requested, input_hash) values ('bbbbbbbb-0000-0000-0000-000000000002', '5a000000-0000-0000-0000-000000000001', 't', 'mcq', 5, 'h');
+  raise exception 'RLS TEST FAILED: server put a B quiz in A subject';
+exception when foreign_key_violation then null; end $$;
+do $$ begin
+  insert into public.answers (user_id, attempt_id, question_id, subject_id, client_key, correct)
+    values ('bbbbbbbb-0000-0000-0000-000000000002', '5a000000-0000-0000-0000-0000000000a7', '5a000000-0000-0000-0000-0000000000e2', '5a000000-0000-0000-0000-000000000001', gen_random_uuid(), true);
+  raise exception 'RLS TEST FAILED: server put a B answer on A attempt';
+exception when foreign_key_violation then null; end $$;
+-- caps: at most 20 questions in a quiz
+insert into public.questions (user_id, quiz_id, subject_id, ordinal, type, prompt, answer, topic)
+  select 'aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000d1', '5a000000-0000-0000-0000-000000000001', g, 'fill', 'q ____', 'a', 't' from generate_series(2, 19) g;
+do $$ begin
+  insert into public.questions (user_id, quiz_id, subject_id, ordinal, type, prompt, answer, topic)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000d1', '5a000000-0000-0000-0000-000000000001', 0, 'fill', 'q', 'a', 't');
+  raise exception 'RLS TEST FAILED: 21st question accepted';
+exception when check_violation then null; end $$;
+delete from public.questions where quiz_id = '5a000000-0000-0000-0000-0000000000d1' and ordinal >= 2;
+-- caps: at most 50 attempts per quiz
+insert into public.quiz_attempts (user_id, quiz_id, subject_id, order_json)
+  select 'aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000d1', '5a000000-0000-0000-0000-000000000001', '[]' from generate_series(2, 50);
+do $$ begin
+  insert into public.quiz_attempts (user_id, quiz_id, subject_id, order_json) values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000d1', '5a000000-0000-0000-0000-000000000001', '[]');
+  raise exception 'RLS TEST FAILED: 51st attempt accepted';
+exception when check_violation then null; end $$;
+delete from public.quiz_attempts where order_json = '[]'::jsonb;
+reset role;
+
+-- A reads own rows, but can't write any of them
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+select pg_temp.check((select count(*) from public.quizzes) = 1, 'A sees own quiz');
+select pg_temp.check((select count(*) from public.questions) = 2, 'A sees own questions');
+select pg_temp.check((select count(*) from public.quiz_attempts) = 1, 'A sees own attempt');
+select pg_temp.check((select count(*) from public.answers) = 1, 'A sees own answer');
+select pg_temp.check((select count(*) from public.weak_topics) = 1, 'A sees own weak topic');
+-- S3-2: A's cached quiz reply (with its answers) is invisible to A, even with every table
+-- privilege granted (RLS alone: the cache has no student policy).
+reset role;
+insert into public.ai_cache (user_id, kind, input_hash, model, output_json)
+  values ('aaaaaaaa-0000-0000-0000-000000000001', 'quiz', 'qh', 'openai/gpt-oss-120b', '{"questions":[{"answer":"Energy currency"}]}');
+set role authenticated;
+select pg_temp.check((select count(*) from public.ai_cache) = 0, 'A cannot read own cached quiz answers');
+do $$ begin
+  insert into public.quizzes (subject_id, title, kind, requested, input_hash) values ('5a000000-0000-0000-0000-000000000001', 't', 'mcq', 5, 'h');
+  raise exception 'RLS TEST FAILED: student inserted a quiz directly';
+exception when insufficient_privilege then null; end $$;
+do $$ begin
+  insert into public.answers (attempt_id, question_id, subject_id, client_key, correct)
+    values ('5a000000-0000-0000-0000-0000000000a7', '5a000000-0000-0000-0000-0000000000e2', '5a000000-0000-0000-0000-000000000001', gen_random_uuid(), true);
+  raise exception 'RLS TEST FAILED: student inserted an answer directly';
+exception when insufficient_privilege then null; end $$;
+do $$ begin
+  insert into public.weak_topics (subject_id, topic) values ('5a000000-0000-0000-0000-000000000001', 'x');
+  raise exception 'RLS TEST FAILED: student inserted a weak topic directly';
+exception when insufficient_privilege then null; end $$;
+update public.answers set correct = true;
+update public.quiz_attempts set score = 5, total = 5, finished_at = now();
+update public.weak_topics set cleared_at = now(), miss_count = 0;
+update public.questions set answer = 'x';
+delete from public.weak_topics;
+delete from public.answers;
+delete from public.quizzes;
+select pg_temp.check((select not correct from public.answers), 'student cannot mark own answer right');
+select pg_temp.check((select finished_at is null from public.quiz_attempts), 'student cannot finish an attempt directly');
+select pg_temp.check((select cleared_at is null and miss_count = 1 from public.weak_topics), 'student cannot clear a weak topic directly');
+select pg_temp.check((select count(*) from public.quizzes) + (select count(*) from public.answers) + (select count(*) from public.weak_topics) = 3, 'student cannot delete Step 3 rows directly');
+
+-- B sees and changes none of it
+set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
+select pg_temp.check((select count(*) from public.quizzes) + (select count(*) from public.questions) + (select count(*) from public.quiz_attempts)
+  + (select count(*) from public.answers) + (select count(*) from public.weak_topics) = 0, 'B cannot see A quiz rows');
+update public.weak_topics set miss_count = 99;
+delete from public.quizzes;
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+select pg_temp.check((select miss_count from public.weak_topics) = 1, 'A weak topic unchanged by B');
+select pg_temp.check((select count(*) from public.quizzes) = 1, 'A quiz not deleted by B');
+
+-- ===== Step 3 part 2: chat messages (server-written, read-only to students) and retrieval
+reset role;
+insert into public.subjects (id, user_id, name, colour, emoji) values ('5b000000-0000-0000-0000-000000000001', 'bbbbbbbb-0000-0000-0000-000000000002', 'B subject', 'sky', '🧬');
+-- a question and its answer go in together (the answer points at the question)
+insert into public.chat_messages (id, user_id, subject_id, role, kind, content, client_key, reply_to, citations_json, created_at) values
+  ('5a000000-0000-0000-0000-0000000000d7', 'aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'user', 'question', 'What makes ATP?', '0c000000-0000-4000-8000-000000000001', null, '[]', now()),
+  ('5a000000-0000-0000-0000-0000000000d8', 'aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'assistant', 'answer', 'Mitochondria make ATP. [1]', null, '5a000000-0000-0000-0000-0000000000d7',
+    '[{"n":1,"chunkId":"5a000000-0000-0000-0000-0000000000c1","noteId":"5a000000-0000-0000-0000-0000000000a1","sourceId":null,"page":null,"label":"Cells (note)","quote":"Mitochondria make ATP"}]', now() + interval '1 millisecond');
+-- shape checks
+do $$ begin
+  insert into public.chat_messages (user_id, subject_id, role, kind, content) values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'user', 'question', repeat('x', 501));
+  raise exception 'RLS TEST FAILED: 501-character question accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.chat_messages (user_id, subject_id, role, kind, content) values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'assistant', 'answer', 'x');
+  raise exception 'RLS TEST FAILED: answer without its question accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.chat_messages (user_id, subject_id, role, kind, content, reply_to) values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'user', 'answer', 'x', '5a000000-0000-0000-0000-0000000000d7');
+  raise exception 'RLS TEST FAILED: student message with an answer kind accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.chat_messages (user_id, subject_id, role, kind, content, reply_to, citations_json) values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'assistant', 'answer', 'x', '5a000000-0000-0000-0000-0000000000d7',
+    (select jsonb_agg(jsonb_build_object('n', g)) from generate_series(1, 13) g));
+  raise exception 'RLS TEST FAILED: 13 citations accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.chat_messages (user_id, subject_id, role, kind, content, client_key) values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'user', 'question', 'again', '0c000000-0000-4000-8000-000000000001');
+  raise exception 'RLS TEST FAILED: client key reused';
+exception when unique_violation then null; end $$;
+-- even the server can't put B's message in A's subject or under A's question (composite FKs)
+do $$ begin
+  insert into public.chat_messages (user_id, subject_id, role, kind, content) values ('bbbbbbbb-0000-0000-0000-000000000002', '5a000000-0000-0000-0000-000000000001', 'user', 'question', 'x');
+  raise exception 'RLS TEST FAILED: server put a B message in A subject';
+exception when foreign_key_violation then null; end $$;
+do $$ begin
+  insert into public.chat_messages (user_id, subject_id, role, kind, content, reply_to) values ('bbbbbbbb-0000-0000-0000-000000000002', '5b000000-0000-0000-0000-000000000001', 'assistant', 'answer', 'x', '5a000000-0000-0000-0000-0000000000d7');
+  raise exception 'RLS TEST FAILED: server put a B answer under A question';
+exception when foreign_key_violation then null; end $$;
+-- cap: at most 1000 messages per subject
+insert into public.chat_messages (user_id, subject_id, role, kind, content)
+  select 'aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'user', 'question', 'filler' from generate_series(3, 1000);
+do $$ begin
+  insert into public.chat_messages (user_id, subject_id, role, kind, content) values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'user', 'question', 'one too many');
+  raise exception 'RLS TEST FAILED: 1001st chat message accepted';
+exception when check_violation then null; end $$;
+delete from public.chat_messages where content = 'filler';
+-- an embedding on A's passage (gte-small vectors are 384 numbers)
+update public.chunks set embedding = array_fill(0.05::real, array[384])::extensions.vector where id = '5a000000-0000-0000-0000-0000000000c1';
+reset role;
+
+-- A reads own chat but can't write it
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+select pg_temp.check((select count(*) from public.chat_messages) = 2, 'A sees own chat');
+do $$ begin
+  insert into public.chat_messages (subject_id, role, kind, content) values ('5a000000-0000-0000-0000-000000000001', 'user', 'question', 'direct');
+  raise exception 'RLS TEST FAILED: student inserted a chat message directly';
+exception when insufficient_privilege then null; end $$;
+update public.chat_messages set content = 'forged', feedback = 'wrong';
+delete from public.chat_messages;
+select pg_temp.check((select count(*) from public.chat_messages where content = 'Mitochondria make ATP. [1]' and feedback is null) = 1, 'student cannot rewrite an answer');
+select pg_temp.check((select count(*) from public.chat_messages) = 2, 'student cannot delete chat directly');
+-- retrieval: A finds own passages by embedding and by keywords
+select pg_temp.check((select count(*) from public.match_chunks('5a000000-0000-0000-0000-000000000001', array_fill(0.05::real, array[384])::extensions.vector, 6)) = 1, 'A matches own embedded passage');
+select pg_temp.check((select similarity > 0.99 from public.match_chunks('5a000000-0000-0000-0000-000000000001', array_fill(0.05::real, array[384])::extensions.vector, 6)), 'cosine similarity of the same vector is 1');
+select pg_temp.check((select count(*) from public.match_chunks('5a000000-0000-0000-0000-000000000001', array_fill(0.05::real, array[384])::extensions.vector, 1000)) <= 20, 'match_chunks caps the row count');
+select pg_temp.check((select count(*) from public.search_chunks('5a000000-0000-0000-0000-000000000001', 'What do mitochondria make?', 30, false)) >= 1, 'A finds own passage by keywords');
+select pg_temp.check((select count(*) from public.search_chunks('5a000000-0000-0000-0000-000000000001', 'What is the energy currency?', 30, false) where id = '5a000000-0000-0000-0000-0000000000c1') = 1, 'keyword search sees the embedded passage');
+select pg_temp.check((select count(*) from public.search_chunks('5a000000-0000-0000-0000-000000000001', 'What is the energy currency?', 30, true) where id = '5a000000-0000-0000-0000-0000000000c1') = 0, 'unembedded-only search skips it');
+select pg_temp.check((select count(*) from public.search_chunks('5a000000-0000-0000-0000-000000000001', 'the of and', 30, false)) = 0, 'a query of stop words finds nothing');
+select pg_temp.check((select count(*) from public.search_chunks('5a000000-0000-0000-0000-000000000001', $q$') | ('x' & !'y$q$, 30, false)) >= 0, 'query syntax in the question is plain text');
+
+-- B sees, finds and changes none of it
+set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
+select pg_temp.check((select count(*) from public.chat_messages) = 0, 'B cannot see A chat');
+select pg_temp.check((select count(*) from public.match_chunks('5a000000-0000-0000-0000-000000000001', array_fill(0.05::real, array[384])::extensions.vector, 6)) = 0, 'B cannot match A passages');
+select pg_temp.check((select count(*) from public.search_chunks('5a000000-0000-0000-0000-000000000001', 'mitochondria ATP', 30, false)) = 0, 'B cannot search A passages');
+update public.chat_messages set feedback = 'wrong';
+delete from public.chat_messages;
+reset role;
+set role anon;
+do $$ begin
+  perform public.match_chunks('5a000000-0000-0000-0000-000000000001', array_fill(0.05::real, array[384])::extensions.vector, 6);
+  raise exception 'RLS TEST FAILED: anon called match_chunks';
+exception when insufficient_privilege then null; end $$;
+do $$ begin
+  perform public.search_chunks('5a000000-0000-0000-0000-000000000001', 'atp', 30, false);
+  raise exception 'RLS TEST FAILED: anon called search_chunks';
+exception when insufficient_privilege then null; end $$;
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+select pg_temp.check((select count(*) from public.chat_messages where feedback is null) = 2, 'A chat unchanged by B');
+
 -- ===== anon sees nothing
 reset request.jwt.claim.sub;
 set role anon;
@@ -314,11 +539,15 @@ select pg_temp.check((select graph_json from public.mindmaps) = '{"version":1,"n
 -- deleting the note keeps the card and its quote, clearing the links
 delete from public.notes where id = '5a000000-0000-0000-0000-0000000000a1';
 select pg_temp.check((select note_id is null and chunk_id is null and source_quote is not null from public.flashcards where id = '5a000000-0000-0000-0000-0000000000f1'), 'card survives note delete');
+select pg_temp.check((select note_id is null and chunk_id is null and source_quote is not null from public.questions where id = '5a000000-0000-0000-0000-0000000000e1'), 'question survives note delete');
+select pg_temp.check((select citations_json->0->>'quote' = 'Mitochondria make ATP' from public.chat_messages where role = 'assistant'), 'chat answer keeps its quote after the note is deleted');
 
 -- deleting a subject cascades to notes, sources, chunks
 delete from public.subjects where id = '5a000000-0000-0000-0000-000000000001';
 select pg_temp.check((select count(*) from public.notes) + (select count(*) from public.sources) + (select count(*) from public.chunks)
-  + (select count(*) from public.flashcards) + (select count(*) from public.card_reviews) + (select count(*) from public.mindmaps) = 0, 'subject delete cascades');
+  + (select count(*) from public.flashcards) + (select count(*) from public.card_reviews) + (select count(*) from public.mindmaps)
+  + (select count(*) from public.quizzes) + (select count(*) from public.questions) + (select count(*) from public.quiz_attempts)
+  + (select count(*) from public.answers) + (select count(*) from public.weak_topics) + (select count(*) from public.chat_messages) = 0, 'subject delete cascades');
 
 reset role;
 -- deleting a user removes their profile

@@ -2,7 +2,9 @@ import "server-only";
 import { planChunkSync, type Chunk } from "@/lib/extract/chunk";
 import { newSrs } from "@/lib/srs/scheduler";
 import type { SettingsUpdate } from "@/lib/validation";
-import type { CardReview, ChunkRow, ExportBundle, Flashcard, Mindmap, Note, Profile, Repo, Source, Subject } from "./types";
+import { topicKey } from "@/lib/quiz/weak";
+import { rankByKeywords } from "@/lib/chat/retrieve";
+import type { CardReview, ChatRow, ChunkRow, ExportBundle, Flashcard, Mindmap, Note, Profile, Question, Quiz, QuizAnswer, QuizAttempt, Repo, Source, Subject, WeakTopic } from "./types";
 
 // In-memory store for demo mode (no Supabase configured). Kept on globalThis so it
 // survives hot reloads in dev. Each demo visitor gets their own random user id.
@@ -22,16 +24,25 @@ type Store = {
   aiUsage: Map<string, { count: number; attempts?: number; inputTokens: number; outputTokens: number }>; // user|day|kind
   appUsage: Map<string, { requests: number; tokens: number }>; // day|model
   aiCache: Map<string, { model: string; output: unknown }>; // user|kind|hash
+  quizzes: Map<string, Owned<Quiz>>;
+  questions: Map<string, Owned<Question>>;
+  attempts: Map<string, Owned<QuizAttempt>>;
+  answers: Map<string, Owned<QuizAnswer>>;
+  weakTopics: Map<string, Owned<WeakTopic>>;
+  chat: Map<string, Owned<ChatRow>>;
 };
 const g = globalThis as unknown as { __demoStore?: Store };
 export const store: Store = (g.__demoStore ??= {
   subjects: new Map(), notes: new Map(), sources: new Map(), chunks: new Map(), files: new Map(), profiles: new Map(), uploadLog: [],
   flashcards: new Map(), reviews: new Map(), mindmaps: new Map(), aiUsage: new Map(), appUsage: new Map(), aiCache: new Map(),
+  quizzes: new Map(), questions: new Map(), attempts: new Map(), answers: new Map(), weakTopics: new Map(), chat: new Map(),
 });
-// A store created by an older build (hot reload) may miss the Step 2 maps.
-for (const k of ["flashcards", "reviews", "mindmaps", "aiUsage", "appUsage", "aiCache"] as const) store[k] ??= new Map() as never;
+// A store created by an older build (hot reload) may miss the Step 2 and Step 3 maps.
+for (const k of ["flashcards", "reviews", "mindmaps", "aiUsage", "appUsage", "aiCache", "quizzes", "questions", "attempts", "answers", "weakTopics", "chat"] as const) store[k] ??= new Map() as never;
 
 const now = () => new Date().toISOString();
+/** Same cap as the database (1000 chat messages per subject). */
+const CHAT_CAP = 1000;
 const DEFAULT_PROFILE: Profile = { soundOn: true, volume: 0.35, theme: "system", timezone: "UTC" };
 const clone = <T>(v: T): T => structuredClone(v);
 
@@ -39,10 +50,21 @@ const clone = <T>(v: T): T => structuredClone(v);
 function dropChunks(ownerId: string, link: "noteId" | "sourceId") {
   const gone = new Set((store.chunks.get(ownerId) ?? []).map((c) => c.id));
   store.chunks.delete(ownerId);
-  for (const f of store.flashcards.values()) {
+  for (const f of [...store.flashcards.values(), ...store.questions.values()]) {
     if (f.chunkId && gone.has(f.chunkId)) f.chunkId = null;
     if (f[link] === ownerId) f[link] = null;
   }
+}
+
+/** Deletes a quiz and everything under it (mirrors the SQL cascades). */
+function dropQuiz(quizId: string) {
+  store.quizzes.delete(quizId);
+  for (const [k, q] of store.questions) if (q.quizId === quizId) store.questions.delete(k);
+  for (const [k, a] of store.attempts) if (a.quizId === quizId) dropAttempt(k);
+}
+function dropAttempt(attemptId: string) {
+  store.attempts.delete(attemptId);
+  for (const [k, a] of store.answers) if (a.attemptId === attemptId) store.answers.delete(k);
 }
 
 export function demoRepo(userId: string): Repo {
@@ -94,6 +116,9 @@ export function demoRepo(userId: string): Repo {
       for (const [k, f] of store.flashcards) if (f.subjectId === id) store.flashcards.delete(k);
       for (const [k, r] of store.reviews) if (r.subjectId === id) store.reviews.delete(k);
       store.mindmaps.delete(id);
+      for (const [k, q] of store.quizzes) if (q.subjectId === id) dropQuiz(k);
+      for (const [k, w] of store.weakTopics) if (w.subjectId === id) store.weakTopics.delete(k);
+      for (const [k, m] of store.chat) if (m.subjectId === id) store.chat.delete(k);
     },
     async listNotes(subjectId) {
       return [...store.notes.values()]
@@ -128,7 +153,7 @@ export function demoRepo(userId: string): Repo {
       const ordinal = new Map(plan.keep.map((k) => [k.id, k.ordinal]));
       const kept = existing.filter((c) => !removed.has(c.id)).map((c) => ({ ...c, ordinal: ordinal.get(c.id) ?? c.ordinal }));
       store.chunks.set(noteId, [...kept, ...toChunkRows(subjectId, { noteId }, plan.insert)].sort((a, b) => a.ordinal - b.ordinal));
-      for (const f of store.flashcards.values()) if (f.chunkId && removed.has(f.chunkId)) f.chunkId = null;
+      for (const f of [...store.flashcards.values(), ...store.questions.values()]) if (f.chunkId && removed.has(f.chunkId)) f.chunkId = null;
     },
     async listSources(subjectId) {
       return [...store.sources.values()]
@@ -323,6 +348,203 @@ export function demoRepo(userId: string): Repo {
       store.aiCache.set(`${userId}|${kind}|${inputHash}`, { model, output: clone(output) });
     },
 
+    // ---- Step 3 ----
+    async listQuizzes(subjectId) {
+      return [...store.quizzes.values()]
+        .filter((q) => q.userId === userId && q.subjectId === subjectId && !q.deletedAt)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
+        .map(strip);
+    },
+    async getQuiz(id) {
+      const q = own(store.quizzes.get(id));
+      return q ? strip(q) : null;
+    },
+    async findQuizByHash(subjectId, inputHash) {
+      return (await repo.listQuizzes(subjectId)).find((q) => q.inputHash === inputHash) ?? null;
+    },
+    async countQuizzes(subjectId) {
+      return [...store.quizzes.values()].filter((q) => q.userId === userId && q.subjectId === subjectId).length;
+    },
+    async createQuiz(input, questions) {
+      if (!own(store.subjects.get(input.subjectId))) throw new Error("Subject not found");
+      if (questions.length > 20) throw new Error("question limit reached");
+      const mineChunks = new Set(myChunks().map((c) => c.id));
+      for (const q of questions) if (q.chunkId && !mineChunks.has(q.chunkId)) throw new Error("Passage not found");
+      const quiz: Owned<Quiz> = { ...clone(input), id: crypto.randomUUID(), userId, createdAt: now(), deletedAt: null };
+      store.quizzes.set(quiz.id, quiz);
+      const rows = questions.map((q): Owned<Question> => ({
+        ...clone(q), id: crypto.randomUUID(), userId, quizId: quiz.id, subjectId: input.subjectId, edited: false, removedAt: null,
+      }));
+      for (const r of rows) store.questions.set(r.id, r);
+      return { quiz: strip(quiz), questions: rows.map(strip) };
+    },
+    async setQuizDeleted(id, deleted) {
+      const q = own(store.quizzes.get(id));
+      if (q) q.deletedAt = deleted ? now() : null;
+    },
+    async purgeDeletedQuizzes(subjectId, beforeIso) {
+      for (const [k, q] of store.quizzes) if (q.userId === userId && q.subjectId === subjectId && q.deletedAt && q.deletedAt < beforeIso) dropQuiz(k);
+    },
+    async listQuestions(filter) {
+      const match = (q: Owned<Question>) =>
+        "quizId" in filter ? q.quizId === filter.quizId
+        : "quizIds" in filter ? filter.quizIds.includes(q.quizId)
+        : q.subjectId === filter.subjectId && topicKey(q.topic) === filter.topicKey;
+      return [...store.questions.values()]
+        .filter((q) => q.userId === userId && match(q))
+        .sort((a, b) => a.quizId.localeCompare(b.quizId) || a.ordinal - b.ordinal)
+        .map(strip);
+    },
+    async getQuestion(id) {
+      const q = own(store.questions.get(id));
+      return q ? strip(q) : null;
+    },
+    async updateQuestion(id, patch) {
+      const q = own(store.questions.get(id));
+      if (q) Object.assign(q, clone(patch));
+    },
+    async listAttempts(filter) {
+      return [...store.attempts.values()]
+        .filter((a) => a.userId === userId && ("quizId" in filter ? a.quizId === filter.quizId : a.subjectId === filter.subjectId))
+        .sort((a, b) => b.startedAt.localeCompare(a.startedAt) || b.id.localeCompare(a.id))
+        .map(strip);
+    },
+    async getAttempt(id) {
+      const a = own(store.attempts.get(id));
+      return a ? strip(a) : null;
+    },
+    async createAttempt(input) {
+      const quiz = own(store.quizzes.get(input.quizId));
+      if (!quiz || quiz.subjectId !== input.subjectId) throw new Error("Quiz not found");
+      if ([...store.attempts.values()].filter((a) => a.quizId === input.quizId).length >= 50) throw new Error("attempt limit reached");
+      // Strictly increasing start times, so "newest first" is stable within one millisecond.
+      const last = [...store.attempts.values()].filter((a) => a.userId === userId).reduce((m, a) => (a.startedAt > m ? a.startedAt : m), "");
+      let t = now();
+      if (t <= last) t = new Date(Date.parse(last) + 1).toISOString();
+      const a: Owned<QuizAttempt> = { id: crypto.randomUUID(), userId, quizId: input.quizId, subjectId: input.subjectId, order: clone(input.order), startedAt: t, finishedAt: null, score: null, total: null };
+      store.attempts.set(a.id, a);
+      return strip(a);
+    },
+    async deleteAttempts(ids) {
+      for (const id of ids) if (own(store.attempts.get(id))) dropAttempt(id);
+    },
+    async updateAttempt(id, patch) {
+      const a = own(store.attempts.get(id));
+      if (a) Object.assign(a, patch);
+    },
+    async listAnswers(filter) {
+      const want = new Set("attemptIds" in filter ? filter.attemptIds : filter.questionIds);
+      return [...store.answers.values()]
+        .filter((a) => a.userId === userId && want.has("attemptIds" in filter ? a.attemptId : a.questionId))
+        .sort((a, b) => a.answeredAt.localeCompare(b.answeredAt))
+        .map(strip);
+    },
+    async addAnswer(input) {
+      const mine = [...store.answers.values()].filter((a) => a.userId === userId);
+      const dup = mine.find((a) => a.clientKey === input.clientKey || (a.attemptId === input.attemptId && a.questionId === input.questionId));
+      if (dup) return { answer: strip(dup), created: false };
+      const attempt = own(store.attempts.get(input.attemptId));
+      const question = own(store.questions.get(input.questionId));
+      if (!attempt || !question || attempt.subjectId !== input.subjectId || question.subjectId !== input.subjectId) throw new Error("Question not found");
+      const a: Owned<QuizAnswer> = { ...clone(input), id: crypto.randomUUID(), userId, answeredAt: now() };
+      store.answers.set(a.id, a);
+      return { answer: strip(a), created: true };
+    },
+    async updateAnswer(id, patch) {
+      const a = own(store.answers.get(id));
+      if (a) Object.assign(a, patch);
+    },
+    async listWeakTopics(subjectId) {
+      return [...store.weakTopics.values()].filter((w) => w.userId === userId && w.subjectId === subjectId).map(strip);
+    },
+    async getWeakTopic(id) {
+      const w = own(store.weakTopics.get(id));
+      return w ? strip(w) : null;
+    },
+    async findWeakTopic(subjectId, key) {
+      const w = [...store.weakTopics.values()].find((x) => x.userId === userId && x.subjectId === subjectId && x.topicKey === key);
+      return w ? strip(w) : null;
+    },
+    async saveWeakTopic(subjectId, state, id) {
+      if (!own(store.subjects.get(subjectId))) throw new Error("Subject not found");
+      const cur = id ? own(store.weakTopics.get(id)) : undefined;
+      if (id && !cur) throw new Error("Topic not found");
+      const key = topicKey(state.topic);
+      if (!cur && [...store.weakTopics.values()].some((x) => x.userId === userId && x.subjectId === subjectId && x.topicKey === key)) throw new Error("duplicate topic");
+      const row: Owned<WeakTopic> = { ...clone(state), id: cur?.id ?? crypto.randomUUID(), userId, subjectId, topicKey: key, createdAt: cur?.createdAt ?? now() };
+      store.weakTopics.set(row.id, row);
+      return strip(row);
+    },
+    async deleteWeakTopic(id) {
+      if (own(store.weakTopics.get(id))) store.weakTopics.delete(id);
+    },
+
+    // ---- Step 3 part 2 ----
+    async matchChunks() {
+      return []; // demo mode has no embeddings: chat uses keyword search
+    },
+    async searchChunks(subjectId, query, limit, opts = {}) {
+      void opts;
+      const list = myChunks().filter((c) => c.subjectId === subjectId);
+      return rankByKeywords(query, list).slice(0, limit).map((r) => strip(r.item));
+    },
+    async embeddingCounts(subjectId) {
+      return { total: myChunks().filter((c) => c.subjectId === subjectId).length, embedded: 0 };
+    },
+    async listChat(subjectId, { limit, before }) {
+      return [...store.chat.values()]
+        .filter((m) => m.userId === userId && m.subjectId === subjectId && (!before || m.createdAt < before))
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
+        .slice(0, limit)
+        .map(strip);
+    },
+    async getChatMessage(id) {
+      const m = own(store.chat.get(id));
+      return m ? strip(m) : null;
+    },
+    async findChatExchange(clientKey) {
+      const q = [...store.chat.values()].find((m) => m.userId === userId && m.clientKey === clientKey);
+      if (!q) return null;
+      const a = [...store.chat.values()].find((m) => m.userId === userId && m.replyTo === q.id);
+      return { question: strip(q), answer: a ? strip(a) : null };
+    },
+    async addChatExchange(subjectId, { clientKey, question, answer, after }) {
+      if (!own(store.subjects.get(subjectId))) throw new Error("Subject not found");
+      if ([...store.chat.values()].filter((m) => m.userId === userId && m.subjectId === subjectId).length + 2 > CHAT_CAP) throw new Error("chat message limit reached");
+      if ([...store.chat.values()].some((m) => m.userId === userId && m.clientKey === clientKey)) throw new Error("duplicate client key");
+      const at = Math.max(Date.now(), after ? Date.parse(after) + 1 : 0);
+      const q: Owned<ChatRow> = {
+        id: crypto.randomUUID(), userId, subjectId, role: "user", kind: "question", content: question, citations: [], reveal: null, feedback: null,
+        clientKey, replyTo: null, createdAt: new Date(at).toISOString(),
+      };
+      const a: Owned<ChatRow> = {
+        id: crypto.randomUUID(), userId, subjectId, role: "assistant", kind: answer.kind, content: answer.content, citations: clone(answer.citations),
+        reveal: answer.reveal, feedback: null, clientKey: null, replyTo: q.id, createdAt: new Date(at + 1).toISOString(),
+      };
+      store.chat.set(q.id, q);
+      store.chat.set(a.id, a);
+      return { question: strip(q), answer: strip(a) };
+    },
+    async setChatFeedback(id, feedback) {
+      const m = own(store.chat.get(id));
+      if (m && m.role === "assistant") m.feedback = feedback;
+    },
+    async clearChat(subjectId) {
+      for (const [k, m] of store.chat) if (m.userId === userId && m.subjectId === subjectId) store.chat.delete(k);
+    },
+    async countChat(subjectId) {
+      return [...store.chat.values()].filter((m) => m.userId === userId && m.subjectId === subjectId).length;
+    },
+    async deleteOldestChat(subjectId, questions) {
+      const oldest = [...store.chat.values()]
+        .filter((m) => m.userId === userId && m.subjectId === subjectId && m.role === "user")
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+        .slice(0, questions)
+        .map((m) => m.id);
+      const gone = new Set(oldest);
+      for (const [k, m] of store.chat) if (gone.has(k) || (m.replyTo && gone.has(m.replyTo))) store.chat.delete(k);
+    },
+
     async getProfile() {
       return { ...DEFAULT_PROFILE, ...store.profiles.get(userId) };
     },
@@ -341,6 +563,12 @@ export function demoRepo(userId: string): Repo {
         flashcards: [...store.flashcards.values()].filter((f) => f.userId === userId).map(strip),
         cardReviews: [...store.reviews.values()].filter((r) => r.userId === userId).map(stripReview),
         mindmaps: [...store.mindmaps.values()].filter((m) => m.userId === userId).map(strip),
+        quizzes: [...store.quizzes.values()].filter((q) => q.userId === userId).map(strip),
+        questions: [...store.questions.values()].filter((q) => q.userId === userId).map(strip),
+        quizAttempts: [...store.attempts.values()].filter((a) => a.userId === userId).map(strip),
+        answers: [...store.answers.values()].filter((a) => a.userId === userId).map(strip),
+        weakTopics: [...store.weakTopics.values()].filter((w) => w.userId === userId).map(strip),
+        chatMessages: [...store.chat.values()].filter((m) => m.userId === userId).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map(strip),
       };
     },
   };
@@ -354,6 +582,9 @@ export function demoDeleteUser(userId: string) {
   for (const [k, f] of store.flashcards) if (f.userId === userId) store.flashcards.delete(k);
   for (const [k, r] of store.reviews) if (r.userId === userId) store.reviews.delete(k);
   for (const [k, m] of store.mindmaps) if (m.userId === userId) store.mindmaps.delete(k);
+  for (const [k, q] of store.quizzes) if (q.userId === userId) dropQuiz(k);
+  for (const [k, w] of store.weakTopics) if (w.userId === userId) store.weakTopics.delete(k);
+  for (const [k, m] of store.chat) if (m.userId === userId) store.chat.delete(k);
   for (const k of store.aiUsage.keys()) if (k.startsWith(`${userId}|`)) store.aiUsage.delete(k);
   for (const k of store.aiCache.keys()) if (k.startsWith(`${userId}|`)) store.aiCache.delete(k);
   store.profiles.delete(userId);

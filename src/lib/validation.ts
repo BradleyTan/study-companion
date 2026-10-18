@@ -50,20 +50,19 @@ export const cardText = z.object({
 export const newCardInput = cardText.extend({ subjectId: id });
 export const editCardInput = cardText.extend({ id });
 
+/** A file, with a page range for long files; a file that fits one set is sent without one (whole file). */
+const fileSource = (maxPages: number) => z.object({
+  type: z.literal("file"),
+  id,
+  fromPage: z.int().min(1).max(10_000).optional(),
+  toPage: z.int().min(1).max(10_000).optional(),
+}).refine((s) => (s.fromPage === undefined) === (s.toPage === undefined), "Pick a first and a last page.")
+  .refine((s) => s.fromPage === undefined || s.toPage! >= s.fromPage, "The last page comes before the first.")
+  .refine((s) => s.fromPage === undefined || s.toPage! - s.fromPage < maxPages, `Up to ${maxPages} pages at a time.`);
+
 export const makeFlashcardsInput = z.object({
   subjectId: id,
-  source: z.discriminatedUnion("type", [
-    z.object({ type: z.literal("note"), id }),
-    // A page range for long files; a file that fits one set is sent without one (whole file).
-    z.object({
-      type: z.literal("file"),
-      id,
-      fromPage: z.int().min(1).max(10_000).optional(),
-      toPage: z.int().min(1).max(10_000).optional(),
-    }).refine((s) => (s.fromPage === undefined) === (s.toPage === undefined), "Pick a first and a last page.")
-      .refine((s) => s.fromPage === undefined || s.toPage! >= s.fromPage, "The last page comes before the first.")
-      .refine((s) => s.fromPage === undefined || s.toPage! - s.fromPage < MAX_CARD_PAGES, `Up to ${MAX_CARD_PAGES} pages at a time.`),
-  ]),
+  source: z.discriminatedUnion("type", [z.object({ type: z.literal("note"), id }), fileSource(MAX_CARD_PAGES)]),
   count: z.union([z.literal(10), z.literal(15), z.literal(20)]),
 });
 export type MakeFlashcardsInput = z.infer<typeof makeFlashcardsInput>;
@@ -79,3 +78,62 @@ export const makeMindmapInput = z.object({
   selection: z.object({ all: z.boolean(), noteIds: z.array(id).max(500), sourceIds: z.array(id).max(500) }),
   force: z.boolean(),
 });
+
+// ---- Step 3 -------------------------------------------------------------------
+/** Most pages in one quiz (quiz-builder.md, same as flashcards). */
+export const MAX_QUIZ_PAGES = 50;
+const topicName = z.string().trim().min(1).max(40);
+
+export const makeQuizInput = z.object({
+  subjectId: id,
+  source: z.discriminatedUnion("type", [
+    z.object({ type: z.literal("all") }),
+    z.object({ type: z.literal("note"), id }),
+    fileSource(MAX_QUIZ_PAGES),
+    // Practise weak topics: the open topics ticked (by name, matched case-insensitively).
+    z.object({ type: z.literal("weak"), topics: z.array(topicName).min(1, "Tick at least one topic.").max(100) }),
+  ]),
+  kind: z.enum(["mcq", "fill", "mixed"]),
+  count: z.union([z.literal(5), z.literal(10), z.literal(15)]),
+});
+export type MakeQuizInput = z.infer<typeof makeQuizInput>;
+
+export const startAttemptInput = z.object({ quizId: id, fresh: z.boolean() });
+
+export const checkAnswerInput = z.object({
+  attemptId: id,
+  questionId: id,
+  clientKey: z.uuid(),
+  /** Multiple choice: the option's position as shown in this attempt (0–3). */
+  choice: z.int().min(0).max(3).optional(),
+  /** Fill in the blank: what the student typed. */
+  text: z.string().max(200, "Keep your answer under 200 characters.").optional(),
+  dontKnow: z.boolean().optional(),
+}).refine((a) => a.dontKnow || a.choice !== undefined || (a.text !== undefined && a.text.trim().length > 0), "Pick or type an answer.");
+
+export const attemptQuestionInput = z.object({ attemptId: id, questionId: id });
+export const reportQuestionInput = attemptQuestionInput.extend({ reason: z.enum(["wrong_answer", "unclear", "not_in_notes"]) });
+
+export const editQuestionInput = z.object({
+  questionId: id,
+  prompt: z.string().trim().min(5, "Add the question.").max(300, "Keep the question under 300 characters."),
+  explanation: z.string().trim().max(400, "Keep the explanation under 400 characters."),
+  /** Multiple choice. */
+  options: z.array(z.string().trim().min(1, "Fill in every option.").max(160)).length(4).optional(),
+  correctIndex: z.int().min(0).max(3).optional(),
+  /** Fill in the blank. */
+  answer: z.string().trim().min(1, "Add the answer.").max(60, "Keep the answer under 60 characters.").optional(),
+  // Up to the database's 10 (3 from the model plus answers counted as right with "I was right").
+  accepted: z.array(z.string().trim().min(1).max(60, "Keep each answer under 60 characters.")).max(10, "Keep it to 10 other answers.").optional(),
+});
+
+// ---- Step 3 part 2: ask your notes (chat.md) ---------------------------------------------
+export const CHAT_QUESTION_MAX = 500;
+export const askInput = z.object({
+  subjectId: id,
+  question: z.string().trim().min(1, "Type a question first.").max(CHAT_QUESTION_MAX, `Keep your question under ${CHAT_QUESTION_MAX} characters.`),
+  /** The composer's key for this question: a retried send answers once. */
+  clientKey: z.uuid(),
+});
+export const olderChatInput = z.object({ subjectId: id, before: z.iso.datetime({ offset: true }) });
+export const chatFeedbackInput = z.object({ messageId: id, feedback: z.enum(["wrong", "not_in_notes", "too_long"]) });

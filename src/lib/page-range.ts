@@ -1,5 +1,6 @@
-// Page ranges for making flashcards from long lecture files (flashcards.md "Long files").
-// Pure and client-safe: the dialog uses it for hints, the server for the real answer.
+// Page ranges for making flashcards (flashcards.md "Long files") and quizzes (quiz-builder.md,
+// same pattern with the quiz budget) from long lecture files. Pure and client-safe: the dialogs
+// use it for hints, the server for the real answer.
 import { FLASHCARDS_MAX_CHARS, MIN_SOURCE_CHARS } from "./limits/ai";
 import { MAX_CARD_PAGES } from "./validation";
 
@@ -104,18 +105,22 @@ export type RangeHint =
   /** `snap` is the covered fit from the same first page ("Want every passage? Use pages 1–6"). */
   | { kind: "sampled"; text: string; snap: PageRange | null };
 
+/** What a set is made of, for the hint wording ("Cards will be spread…", "Questions will be spread…"). */
+export type RangeNoun = "Cards" | "Questions";
+
 /** The coverage hint under the page fields. Never a warning: a wide range is a quick sample. */
-export function rangeHint(pageChars: number[] | null, looseChars: number, range: PageRange, unit: PageUnit = "page", budget: number = FLASHCARDS_MAX_CHARS): RangeHint {
-  if (!pageChars) return { kind: "unknown", text: `Cards will be spread across the ${unit}s you pick.` };
+export function rangeHint(pageChars: number[] | null, looseChars: number, range: PageRange, unit: PageUnit = "page", budget: number = FLASHCARDS_MAX_CHARS, noun: RangeNoun = "Cards"): RangeHint {
+  const lower = noun.toLowerCase();
+  if (!pageChars) return { kind: "unknown", text: `${noun} will be spread across the ${unit}s you pick.` };
   const chars = rangeChars(pageChars, looseChars, range);
   if (chars < MIN_SOURCE_CHARS) return { kind: "thin", text: `These ${unit}s don't have much text. Add a ${unit} or two.` };
   if (chars <= budget) return { kind: "covered", text: `Covers every passage on ${pagesText(range, unit)}.` };
   const fit = fitPageRange(pageChars, looseChars, range.from, budget);
   const fitOk = isCovered(pageChars, looseChars, fit, budget);
-  if (!fitOk && range.to <= fit.to) return { kind: "long_page", text: `${cap(unit)} ${range.from} has lots of text, so cards will be spread across it.` };
+  if (!fitOk && range.to <= fit.to) return { kind: "long_page", text: `${cap(unit)} ${range.from} has lots of text, so ${lower} will be spread across it.` };
   return {
     kind: "sampled",
-    text: `Cards will be spread across ${pagesText(range, unit)}, a quick tour of the lot.`,
+    text: `${noun} will be spread across ${pagesText(range, unit)}, a quick tour of the lot.`,
     snap: fitOk ? fit : null,
   };
 }
@@ -137,8 +142,8 @@ export function rangeError(fromText: string, toText: string, pageCount: number, 
 export const DEFAULT_PAGES = 20;
 
 /** Default range for a long file (fit rule; without page counts, up to 20 pages). */
-export function defaultRange(pageChars: number[] | null, looseChars: number, pageCount: number, from: number): PageRange {
-  if (pageChars) return fitPageRange(pageChars, looseChars, from);
+export function defaultRange(pageChars: number[] | null, looseChars: number, pageCount: number, from: number, budget: number = FLASHCARDS_MAX_CHARS): PageRange {
+  if (pageChars) return fitPageRange(pageChars, looseChars, from, budget);
   return sizedRange(from, DEFAULT_PAGES, pageCount);
 }
 
@@ -180,8 +185,8 @@ const sameRange = (a: PageRange, b: PageRange) => a.from === b.from && a.to === 
  * the file has ≤ 50). A pick equal to another is hidden ("20 pages" first); fewer than two
  * picks show no row at all (empty list).
  */
-export function quickPicks(pageChars: number[] | null, looseChars: number, pageCount: number, from: number, unit: PageUnit = "page"): QuickPick[] {
-  const fit = pageChars ? fitPageRange(pageChars, looseChars, from) : null;
+export function quickPicks(pageChars: number[] | null, looseChars: number, pageCount: number, from: number, unit: PageUnit = "page", budget: number = FLASHCARDS_MAX_CHARS): QuickPick[] {
+  const fit = pageChars ? fitPageRange(pageChars, looseChars, from, budget) : null;
   const twenty = sizedRange(from, DEFAULT_PAGES, pageCount);
   const third: QuickPick = pageCount <= MAX_CARD_PAGES
     ? { id: "all", label: `All ${pageCount} ${unit}s`, name: `All ${pageCount} ${unit}s`, range: { from: 1, to: pageCount } }
@@ -199,14 +204,14 @@ export function quickPicks(pageChars: number[] | null, looseChars: number, pageC
 export type RefitMode = { kind: "fit" } | { kind: "size"; size: number };
 
 /** The mode a range implies: the fit when it equals the fit from its first page, else its size. */
-export function modeOf(pageChars: number[] | null, looseChars: number, range: PageRange): RefitMode {
-  if (pageChars && fitPageRange(pageChars, looseChars, range.from).to === range.to) return { kind: "fit" };
+export function modeOf(pageChars: number[] | null, looseChars: number, range: PageRange, budget: number = FLASHCARDS_MAX_CHARS): RefitMode {
+  if (pageChars && fitPageRange(pageChars, looseChars, range.from, budget).to === range.to) return { kind: "fit" };
   return { kind: "size", size: range.to - range.from + 1 };
 }
 
 /** The range after "First page" changes to `from`, following the pressed pick (or the size). */
-export function refit(mode: RefitMode, pageChars: number[] | null, looseChars: number, pageCount: number, from: number): PageRange {
-  if (mode.kind === "fit" && pageChars) return fitPageRange(pageChars, looseChars, from);
+export function refit(mode: RefitMode, pageChars: number[] | null, looseChars: number, pageCount: number, from: number, budget: number = FLASHCARDS_MAX_CHARS): PageRange {
+  if (mode.kind === "fit" && pageChars) return fitPageRange(pageChars, looseChars, from, budget);
   return sizedRange(from, mode.kind === "size" ? Math.min(mode.size, MAX_CARD_PAGES) : DEFAULT_PAGES, pageCount);
 }
 

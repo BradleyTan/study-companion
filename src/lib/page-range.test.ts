@@ -285,3 +285,20 @@ describe("pages covered (union of ranges made)", () => {
     expect(parseCoverage("[[15,34],[1,20],[\"x\",2],[5],[0,3],[9,2]]")).toEqual([[1, 34]]);
   });
 });
+
+describe("quiz budget and wording (quiz-builder.md: same pattern, own budget)", () => {
+  const pages = [4000, 4000, 4000, 4000, 4000];
+  it("fits ranges to the budget passed in", () => {
+    expect(fitPageRange(pages, 0, 1, 12_000).to).toBe(3);
+    expect(fitPageRange(pages, 0, 1).to).toBe(3); // 14,000: still 3 pages of 4,000
+    expect(defaultRange(pages, 0, 5, 1, 8_000)).toEqual({ from: 1, to: 2 });
+    expect(quickPicks(pages, 0, 5, 1, "page", 8_000)[0]).toMatchObject({ id: "fit", range: { from: 1, to: 2 } });
+    expect(modeOf(pages, 0, { from: 1, to: 2 }, 8_000)).toEqual({ kind: "fit" });
+    expect(refit({ kind: "fit" }, pages, 0, 5, 2, 8_000)).toEqual({ from: 2, to: 3 });
+  });
+  it("says questions instead of cards", () => {
+    expect(rangeHint(pages, 0, { from: 1, to: 5 }, "page", 12_000, "Questions").text).toBe("Questions will be spread across pages 1–5, a quick tour of the lot.");
+    expect(rangeHint(null, 0, { from: 1, to: 5 }, "slide", 12_000, "Questions").text).toBe("Questions will be spread across the slides you pick.");
+    expect(rangeHint(pages, 0, { from: 1, to: 2 }, "page", 12_000, "Questions").text).toBe("Covers every passage on pages 1–2.");
+  });
+});

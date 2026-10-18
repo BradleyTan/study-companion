@@ -17,5 +17,11 @@ alter table storage.objects enable row level security;
 create function storage.foldername(name text) returns text[] language sql immutable as
   $$ select (string_to_array(name, '/'))[1:array_length(string_to_array(name, '/'), 1) - 1] $$;
 grant usage on schema public, auth, storage, extensions to authenticated, anon, service_role;
+-- Like Supabase: every table, sequence and function the migrations create in public is granted to
+-- anon, authenticated and service_role by default, so the grant tests see what the live project sees
+-- and a migration has to revoke what students mustn't have.
+alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
+alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;
 grant execute on function auth.uid() to authenticated, anon;
 grant select, insert, update, delete on storage.objects to authenticated;

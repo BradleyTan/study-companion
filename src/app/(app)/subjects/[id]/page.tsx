@@ -2,12 +2,15 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { NewNoteButton } from "@/components/new-note-button";
 import { NoteRow } from "@/components/note-row";
+import { WeakStrip } from "@/components/quiz/weak-strip";
 import { StudyTools } from "@/components/study-tools";
 import { SubjectHeader } from "@/components/subject-header";
 import { Uploads } from "@/components/uploads";
 import { supabaseConfig } from "@/lib/env";
 import { id as idSchema } from "@/lib/validation";
+import { quotaFor } from "@/server/ai";
 import { subjectDue } from "@/server/cards";
+import { subjectQuizSummary } from "@/server/quiz";
 import { getRepo } from "@/server/session";
 
 export async function generateMetadata({ params }: PageProps<"/subjects/[id]">): Promise<Metadata> {
@@ -23,18 +26,21 @@ export default async function SubjectPage({ params }: PageProps<"/subjects/[id]"
   const repo = await getRepo();
   const subject = await repo.getSubject(id);
   if (!subject) notFound();
-  const [notes, sources, due, mindmap] = await Promise.all([
+  const [notes, sources, due, mindmap, quiz, chat] = await Promise.all([
     repo.listNotes(id),
     repo.listSources(id),
     // Counts that fail to load just leave the tile without its sub-line.
     subjectDue(repo, id).catch(() => null),
     repo.getMindmap(id).catch(() => undefined),
+    subjectQuizSummary(repo, id).catch(() => null),
+    Promise.all([quotaFor(repo, "chat"), repo.countChat(id)]).then(([q, n]) => ({ left: q.left, asked: n > 0 })).catch(() => null),
   ]);
 
   return (
     <div className="flex flex-col gap-8">
       <SubjectHeader subject={subject} />
-      <StudyTools subjectId={id} due={due?.total ?? null} cards={due?.cards ?? null} mindmapUpdatedAt={mindmap === undefined ? undefined : mindmap?.createdAt ?? null} />
+      <StudyTools subjectId={id} due={due?.total ?? null} cards={due?.cards ?? null} mindmapUpdatedAt={mindmap === undefined ? undefined : mindmap?.createdAt ?? null} quiz={quiz} chat={chat} />
+      {quiz && <WeakStrip subjectId={id} count={quiz.weak.count} names={quiz.weak.names} />}
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
         <section aria-labelledby="notes-h" className="flex min-w-0 flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-2">

@@ -37,18 +37,22 @@ export async function expectNoHorizontalScroll(page: Page) {
   expect(overflow).toBeLessThanOrEqual(0);
 }
 
-/** Row actions are buttons from 640 px and live in a "More for …" menu on phones. */
+/**
+ * Row actions: some are buttons from 640 px, the rest (and all of them on phones) live in a
+ * "More for …" menu. Uses the visible button when there is one, else the visible menu.
+ */
 export async function rowAction(page: Page, item: string, action: string, desktopName: string) {
-  const menu = page.getByRole("button", { name: `More for ${item}` });
+  const menus = page.getByRole("button", { name: `More for ${item}`, exact: true });
   const direct = page.getByRole("button", { name: desktopName });
-  await expect(menu.or(direct).filter({ visible: true }).first()).toBeVisible();
-  if (await menu.isVisible()) {
-    await menu.click();
-    const list = page.locator(`[id="${await menu.getAttribute("aria-controls")}"]`);
-    await list.getByRole("button", { name: action, exact: true }).click();
-  } else {
-    await direct.click();
+  await expect(menus.or(direct).filter({ visible: true }).first()).toBeVisible();
+  if (await direct.filter({ visible: true }).count()) {
+    await direct.filter({ visible: true }).first().click();
+    return;
   }
+  const menu = menus.filter({ visible: true }).first();
+  await menu.click();
+  const list = page.locator(`[id="${await menu.getAttribute("aria-controls")}"]`);
+  await list.getByRole("button", { name: action, exact: true }).click();
 }
 
 /** Controls under 44 × 44 px (inputs only need the height), for touch-screen checks. */

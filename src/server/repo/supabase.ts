@@ -2,9 +2,14 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MindmapGraph } from "@/lib/ai/types";
 import { planChunkSync, type Chunk } from "@/lib/extract/chunk";
+import type { AttemptSlot } from "@/lib/quiz/order";
+import type { WeakPrev } from "@/lib/quiz/weak";
 import type { Rating, SrsState, SrsStateNum } from "@/lib/srs/scheduler";
 import type { SubjectColour } from "@/lib/subjects";
-import type { CardReview, ChunkRow, ExportBundle, Flashcard, Mindmap, MindmapSources, Note, NoteSummary, Profile, Repo, Source, Subject } from "./types";
+import type {
+  CardReview, ChatCitation, ChatFeedback, ChatRow, ChunkRow, ExportBundle, Flashcard, Mindmap, MindmapSources, Note, NoteSummary, Profile, Question, QuestionPatch, Quiz, QuizAnswer, QuizAttempt, Repo,
+  Source, Subject, WeakTopic,
+} from "./types";
 
 type Row = Record<string, unknown>;
 
@@ -105,6 +110,108 @@ const toMindmap = (r: Row): Mindmap => ({
   updatedAt: r.updated_at as string,
 });
 
+const iso = (v: unknown) => (v ? new Date(v as string).toISOString() : null);
+const toQuiz = (r: Row): Quiz => ({
+  id: r.id as string,
+  subjectId: r.subject_id as string,
+  title: r.title as string,
+  kind: r.kind as Quiz["kind"],
+  focus: r.focus as Quiz["focus"],
+  requested: r.requested as number,
+  sourceIds: (r.source_ids as string[] | null) ?? [],
+  pageFrom: (r.page_from as number | null) ?? null,
+  pageTo: (r.page_to as number | null) ?? null,
+  inputHash: r.input_hash as string,
+  createdAt: iso(r.created_at)!,
+  deletedAt: iso(r.deleted_at),
+});
+const toQuestion = (r: Row): Question => ({
+  id: r.id as string,
+  quizId: r.quiz_id as string,
+  subjectId: r.subject_id as string,
+  ordinal: r.ordinal as number,
+  type: r.type as Question["type"],
+  prompt: r.prompt as string,
+  options: (r.options_json as string[] | null) ?? null,
+  correctIndex: (r.correct_index as number | null) ?? null,
+  answer: r.answer as string,
+  accepted: (r.accepted_json as string[] | null) ?? [],
+  explanation: (r.explanation as string | null) ?? "",
+  topic: r.topic as string,
+  sourceQuote: (r.source_quote as string | null) ?? null,
+  chunkId: (r.chunk_id as string | null) ?? null,
+  noteId: (r.note_id as string | null) ?? null,
+  sourceId: (r.source_id as string | null) ?? null,
+  page: (r.page as number | null) ?? null,
+  edited: r.edited as boolean,
+  removedAt: iso(r.removed_at),
+});
+const questionPatchRow = (p: QuestionPatch): Row => {
+  const row: Row = {};
+  if (p.prompt !== undefined) row.prompt = p.prompt;
+  if (p.options !== undefined) row.options_json = p.options;
+  if (p.correctIndex !== undefined) row.correct_index = p.correctIndex;
+  if (p.answer !== undefined) row.answer = p.answer;
+  if (p.accepted !== undefined) row.accepted_json = p.accepted;
+  if (p.explanation !== undefined) row.explanation = p.explanation;
+  if (p.edited !== undefined) row.edited = p.edited;
+  if (p.removedAt !== undefined) row.removed_at = p.removedAt;
+  return row;
+};
+const toAttempt = (r: Row): QuizAttempt => ({
+  id: r.id as string,
+  quizId: r.quiz_id as string,
+  subjectId: r.subject_id as string,
+  order: (r.order_json as AttemptSlot[]) ?? [],
+  startedAt: iso(r.started_at)!,
+  finishedAt: iso(r.finished_at),
+  score: (r.score as number | null) ?? null,
+  total: (r.total as number | null) ?? null,
+});
+const toAnswer = (r: Row): QuizAnswer => ({
+  id: r.id as string,
+  attemptId: r.attempt_id as string,
+  questionId: r.question_id as string,
+  subjectId: r.subject_id as string,
+  clientKey: r.client_key as string,
+  given: (r.given as string | null) ?? "",
+  choice: (r.choice as number | null) ?? null,
+  dontKnow: r.dont_know as boolean,
+  correct: r.correct as boolean,
+  typo: r.typo as boolean,
+  overridden: r.overridden as boolean,
+  weakPrev: (r.weak_prev as WeakPrev | null) ?? null,
+  answeredAt: iso(r.answered_at)!,
+});
+const toWeakTopic = (r: Row): WeakTopic => ({
+  id: r.id as string,
+  subjectId: r.subject_id as string,
+  topic: r.topic as string,
+  topicKey: r.topic_key as string,
+  missCount: r.miss_count as number,
+  rightStreak: r.right_streak as number,
+  lastMissedAt: iso(r.last_missed_at),
+  clearedAt: iso(r.cleared_at),
+  chunkIds: (r.chunk_ids as string[] | null) ?? [],
+  recent: (r.recent as boolean[] | null) ?? [],
+  createdAt: iso(r.created_at)!,
+});
+
+const toChat = (r: Row): ChatRow => ({
+  id: r.id as string,
+  subjectId: r.subject_id as string,
+  role: r.role as ChatRow["role"],
+  kind: r.kind as ChatRow["kind"],
+  content: r.content as string,
+  citations: (r.citations_json as ChatCitation[] | null) ?? [],
+  reveal: (r.reveal as string | null) ?? null,
+  feedback: (r.feedback as ChatFeedback | null) ?? null,
+  clientKey: (r.client_key as string | null) ?? null,
+  replyTo: (r.reply_to as string | null) ?? null,
+  createdAt: iso(r.created_at)!,
+});
+const CHAT_COLS = "id, subject_id, role, kind, content, citations_json, reveal, feedback, client_key, reply_to, created_at";
+
 const CHUNK_COLS = "id, subject_id, note_id, source_id, ordinal, page, text, content_hash";
 const SUBJECT_COLS = "id, name, colour, emoji, created_at, notes(count), sources(count)";
 
@@ -140,6 +247,17 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
     for (let from = 0; ; from += 1000) {
       const { data, error } = await db.from(table).select("*").order(orderBy).order("id").range(from, from + 999);
       fail(error, `export ${table}`);
+      out.push(...(data ?? []));
+      if (!data || data.length < 1000) return out;
+    }
+  }
+
+  // Every question of the student, answers included (secret key, pinned: see listQuestions).
+  async function allQuestions(): Promise<Row[]> {
+    const out: Row[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await admin().from("questions").select("*").eq("user_id", userId).order("created_at").order("id").range(from, from + 999);
+      fail(error, "export questions");
       out.push(...(data ?? []));
       if (!data || data.length < 1000) return out;
     }
@@ -425,13 +543,268 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
       return !data || ((data.requests as number) < maxRequests && (data.tokens as number) < maxTokens);
     },
     async getAiCache(kind, inputHash) {
-      const { data, error } = await db.from("ai_cache").select("model, output_json").eq("kind", kind).eq("input_hash", inputHash).maybeSingle();
+      // Server-only table (a cached quiz holds its answers): secret key, pinned to the student.
+      const { data, error } = await admin().from("ai_cache").select("model, output_json").eq("user_id", userId).eq("kind", kind).eq("input_hash", inputHash).maybeSingle();
       fail(error, "getAiCache");
       return data ? { model: data.model as string, output: data.output_json } : null;
     },
     async putAiCache(kind, inputHash, model, output) {
       const { error } = await admin().from("ai_cache").upsert({ user_id: userId, kind, input_hash: inputHash, model, output_json: output, created_at: new Date().toISOString() });
       fail(error, "putAiCache");
+    },
+
+    // ---- Step 3 ----
+    // Questions are read with the secret key, pinned to the student: students can't read a
+    // question's answer columns themselves (column grants), so answers reach the browser only
+    // through the server, after the student has answered.
+    async listQuizzes(subjectId) {
+      const { data, error } = await db.from("quizzes").select("*").eq("subject_id", subjectId).is("deleted_at", null)
+        .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(500);
+      fail(error, "listQuizzes");
+      return (data ?? []).map(toQuiz);
+    },
+    async getQuiz(id) {
+      const { data, error } = await db.from("quizzes").select("*").eq("id", id).maybeSingle();
+      fail(error, "getQuiz");
+      return data ? toQuiz(data) : null;
+    },
+    async findQuizByHash(subjectId, inputHash) {
+      const { data, error } = await db.from("quizzes").select("*").eq("subject_id", subjectId).eq("input_hash", inputHash).is("deleted_at", null)
+        .order("created_at", { ascending: false }).limit(1);
+      fail(error, "findQuizByHash");
+      return data?.[0] ? toQuiz(data[0]) : null;
+    },
+    async countQuizzes(subjectId) {
+      const { count, error } = await db.from("quizzes").select("id", { count: "exact", head: true }).eq("subject_id", subjectId);
+      fail(error, "countQuizzes");
+      return count ?? 0;
+    },
+    async createQuiz(input, questions) {
+      const { data, error } = await admin().from("quizzes").insert({
+        user_id: userId, subject_id: input.subjectId, title: input.title, kind: input.kind, focus: input.focus, requested: input.requested,
+        source_ids: input.sourceIds, page_from: input.pageFrom, page_to: input.pageTo, input_hash: input.inputHash,
+      }).select("*").single();
+      fail(error, "createQuiz");
+      const quiz = toQuiz(data);
+      const rows = questions.map((q) => ({
+        user_id: userId, quiz_id: quiz.id, subject_id: input.subjectId, ordinal: q.ordinal, type: q.type, prompt: q.prompt,
+        options_json: q.options, correct_index: q.correctIndex, answer: q.answer, accepted_json: q.accepted, explanation: q.explanation,
+        topic: q.topic, source_quote: q.sourceQuote, chunk_id: q.chunkId, note_id: q.noteId, source_id: q.sourceId, page: q.page,
+      }));
+      const ins = rows.length ? await admin().from("questions").insert(rows).select("*") : { data: [], error: null };
+      if (ins.error) {
+        // No half-made quizzes: take the quiz row back out.
+        await admin().from("quizzes").delete().eq("id", quiz.id).eq("user_id", userId);
+        fail(ins.error, "createQuiz questions");
+      }
+      return { quiz, questions: (ins.data ?? []).map(toQuestion).sort((a, b) => a.ordinal - b.ordinal) };
+    },
+    async setQuizDeleted(id, deleted) {
+      fail((await admin().from("quizzes").update({ deleted_at: deleted ? new Date().toISOString() : null }).eq("id", id).eq("user_id", userId)).error, "setQuizDeleted");
+    },
+    async purgeDeletedQuizzes(subjectId, beforeIso) {
+      fail((await admin().from("quizzes").delete().eq("subject_id", subjectId).eq("user_id", userId).lt("deleted_at", beforeIso)).error, "purgeDeletedQuizzes");
+    },
+    async listQuestions(filter) {
+      const out: Question[] = [];
+      for (let from = 0; ; from += 1000) {
+        let q = admin().from("questions").select("*").eq("user_id", userId);
+        q = "quizId" in filter ? q.eq("quiz_id", filter.quizId)
+          : "quizIds" in filter ? q.in("quiz_id", filter.quizIds.length ? filter.quizIds.slice(0, 500) : ["00000000-0000-0000-0000-000000000000"])
+          : q.eq("subject_id", filter.subjectId).eq("topic_key", filter.topicKey);
+        const { data, error } = await q.order("quiz_id").order("ordinal").range(from, from + 999);
+        fail(error, "listQuestions");
+        out.push(...(data ?? []).map(toQuestion));
+        if (!data || data.length < 1000) return out;
+      }
+    },
+    async getQuestion(id) {
+      const { data, error } = await admin().from("questions").select("*").eq("id", id).eq("user_id", userId).maybeSingle();
+      fail(error, "getQuestion");
+      return data ? toQuestion(data) : null;
+    },
+    async updateQuestion(id, patch) {
+      fail((await admin().from("questions").update(questionPatchRow(patch)).eq("id", id).eq("user_id", userId)).error, "updateQuestion");
+    },
+    async listAttempts(filter) {
+      const out: QuizAttempt[] = [];
+      for (let from = 0; ; from += 1000) {
+        let q = db.from("quiz_attempts").select("*");
+        q = "quizId" in filter ? q.eq("quiz_id", filter.quizId) : q.eq("subject_id", filter.subjectId);
+        const { data, error } = await q.order("started_at", { ascending: false }).order("id", { ascending: false }).range(from, from + 999);
+        fail(error, "listAttempts");
+        out.push(...(data ?? []).map(toAttempt));
+        if (!data || data.length < 1000) return out;
+      }
+    },
+    async getAttempt(id) {
+      const { data, error } = await db.from("quiz_attempts").select("*").eq("id", id).maybeSingle();
+      fail(error, "getAttempt");
+      return data ? toAttempt(data) : null;
+    },
+    async createAttempt(input) {
+      const { data, error } = await admin().from("quiz_attempts")
+        .insert({ user_id: userId, quiz_id: input.quizId, subject_id: input.subjectId, order_json: input.order }).select("*").single();
+      fail(error, "createAttempt");
+      return toAttempt(data);
+    },
+    async deleteAttempts(ids) {
+      if (!ids.length) return;
+      fail((await admin().from("quiz_attempts").delete().in("id", ids).eq("user_id", userId)).error, "deleteAttempts");
+    },
+    async updateAttempt(id, patch) {
+      const row: Row = {};
+      if (patch.finishedAt !== undefined) row.finished_at = patch.finishedAt;
+      if (patch.score !== undefined) row.score = patch.score;
+      if (patch.total !== undefined) row.total = patch.total;
+      fail((await admin().from("quiz_attempts").update(row).eq("id", id).eq("user_id", userId)).error, "updateAttempt");
+    },
+    async listAnswers(filter) {
+      const ids = "attemptIds" in filter ? filter.attemptIds : filter.questionIds;
+      const col = "attemptIds" in filter ? "attempt_id" : "question_id";
+      const out: QuizAnswer[] = [];
+      for (let i = 0; i < ids.length; i += 200) {
+        const { data, error } = await db.from("answers").select("*").in(col, ids.slice(i, i + 200)).order("answered_at").limit(5000);
+        fail(error, "listAnswers");
+        out.push(...(data ?? []).map(toAnswer));
+      }
+      return out.sort((a, b) => a.answeredAt.localeCompare(b.answeredAt));
+    },
+    async addAnswer(input) {
+      const existing = await db.from("answers").select("*").eq("attempt_id", input.attemptId).eq("question_id", input.questionId).maybeSingle();
+      fail(existing.error, "addAnswer");
+      if (existing.data) return { answer: toAnswer(existing.data), created: false };
+      const { data, error } = await admin().from("answers").insert({
+        user_id: userId, attempt_id: input.attemptId, question_id: input.questionId, subject_id: input.subjectId, client_key: input.clientKey,
+        given: input.given, choice: input.choice, dont_know: input.dontKnow, correct: input.correct, typo: input.typo, overridden: input.overridden,
+        weak_prev: input.weakPrev,
+      }).select("*").single();
+      if (error && (error as { code?: string }).code === "23505") {
+        // Saved by an earlier try whose reply got lost (same key, or same question in this attempt).
+        const dup = await db.from("answers").select("*")
+          .or(`client_key.eq.${input.clientKey},and(attempt_id.eq.${input.attemptId},question_id.eq.${input.questionId})`).limit(1);
+        fail(dup.error, "addAnswer");
+        if (dup.data?.[0]) return { answer: toAnswer(dup.data[0]), created: false };
+      }
+      fail(error, "addAnswer");
+      return { answer: toAnswer(data), created: true };
+    },
+    async updateAnswer(id, patch) {
+      const row: Row = {};
+      if (patch.correct !== undefined) row.correct = patch.correct;
+      if (patch.overridden !== undefined) row.overridden = patch.overridden;
+      fail((await admin().from("answers").update(row).eq("id", id).eq("user_id", userId)).error, "updateAnswer");
+    },
+    async listWeakTopics(subjectId) {
+      const { data, error } = await db.from("weak_topics").select("*").eq("subject_id", subjectId).limit(1000);
+      fail(error, "listWeakTopics");
+      return (data ?? []).map(toWeakTopic);
+    },
+    async getWeakTopic(id) {
+      const { data, error } = await db.from("weak_topics").select("*").eq("id", id).maybeSingle();
+      fail(error, "getWeakTopic");
+      return data ? toWeakTopic(data) : null;
+    },
+    async findWeakTopic(subjectId, key) {
+      const { data, error } = await db.from("weak_topics").select("*").eq("subject_id", subjectId).eq("topic_key", key).maybeSingle();
+      fail(error, "findWeakTopic");
+      return data ? toWeakTopic(data) : null;
+    },
+    async saveWeakTopic(subjectId, state, id) {
+      const row = {
+        topic: state.topic, miss_count: state.missCount, right_streak: state.rightStreak, last_missed_at: state.lastMissedAt,
+        cleared_at: state.clearedAt, chunk_ids: state.chunkIds, recent: state.recent,
+      };
+      const res = id
+        ? await admin().from("weak_topics").update(row).eq("id", id).eq("user_id", userId).select("*").single()
+        : await admin().from("weak_topics").insert({ ...row, user_id: userId, subject_id: subjectId }).select("*").single();
+      fail(res.error, "saveWeakTopic");
+      return toWeakTopic(res.data);
+    },
+    async deleteWeakTopic(id) {
+      fail((await admin().from("weak_topics").delete().eq("id", id).eq("user_id", userId)).error, "deleteWeakTopic");
+    },
+
+    // ---- Step 3 part 2 ----
+    // Retrieval runs as the student (RLS + the functions' own user_id = auth.uid() filter).
+    // Chat rows are read with the student's session and written with the secret key, pinned.
+    async matchChunks(subjectId, embedding, limit) {
+      const { data, error } = await db.rpc("match_chunks", { p_subject_id: subjectId, p_embedding: JSON.stringify(embedding), p_count: limit });
+      fail(error, "matchChunks");
+      return ((data ?? []) as Row[]).map((r) => ({ ...toChunk(r), similarity: Number(r.similarity) }));
+    },
+    async searchChunks(subjectId, query, limit, opts = {}) {
+      const { data, error } = await db.rpc("search_chunks", { p_subject_id: subjectId, p_query: query, p_count: limit, p_unembedded_only: !!opts.unembeddedOnly });
+      fail(error, "searchChunks");
+      return ((data ?? []) as Row[]).map(toChunk);
+    },
+    async embeddingCounts(subjectId) {
+      const [all, done] = await Promise.all([
+        db.from("chunks").select("id", { count: "exact", head: true }).eq("subject_id", subjectId),
+        db.from("chunks").select("id", { count: "exact", head: true }).eq("subject_id", subjectId).not("embedding", "is", null),
+      ]);
+      fail(all.error, "embeddingCounts");
+      fail(done.error, "embeddingCounts");
+      return { total: all.count ?? 0, embedded: done.count ?? 0 };
+    },
+    async listChat(subjectId, { limit, before }) {
+      let q = db.from("chat_messages").select(CHAT_COLS).eq("subject_id", subjectId);
+      if (before) q = q.lt("created_at", before);
+      const { data, error } = await q.order("created_at", { ascending: false }).order("id", { ascending: false }).limit(limit);
+      fail(error, "listChat");
+      return (data ?? []).map(toChat);
+    },
+    async getChatMessage(id) {
+      const { data, error } = await db.from("chat_messages").select(CHAT_COLS).eq("id", id).maybeSingle();
+      fail(error, "getChatMessage");
+      return data ? toChat(data) : null;
+    },
+    async findChatExchange(clientKey) {
+      const { data, error } = await db.from("chat_messages").select(CHAT_COLS).eq("client_key", clientKey).maybeSingle();
+      fail(error, "findChatExchange");
+      if (!data) return null;
+      const question = toChat(data);
+      const ans = await db.from("chat_messages").select(CHAT_COLS).eq("reply_to", question.id).maybeSingle();
+      fail(ans.error, "findChatExchange");
+      return { question, answer: ans.data ? toChat(ans.data) : null };
+    },
+    async addChatExchange(subjectId, { clientKey, question, answer, after }) {
+      const at = Math.max(Date.now(), after ? Date.parse(after) + 1 : 0);
+      const qid = crypto.randomUUID();
+      // One statement, so the answer's reply_to finds its question and nothing is half-saved.
+      const { data, error } = await admin().from("chat_messages").insert([
+        // Every column on both rows: in a multi-row insert a missing column is sent as null.
+        {
+          id: qid, user_id: userId, subject_id: subjectId, role: "user", kind: "question", content: question, citations_json: [],
+          reveal: null, client_key: clientKey, reply_to: null, created_at: new Date(at).toISOString(),
+        },
+        {
+          id: crypto.randomUUID(), user_id: userId, subject_id: subjectId, role: "assistant", kind: answer.kind, content: answer.content,
+          citations_json: answer.citations, reveal: answer.reveal, client_key: null, reply_to: qid, created_at: new Date(at + 1).toISOString(),
+        },
+      ]).select(CHAT_COLS);
+      fail(error, "addChatExchange");
+      const rows = (data ?? []).map(toChat);
+      return { question: rows.find((r) => r.role === "user")!, answer: rows.find((r) => r.role === "assistant")! };
+    },
+    async setChatFeedback(id, feedback) {
+      fail((await admin().from("chat_messages").update({ feedback }).eq("id", id).eq("user_id", userId).eq("role", "assistant")).error, "setChatFeedback");
+    },
+    async clearChat(subjectId) {
+      fail((await admin().from("chat_messages").delete().eq("subject_id", subjectId).eq("user_id", userId)).error, "clearChat");
+    },
+    async countChat(subjectId) {
+      const { count, error } = await db.from("chat_messages").select("id", { count: "exact", head: true }).eq("subject_id", subjectId);
+      fail(error, "countChat");
+      return count ?? 0;
+    },
+    async deleteOldestChat(subjectId, questions) {
+      const { data, error } = await db.from("chat_messages").select("id").eq("subject_id", subjectId).eq("role", "user")
+        .order("created_at").order("id").limit(questions);
+      fail(error, "deleteOldestChat");
+      const ids = (data ?? []).map((r) => r.id as string);
+      // Answers go with their questions (reply_to cascades).
+      if (ids.length) fail((await admin().from("chat_messages").delete().in("id", ids).eq("user_id", userId)).error, "deleteOldestChat");
     },
 
     async getProfile(): Promise<Profile> {
@@ -450,7 +823,7 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
       fail((await db.from("profiles").upsert(row)).error, "updateProfile");
     },
     async exportAll(): Promise<ExportBundle> {
-      const [subjects, notesRes, sourcesRes, chunksRes, profile, cardsRes, reviewsRes, mapsRes] = await Promise.all([
+      const [subjects, notesRes, sourcesRes, chunksRes, profile, cardsRes, reviewsRes, mapsRes, quizzesRes, attemptsRes, answersRes, weakRes, questionsRes, chatRes] = await Promise.all([
         repo.listSubjects(),
         db.from("notes").select("*"),
         db.from("sources").select("*"),
@@ -459,6 +832,12 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
         allRows("flashcards", "created_at"),
         allRows("card_reviews", "reviewed_at"),
         allRows("mindmaps", "created_at"),
+        allRows("quizzes", "created_at"),
+        allRows("quiz_attempts", "started_at"),
+        allRows("answers", "answered_at"),
+        allRows("weak_topics", "created_at"),
+        allQuestions(),
+        allRows("chat_messages", "created_at"),
       ]);
       fail(notesRes.error, "export notes");
       fail(sourcesRes.error, "export sources");
@@ -477,6 +856,12 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
         flashcards: cardsRes.map(toFlashcard),
         cardReviews: reviewsRes.map(toReview),
         mindmaps: mapsRes.map(toMindmap),
+        quizzes: quizzesRes.map(toQuiz),
+        questions: questionsRes.map(toQuestion),
+        quizAttempts: attemptsRes.map(toAttempt),
+        answers: answersRes.map(toAnswer),
+        weakTopics: weakRes.map(toWeakTopic),
+        chatMessages: chatRes.map(toChat),
       };
     },
   };

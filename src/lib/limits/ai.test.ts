@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { DAILY_ATTEMPTS, DAILY_LIMITS, quotaFrom, quotaLabel } from "./ai";
+import { APP_BUDGET, appBudgetFor, DAILY_ATTEMPTS, DAILY_LIMITS, quotaFrom, quotaLabel } from "./ai";
 
 describe("AI quotas", () => {
-  it("matches the plan: 15 flashcard sets and 3 mindmaps a day, tries capped at 3x", () => {
-    expect(DAILY_LIMITS).toEqual({ flashcards: 15, mindmap: 3 });
-    expect(DAILY_ATTEMPTS).toEqual({ flashcards: 45, mindmap: 9 });
+  it("matches the plan: 15 flashcard sets, 3 mindmaps, 3 quizzes and 20 chat questions a day, tries capped at 3x", () => {
+    expect(DAILY_LIMITS).toEqual({ flashcards: 15, mindmap: 3, quiz: 3, chat: 20 });
+    expect(DAILY_ATTEMPTS).toEqual({ flashcards: 45, mindmap: 9, quiz: 9, chat: 60 });
+  });
+
+  it("gives each Groq model its own app-wide budget, under the free plan's daily limit", () => {
+    expect(appBudgetFor("groq", "openai/gpt-oss-120b")).toEqual({ requests: 900, tokens: 180_000 });
+    expect(appBudgetFor("groq", "openai/gpt-oss-20b")).toEqual({ requests: 900, tokens: 180_000 });
+    expect(appBudgetFor("groq", "some/other-model")).toEqual(APP_BUDGET.groq);
+    expect(appBudgetFor("cloudflare", "@cf/meta/llama-3.1-8b-instruct-fast")).toEqual(APP_BUDGET.cloudflare);
   });
 
   it("computes what's left and never goes below zero", () => {

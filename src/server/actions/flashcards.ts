@@ -6,15 +6,14 @@ import { aiMode } from "@/lib/ai/providers";
 import { runAiTask } from "@/lib/ai/run";
 import { normaliseFlashcardsWithStats } from "@/lib/ai/schemas";
 import { flashcardTask, FLASHCARDS_MAX_CHARS, MIN_SOURCE_CHARS, toPassages, type CardCount } from "@/lib/ai/tasks";
-import { fitsOneSet, isCovered, pageStats, pageStatsFromCounts, seriesNext, type PageRange, type PageStats } from "@/lib/page-range";
 import { normaliseFront } from "@/lib/ai/text";
 import type { GeneratedCard } from "@/lib/ai/types";
 import { DAILY_ATTEMPTS, DAILY_LIMITS, type Quota } from "@/lib/limits/ai";
-import { editCardInput, id as idSchema, makeFlashcardsInput, newCardInput, type MakeFlashcardsInput } from "@/lib/validation";
+import { editCardInput, id as idSchema, makeFlashcardsInput, newCardInput } from "@/lib/validation";
 import { appBudget, quotaFor, studentDay } from "../ai";
 import { dayContext, toDeckCards, type DeckCard } from "../cards";
-import { syncNoteChunks } from "../passages";
-import type { ChunkRow, Repo } from "../repo/types";
+import { sourceChunks, sourceOptions, type FileSeries, type SourceOptions } from "../source-select";
+import type { ChunkRow } from "../repo/types";
 import { getRepo } from "../session";
 import { firstIssue, type ActionResult } from "./result";
 
@@ -22,52 +21,18 @@ import { firstIssue, type ActionResult } from "./result";
 const MAX_CARDS_PER_SUBJECT = 2000;
 const MAX_CACHE_BYTES = 200_000;
 
-export type MakeOptions = {
-  notes: { id: string; title: string; chars: number; updatedAt: string }[];
-  files: {
-    id: string; name: string; kind: "pdf" | "pptx"; pageCount: number | null; status: string;
-    /** Characters per page (index 0 = page 1); null when the passages have no page numbers. Counts only, never text. */
-    pageChars: number[] | null;
-    /** Characters in passages without a page number (sent with every range). */
-    looseChars: number;
-    /** The whole file fits one set: no page fields. */
-    fitsOneSet: boolean;
-  }[];
-  quota: Quota;
-};
+export type MakeOptions = SourceOptions & { quota: Quota };
 
 /** Sources and quota for the Make flashcards dialog. */
 export async function loadMakeOptions(subjectId: string): Promise<ActionResult<MakeOptions>> {
   if (!idSchema.safeParse(subjectId).success) return { ok: false, error: "Subject not found." };
   const repo = await getRepo();
   if (!(await repo.getSubject(subjectId))) return { ok: false, error: "Subject not found." };
-  const [notes, files, quota, counts] = await Promise.all([
-    repo.listNotes(subjectId), repo.listSources(subjectId), quotaFor(repo, "flashcards"), repo.listPageChars(subjectId),
-  ]);
-  // Counts summed in the database, one query per dialog open (security review S2-9): never the passages' text.
-  const bySource = new Map<string, typeof counts>();
-  for (const r of counts) {
-    const list = bySource.get(r.sourceId);
-    if (list) list.push(r); else bySource.set(r.sourceId, [r]);
-  }
-  const stats = files.map((f): PageStats =>
-    f.extractStatus === "ready" ? pageStatsFromCounts(bySource.get(f.id) ?? [], f.pageCount) : { pageChars: null, looseChars: 0, totalChars: 0 });
-  return {
-    ok: true,
-    notes: notes.map((n) => ({ id: n.id, title: n.title || "Untitled note", chars: n.chars, updatedAt: n.updatedAt })),
-    files: files.map((f, i) => ({
-      id: f.id, name: f.fileName, kind: f.kind, pageCount: f.pageCount, status: f.extractStatus,
-      pageChars: stats[i].pageChars, looseChars: stats[i].looseChars, fitsOneSet: fitsOneSet(stats[i].totalChars),
-    })),
-    quota,
-  };
+  const [opts, quota] = await Promise.all([sourceOptions(repo, subjectId, FLASHCARDS_MAX_CHARS), quotaFor(repo, "flashcards")]);
+  return { ok: true, ...opts, quota };
 }
 
-/**
- * Where a file's set sits in the series (flashcards.md "Long files"): the range read, whether
- * every passage fitted (else sampled), the file's page count and the next range by the fit rule.
- */
-export type FileSeries = { range: PageRange; covered: boolean; pageCount: number; next: PageRange | null };
+export type { FileSeries };
 
 export type MakeResult =
   | {
@@ -86,35 +51,6 @@ export type MakeResult =
   | { status: "failed"; quota: Quota }
   /** Production build without an AI key. */
   | { status: "not_configured"; quota: Quota };
-
-type Found = { chunks: ChunkRow[]; noteId: string | null; sourceId: string | null; series: FileSeries | null };
-
-async function sourceChunks(repo: Repo, subjectId: string, source: MakeFlashcardsInput["source"]): Promise<Found | { error: string } | null> {
-  if (source.type === "note") {
-    const note = await repo.getNote(source.id);
-    if (!note || note.subjectId !== subjectId) return null;
-    await syncNoteChunks(repo, note); // make sure passages match the latest text
-    return { chunks: await repo.listChunks({ noteId: note.id }), noteId: note.id, sourceId: null, series: null };
-  }
-  const file = await repo.getSource(source.id);
-  if (!file || file.subjectId !== subjectId || file.extractStatus !== "ready") return null;
-  const all = await repo.listChunks({ sourceId: file.id });
-  const stats = pageStats(all, file.pageCount);
-  const pageCount = Math.max(1, file.pageCount ?? 0, stats.pageChars?.length ?? 0);
-  const unit = file.kind === "pptx" ? "slide" : "page";
-  if (source.fromPage === undefined || source.toPage === undefined) {
-    // Whole file (it fits one set; a stale dialog sending a long file gets an even sample).
-    const range = { from: 1, to: pageCount };
-    return { chunks: all, noteId: null, sourceId: file.id, series: { range, covered: fitsOneSet(stats.totalChars), pageCount, next: null } };
-  }
-  if (source.fromPage > pageCount) return { error: `Pick a ${unit} between 1 and ${pageCount}.` };
-  const range = { from: source.fromPage, to: Math.min(source.toPage, pageCount) };
-  const chunks = all.filter((c) => c.page === null || (c.page >= range.from && c.page <= range.to));
-  // Same rules as the dialog (src/lib/page-range.ts): a best-fit set continues by the fit rule, any other keeps its size.
-  const covered = stats.pageChars ? isCovered(stats.pageChars, stats.looseChars, range) : stats.totalChars <= FLASHCARDS_MAX_CHARS;
-  const series: FileSeries = { range, pageCount, covered, next: seriesNext(stats.pageChars, stats.looseChars, range, pageCount) };
-  return { chunks, noteId: null, sourceId: file.id, series };
-}
 
 /**
  * Fronts of the AI cards already in this subject from the same note or file (not deleted),
@@ -151,7 +87,7 @@ export async function makeFlashcards(raw: unknown): Promise<ActionResult<{ resul
   const { subjectId, source, count } = parsed.data;
   const repo = await getRepo();
   if (!(await repo.getSubject(subjectId))) return { ok: false, error: "Subject not found." };
-  const found = await sourceChunks(repo, subjectId, source);
+  const found = await sourceChunks(repo, subjectId, source, FLASHCARDS_MAX_CHARS);
   if (!found) return { ok: false, error: "That note or file isn't available any more." };
   if ("error" in found) return { ok: false, error: found.error };
   const series = found.series ? { series: found.series } : {};

@@ -26,7 +26,7 @@ export function sentences(text: string): string[] {
 const NOT_END = String.raw`(?:[^.!?]|\.(?=\d)|(?<=(?:^|[\s(])\p{Lu})\.(?=\s\p{Ll}))`;
 const SENTENCE = new RegExp(String.raw`${NOT_END}+[.!?]+["')\]]*|${NOT_END}+$`, "gu");
 
-const STOP = new Set("the a an of and or to in on for is are was were be by with as at that this it its from into than then".split(" "));
+export const STOP = new Set("the a an of and or to in on for is are was were be by with as at that this it its from into than then".split(" "));
 export function words(s: string): string[] {
   return (s.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).filter((w) => w.length > 2 && !STOP.has(w));
 }

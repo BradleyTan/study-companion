@@ -216,7 +216,7 @@ export function NoteEditor(props: {
         <MakeFlashcardsDialog subjectId={subject.id} subjectName={subject.name} open={making} onClose={() => setMaking(false)} preset={{ type: "note", id: note.id }} />
       )}
       <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Delete this note?">
-        <p>&ldquo;{title || "Untitled note"}&rdquo; will be gone for good. Flashcards made from it stay in your deck, with their quotes.</p>
+        <p>&ldquo;{title || "Untitled note"}&rdquo; will be gone for good. Flashcards and quizzes made from it stay, with their quotes.</p>
         <div className="flex flex-wrap justify-end gap-2">
           <Button variant="ghost" onClick={() => setConfirmDelete(false)}>Keep it</Button>
           <Button variant="danger" sound="tear" disabled={deleting} onClick={() => startDelete(async () => { if (timer.current) clearTimeout(timer.current); await deleteNote(note.id); })}>
