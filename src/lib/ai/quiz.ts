@@ -6,7 +6,8 @@ import { z } from "zod";
 import { BLANK, interleave, type QuizKind } from "../quiz/order";
 import { topicKey, TOPIC_MAX } from "../quiz/weak";
 import { bestSentence, groundedNearQuote, isGrounded, QUOTE_MAX, resolvePassage, wrongRangeEnd } from "./schemas";
-import { canonical, clip, collapse, containsLoose, normaliseFront, numbersIn, passageFacts, stem, words } from "./text";
+import { contradictsPassage } from "./contradict";
+import { canonical, clip, collapse, containsLoose, normaliseFront, NUMBER_WORD_VALUES, numbersIn, passageFacts, stem, words } from "./text";
 import type { GeneratedQuestion, Passage } from "./types";
 
 export const QUESTION_PROMPT_MAX = 300;
@@ -49,7 +50,11 @@ export function standardBlanks(prompt: string): string {
 }
 const countBlanks = (s: string) => s.split(BLANK).length - 1;
 
-const optionKey = (s: string) => normaliseFront(s).replace(/^(?:the|a|an)\s+/, "");
+/** Options compared after normalising; "Two" and "2" are the same option (QA step 3). */
+const optionKey = (s: string) => {
+  const k = normaliseFront(s).replace(/^(?:the|a|an)\s+/, "");
+  return Object.hasOwn(NUMBER_WORD_VALUES, k) ? String(NUMBER_WORD_VALUES[k]) : k;
+};
 
 /** Content words, stemmed (for "is the answer already in the sentence?"). */
 const stems = (s: string) => new Set(words(s).map(stem));
@@ -148,13 +153,16 @@ export function normaliseQuizWithStats(json: unknown, passages: Passage[], opts:
     const filled = type === "fill" ? prompt.replace(BLANK, answer) : answer;
     if (!isGrounded(answer, passage.text) || (type === "fill" && !isGrounded(filled, passage.text))) { drop("ungrounded"); continue; }
     if (!numbersGrounded(prompt, passage.text) || wrongRangeEnd(prompt, answer, passage.text) || !groundedNearQuote(prompt, answer, passage.text, modelQuote)) { drop("ungrounded"); continue; }
+    // The blank filled from the wrong part of the sentence ("work best at 45 °C" when the passage
+    // says 37 °C, "Mitosis produces four haploid gametes"): the filled sentence swaps a passage term.
+    if (type === "fill" && contradictsPassage(filled, passage.text)) { drop("ungrounded"); continue; }
 
     const topicRaw = clip(q.topic ?? "", TOPIC_MAX);
     if (!topicRaw || !/[\p{L}\p{N}]/u.test(topicRaw)) { drop("topic"); continue; }
     const topic = known.get(topicKey(topicRaw)) ?? topicRaw;
 
     const explanation = clip(q.explanation ?? "", EXPLANATION_MAX);
-    if (explanation.length < 8 || !isGrounded(explanation, passage.text)) { drop("explanation"); continue; }
+    if (explanation.length < 8 || !isGrounded(explanation, passage.text) || contradictsPassage(explanation, passage.text)) { drop("explanation"); continue; }
 
     const key = normaliseFront(prompt.replace(BLANK, ""));
     if (out.some((o) => normaliseFront(o.prompt.replace(BLANK, "")) === key || similar(o.prompt, prompt) || (o.chunkId === passage.chunkId && optionKey(o.answer) === optionKey(answer) && o.type === type))) {

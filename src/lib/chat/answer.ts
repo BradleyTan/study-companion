@@ -6,6 +6,7 @@
 // text, never as HTML.
 import { z } from "zod";
 import { bestSentence, isGrounded, QUOTE_MAX } from "../ai/schemas";
+import { contradictsPassage } from "../ai/contradict";
 import { clip, collapse, sentences } from "../ai/text";
 import type { Passage } from "../ai/types";
 
@@ -114,7 +115,7 @@ function citedSentences(raw: string, byRef: Map<string, Passage>, drop: () => vo
     if (!/[\p{L}\p{N}]/u.test(words)) continue; // a stray ref or punctuation on its own
     if (!ids.length) { drop(); continue; }
     const cited = [...byRef.values()].filter((p) => ids.includes(p.chunkId)).map((p) => p.text).join("\n");
-    if (!isGrounded(words, cited)) { drop(); continue; }
+    if (!isGrounded(words, cited) || contradictsPassage(words, cited)) { drop(); continue; }
     out.push({ text: balanceBold(plain), chunkIds: ids });
   }
   return out;

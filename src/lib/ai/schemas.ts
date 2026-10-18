@@ -2,7 +2,7 @@
 // then normalised (lengths, duplicates, tree shape) and every passage reference is mapped
 // through the server's own list, so a card or node can only point at this student's text.
 import { z } from "zod";
-import { canonical, clip, collapse, containsLoose, equationsIn, factsOf, GREEK, NO_SPACES, normaliseFront, NUMBER_WORD_VALUES, numbersIn, overlap, passageFacts, SCALE, sentences, type PassageFacts } from "./text";
+import { canonical, clip, collapse, containsLoose, equationsIn, factsOf, GREEK, NO_SPACES, normaliseFront, NUMBER_WORD_VALUES, numbersIn, overlap, passageFacts, SCALE, sentences, stem, type PassageFacts } from "./text";
 import type { GeneratedCard, MindmapGraph, MindmapNode, Passage } from "./types";
 
 export const CARD_FRONT_MAX = 500;
@@ -122,6 +122,9 @@ export function isGrounded(back: string, passageText: string): boolean {
   for (const [genus, names] of a.species) {
     const known = [...p.species].filter(([g]) => g === genus || (genus.endsWith(".") ? g[0] === genus[0] : `${genus[0]}.` === g));
     if (known.length && ![...names].every((n) => known.some(([, set]) => set.has(n)))) return false;
+    // A species the passage never names ("Staphylococcus aureus" when it is about Escherichia
+    // coli): the genus must at least be in the passage (QA step 3).
+    if (!known.length && (genus.endsWith(".") || !p.words.has(stem(genus)))) return false;
   }
 
   // Number words in the answer ("five") count as numbers.
