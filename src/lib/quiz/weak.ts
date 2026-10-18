@@ -75,6 +75,9 @@ export function undoMiss(cur: WeakState, prev: WeakPrev): WeakState | null {
   if (missCount === 0) return null;
   const at = cur.recent.lastIndexOf(false);
   const recent = at >= 0 ? cur.recent.map((v, i) => (i === at ? true : v)) : cur.recent;
+  // Right answers or "Mark as got it" since that miss: they stand. Restoring the state from
+  // before the miss would wipe that progress (and reopen a topic the student has cleared).
+  if (cur.rightStreak > 0 || cur.clearedAt) return { ...cur, missCount, recent };
   return { ...cur, missCount, rightStreak: prev.rightStreak, clearedAt: prev.clearedAt, lastMissedAt: prev.lastMissedAt ?? cur.lastMissedAt, recent };
 }
 

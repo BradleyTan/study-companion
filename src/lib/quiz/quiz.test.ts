@@ -96,6 +96,23 @@ describe("weak topics: tracking rules", () => {
     expect(undoMiss(reopened.next, reopened.prev)!.clearedAt).toBe(t1);
   });
 
+  it("'I was right' later never wipes rights or a clear that came after the miss (QA step 3)", () => {
+    const before: WeakState = { topic: "T", missCount: 1, rightStreak: 0, lastMissedAt: t0, clearedAt: null, chunkIds: ["c1"], recent: [false] };
+    const { next, prev } = applyMiss(before, "T", "c1", t1);
+    // Two right answers clear the topic, then the older miss is overridden.
+    const cleared = applyRight(applyRight(next, t2)!, t2)!;
+    expect(cleared.clearedAt).toBe(t2);
+    const undone = undoMiss(cleared, prev)!;
+    expect(undone.clearedAt).toBe(t2);
+    expect(undone.rightStreak).toBe(2);
+    expect(undone.missCount).toBe(1);
+    // One right since the miss: the streak stays.
+    const stronger = applyRight(next, t2)!;
+    expect(undoMiss(stronger, prev)!.rightStreak).toBe(1);
+    // Marked as got it since the miss: stays cleared.
+    expect(undoMiss({ ...next, clearedAt: t2 }, prev)!.clearedAt).toBe(t2);
+  });
+
   it("orders the open list by most recent miss, then more misses", () => {
     const list = [
       { id: "a", lastMissedAt: t0, missCount: 5 },
