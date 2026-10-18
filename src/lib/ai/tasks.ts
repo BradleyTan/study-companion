@@ -74,6 +74,7 @@ export function chatTask(passages: Passage[], question: string, history: ChatTur
     messages: chatMessages(passages, question, history, opts),
     maxTokens: 1200,
     parse: (json) => normaliseChatReply(json, passages, { quiz: opts.quiz }),
-    fake: () => fakeChat(passages, question, opts.quiz),
+    // The local stand-in has no memory of the conversation, so a follow-up is matched with the question before it.
+    fake: () => fakeChat(passages, [history.filter((t) => t.role === "student").at(-1)?.text ?? "", question].join(" "), opts.quiz),
   };
 }

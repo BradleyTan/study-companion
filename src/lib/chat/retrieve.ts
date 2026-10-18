@@ -13,6 +13,8 @@ export const SIMILARITY_MIN = 0.75;
 export const SIMILARITY_LOOSE = 0.7;
 /** Keyword mode: share of the question's key words a passage must contain to answer from it. */
 export const KEYWORD_MIN = 0.5;
+/** Keyword mode: a passage containing this many of the question's key words also counts, whatever their share. */
+export const KEYWORD_MIN_TERMS = 2;
 /** Keyword mode: below KEYWORD_MIN but at least this is "Closest I found". */
 export const KEYWORD_LOOSE = 0.3;
 /** Candidates fetched from full-text search before they are scored here. */
@@ -23,7 +25,8 @@ const ASKING = new Set((
   "what which who whom whose when where why how does did doe can could would should will shall may might must "
   + "explain describe define definition tell give list name state key main point points simply simple about mean "
   + "means meaning example examples please summarise summarize summary short briefly brief quick quiz question one "
-  + "into more much many some any other again also just like").split(" "));
+  + "into more much many some any other again also just like work works working detail details happen happens exactly really "
+  + "thing things have has had been being get gets got").split(" "));
 
 /** The words of a question a passage has to share (stemmed, no question words or stop words). */
 export function keyTerms(question: string): string[] {
@@ -47,14 +50,20 @@ export function keywordScore(terms: string[], text: string): { coverage: number;
   return { coverage: found / terms.length, hits };
 }
 
-/** Passages ranked for a question by keyword coverage (best first); only ones sharing at least one term. */
+/**
+ * Passages ranked for a question by keyword coverage (best first); only ones sharing at least one
+ * term. The score is the share of key words found, raised to KEYWORD_MIN when at least
+ * KEYWORD_MIN_TERMS of them are there ("how does osmosis work in plant roots" has 4 key words;
+ * a passage on osmosis in roots shares 2).
+ */
 export function rankByKeywords<T extends { id: string; text: string }>(question: string, list: T[]): { item: T; score: number }[] {
   const terms = keyTerms(question);
   return list
     .map((item) => ({ item, ...keywordScore(terms, item.text) }))
     .filter((x) => x.coverage > 0)
-    .sort((a, b) => b.coverage - a.coverage || b.hits - a.hits || a.item.id.localeCompare(b.item.id))
-    .map(({ item, coverage }) => ({ item, score: coverage }));
+    .map((x) => ({ ...x, score: Math.round(x.coverage * terms.length) >= KEYWORD_MIN_TERMS ? Math.max(x.coverage, KEYWORD_MIN) : x.coverage }))
+    .sort((a, b) => b.score - a.score || b.coverage - a.coverage || b.hits - a.hits || a.item.id.localeCompare(b.item.id))
+    .map(({ item, score }) => ({ item, score }));
 }
 
 export type Retrieved<T> = {

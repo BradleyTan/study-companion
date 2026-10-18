@@ -3,7 +3,8 @@ import { planChunkSync, type Chunk } from "@/lib/extract/chunk";
 import { newSrs } from "@/lib/srs/scheduler";
 import type { SettingsUpdate } from "@/lib/validation";
 import { topicKey } from "@/lib/quiz/weak";
-import type { CardReview, ChunkRow, ExportBundle, Flashcard, Mindmap, Note, Profile, Question, Quiz, QuizAnswer, QuizAttempt, Repo, Source, Subject, WeakTopic } from "./types";
+import { rankByKeywords } from "@/lib/chat/retrieve";
+import type { CardReview, ChatRow, ChunkRow, ExportBundle, Flashcard, Mindmap, Note, Profile, Question, Quiz, QuizAnswer, QuizAttempt, Repo, Source, Subject, WeakTopic } from "./types";
 
 // In-memory store for demo mode (no Supabase configured). Kept on globalThis so it
 // survives hot reloads in dev. Each demo visitor gets their own random user id.
@@ -28,17 +29,20 @@ type Store = {
   attempts: Map<string, Owned<QuizAttempt>>;
   answers: Map<string, Owned<QuizAnswer>>;
   weakTopics: Map<string, Owned<WeakTopic>>;
+  chat: Map<string, Owned<ChatRow>>;
 };
 const g = globalThis as unknown as { __demoStore?: Store };
 export const store: Store = (g.__demoStore ??= {
   subjects: new Map(), notes: new Map(), sources: new Map(), chunks: new Map(), files: new Map(), profiles: new Map(), uploadLog: [],
   flashcards: new Map(), reviews: new Map(), mindmaps: new Map(), aiUsage: new Map(), appUsage: new Map(), aiCache: new Map(),
-  quizzes: new Map(), questions: new Map(), attempts: new Map(), answers: new Map(), weakTopics: new Map(),
+  quizzes: new Map(), questions: new Map(), attempts: new Map(), answers: new Map(), weakTopics: new Map(), chat: new Map(),
 });
 // A store created by an older build (hot reload) may miss the Step 2 and Step 3 maps.
-for (const k of ["flashcards", "reviews", "mindmaps", "aiUsage", "appUsage", "aiCache", "quizzes", "questions", "attempts", "answers", "weakTopics"] as const) store[k] ??= new Map() as never;
+for (const k of ["flashcards", "reviews", "mindmaps", "aiUsage", "appUsage", "aiCache", "quizzes", "questions", "attempts", "answers", "weakTopics", "chat"] as const) store[k] ??= new Map() as never;
 
 const now = () => new Date().toISOString();
+/** Same cap as the database (1000 chat messages per subject). */
+const CHAT_CAP = 1000;
 const DEFAULT_PROFILE: Profile = { soundOn: true, volume: 0.35, theme: "system", timezone: "UTC" };
 const clone = <T>(v: T): T => structuredClone(v);
 
@@ -114,6 +118,7 @@ export function demoRepo(userId: string): Repo {
       store.mindmaps.delete(id);
       for (const [k, q] of store.quizzes) if (q.subjectId === id) dropQuiz(k);
       for (const [k, w] of store.weakTopics) if (w.subjectId === id) store.weakTopics.delete(k);
+      for (const [k, m] of store.chat) if (m.subjectId === id) store.chat.delete(k);
     },
     async listNotes(subjectId) {
       return [...store.notes.values()]
@@ -474,6 +479,72 @@ export function demoRepo(userId: string): Repo {
       if (own(store.weakTopics.get(id))) store.weakTopics.delete(id);
     },
 
+    // ---- Step 3 part 2 ----
+    async matchChunks() {
+      return []; // demo mode has no embeddings: chat uses keyword search
+    },
+    async searchChunks(subjectId, query, limit, opts = {}) {
+      void opts;
+      const list = myChunks().filter((c) => c.subjectId === subjectId);
+      return rankByKeywords(query, list).slice(0, limit).map((r) => strip(r.item));
+    },
+    async embeddingCounts(subjectId) {
+      return { total: myChunks().filter((c) => c.subjectId === subjectId).length, embedded: 0 };
+    },
+    async listChat(subjectId, { limit, before }) {
+      return [...store.chat.values()]
+        .filter((m) => m.userId === userId && m.subjectId === subjectId && (!before || m.createdAt < before))
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
+        .slice(0, limit)
+        .map(strip);
+    },
+    async getChatMessage(id) {
+      const m = own(store.chat.get(id));
+      return m ? strip(m) : null;
+    },
+    async findChatExchange(clientKey) {
+      const q = [...store.chat.values()].find((m) => m.userId === userId && m.clientKey === clientKey);
+      if (!q) return null;
+      const a = [...store.chat.values()].find((m) => m.userId === userId && m.replyTo === q.id);
+      return { question: strip(q), answer: a ? strip(a) : null };
+    },
+    async addChatExchange(subjectId, { clientKey, question, answer, after }) {
+      if (!own(store.subjects.get(subjectId))) throw new Error("Subject not found");
+      if ([...store.chat.values()].filter((m) => m.userId === userId && m.subjectId === subjectId).length + 2 > CHAT_CAP) throw new Error("chat message limit reached");
+      if ([...store.chat.values()].some((m) => m.userId === userId && m.clientKey === clientKey)) throw new Error("duplicate client key");
+      const at = Math.max(Date.now(), after ? Date.parse(after) + 1 : 0);
+      const q: Owned<ChatRow> = {
+        id: crypto.randomUUID(), userId, subjectId, role: "user", kind: "question", content: question, citations: [], reveal: null, feedback: null,
+        clientKey, replyTo: null, createdAt: new Date(at).toISOString(),
+      };
+      const a: Owned<ChatRow> = {
+        id: crypto.randomUUID(), userId, subjectId, role: "assistant", kind: answer.kind, content: answer.content, citations: clone(answer.citations),
+        reveal: answer.reveal, feedback: null, clientKey: null, replyTo: q.id, createdAt: new Date(at + 1).toISOString(),
+      };
+      store.chat.set(q.id, q);
+      store.chat.set(a.id, a);
+      return { question: strip(q), answer: strip(a) };
+    },
+    async setChatFeedback(id, feedback) {
+      const m = own(store.chat.get(id));
+      if (m && m.role === "assistant") m.feedback = feedback;
+    },
+    async clearChat(subjectId) {
+      for (const [k, m] of store.chat) if (m.userId === userId && m.subjectId === subjectId) store.chat.delete(k);
+    },
+    async countChat(subjectId) {
+      return [...store.chat.values()].filter((m) => m.userId === userId && m.subjectId === subjectId).length;
+    },
+    async deleteOldestChat(subjectId, questions) {
+      const oldest = [...store.chat.values()]
+        .filter((m) => m.userId === userId && m.subjectId === subjectId && m.role === "user")
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+        .slice(0, questions)
+        .map((m) => m.id);
+      const gone = new Set(oldest);
+      for (const [k, m] of store.chat) if (gone.has(k) || (m.replyTo && gone.has(m.replyTo))) store.chat.delete(k);
+    },
+
     async getProfile() {
       return { ...DEFAULT_PROFILE, ...store.profiles.get(userId) };
     },
@@ -497,6 +568,7 @@ export function demoRepo(userId: string): Repo {
         quizAttempts: [...store.attempts.values()].filter((a) => a.userId === userId).map(strip),
         answers: [...store.answers.values()].filter((a) => a.userId === userId).map(strip),
         weakTopics: [...store.weakTopics.values()].filter((w) => w.userId === userId).map(strip),
+        chatMessages: [...store.chat.values()].filter((m) => m.userId === userId).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map(strip),
       };
     },
   };
@@ -512,6 +584,7 @@ export function demoDeleteUser(userId: string) {
   for (const [k, m] of store.mindmaps) if (m.userId === userId) store.mindmaps.delete(k);
   for (const [k, q] of store.quizzes) if (q.userId === userId) dropQuiz(k);
   for (const [k, w] of store.weakTopics) if (w.userId === userId) store.weakTopics.delete(k);
+  for (const [k, m] of store.chat) if (m.userId === userId) store.chat.delete(k);
   for (const k of store.aiUsage.keys()) if (k.startsWith(`${userId}|`)) store.aiUsage.delete(k);
   for (const k of store.aiCache.keys()) if (k.startsWith(`${userId}|`)) store.aiCache.delete(k);
   store.profiles.delete(userId);

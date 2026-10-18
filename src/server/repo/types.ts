@@ -181,6 +181,39 @@ export type NewQuizAnswer = Omit<QuizAnswer, "id" | "answeredAt">;
 
 export type WeakTopic = WeakState & { id: string; subjectId: string; topicKey: string; createdAt: string };
 
+// ---- Step 3 part 2: ask your notes ----------------------------------------------------
+
+export type ChatFeedback = "wrong" | "not_in_notes" | "too_long";
+/** Where an answer's [n] came from (for a not-covered reply: the "Closest I found" passages). */
+export type ChatCitation = {
+  n: number;
+  chunkId: string;
+  noteId: string | null;
+  sourceId: string | null;
+  page: number | null;
+  /** "Lecture 3.pdf, page 12" or "Cell structure (note)", as it was when answered. */
+  label: string;
+  /** A sentence of the passage (verified to be in it), still readable after the source is deleted. */
+  quote: string;
+};
+export type ChatRow = {
+  id: string;
+  subjectId: string;
+  role: "user" | "assistant";
+  kind: "question" | "answer" | "not_covered";
+  /** A question as typed, or an answer in the safe Markdown subset (src/lib/chat/render.ts). */
+  content: string;
+  citations: ChatCitation[];
+  /** "Quiz me": the answer behind "Show answer". */
+  reveal: string | null;
+  feedback: ChatFeedback | null;
+  clientKey: string | null;
+  /** An answer's question. */
+  replyTo: string | null;
+  createdAt: string;
+};
+export type NewChatAnswer = { kind: "answer" | "not_covered"; content: string; citations: ChatCitation[]; reveal: string | null };
+
 export type ExportBundle = {
   exportedAt: string;
   profile: Profile;
@@ -195,6 +228,7 @@ export type ExportBundle = {
   quizAttempts: QuizAttempt[];
   answers: QuizAnswer[];
   weakTopics: WeakTopic[];
+  chatMessages: ChatRow[];
 };
 
 /**
@@ -317,6 +351,30 @@ export interface Repo {
   /** Inserts (no id) or updates the topic's row. */
   saveWeakTopic(subjectId: string, state: WeakState, id?: string): Promise<WeakTopic>;
   deleteWeakTopic(id: string): Promise<void>;
+
+  // ---- Step 3 part 2: ask your notes ----
+  /** A subject's embedded passages nearest to an embedding (cosine similarity, best first). Empty without embeddings. */
+  matchChunks(subjectId: string, embedding: number[], limit: number): Promise<(ChunkRow & { similarity: number })[]>;
+  /** Candidate passages sharing any of the query's words (full-text), best first; the caller scores them. */
+  searchChunks(subjectId: string, query: string, limit: number, opts?: { unembeddedOnly?: boolean }): Promise<ChunkRow[]>;
+  /** How many of a subject's passages there are, and how many have embeddings. */
+  embeddingCounts(subjectId: string): Promise<{ total: number; embedded: number }>;
+
+  /** Newest first; `before` pages back through older messages. */
+  listChat(subjectId: string, opts: { limit: number; before?: string }): Promise<ChatRow[]>;
+  getChatMessage(id: string): Promise<ChatRow | null>;
+  /** The question sent with this client key and its answer (a retried send gets these back). */
+  findChatExchange(clientKey: string): Promise<{ question: ChatRow; answer: ChatRow | null } | null>;
+  /**
+   * Saves a question and its answer together (the answer 1 ms after the question), both after
+   * `after` (the subject's newest message) so the chat's order never ties.
+   */
+  addChatExchange(subjectId: string, input: { clientKey: string; question: string; answer: NewChatAnswer; after?: string }): Promise<{ question: ChatRow; answer: ChatRow }>;
+  setChatFeedback(id: string, feedback: ChatFeedback): Promise<void>;
+  clearChat(subjectId: string): Promise<void>;
+  countChat(subjectId: string): Promise<number>;
+  /** Removes the oldest questions (and their answers) of a subject. */
+  deleteOldestChat(subjectId: string, questions: number): Promise<void>;
 
   getProfile(): Promise<Profile>;
   updateProfile(patch: SettingsUpdate): Promise<void>;

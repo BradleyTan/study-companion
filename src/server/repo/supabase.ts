@@ -7,7 +7,7 @@ import type { WeakPrev } from "@/lib/quiz/weak";
 import type { Rating, SrsState, SrsStateNum } from "@/lib/srs/scheduler";
 import type { SubjectColour } from "@/lib/subjects";
 import type {
-  CardReview, ChunkRow, ExportBundle, Flashcard, Mindmap, MindmapSources, Note, NoteSummary, Profile, Question, QuestionPatch, Quiz, QuizAnswer, QuizAttempt, Repo,
+  CardReview, ChatCitation, ChatFeedback, ChatRow, ChunkRow, ExportBundle, Flashcard, Mindmap, MindmapSources, Note, NoteSummary, Profile, Question, QuestionPatch, Quiz, QuizAnswer, QuizAttempt, Repo,
   Source, Subject, WeakTopic,
 } from "./types";
 
@@ -196,6 +196,21 @@ const toWeakTopic = (r: Row): WeakTopic => ({
   recent: (r.recent as boolean[] | null) ?? [],
   createdAt: iso(r.created_at)!,
 });
+
+const toChat = (r: Row): ChatRow => ({
+  id: r.id as string,
+  subjectId: r.subject_id as string,
+  role: r.role as ChatRow["role"],
+  kind: r.kind as ChatRow["kind"],
+  content: r.content as string,
+  citations: (r.citations_json as ChatCitation[] | null) ?? [],
+  reveal: (r.reveal as string | null) ?? null,
+  feedback: (r.feedback as ChatFeedback | null) ?? null,
+  clientKey: (r.client_key as string | null) ?? null,
+  replyTo: (r.reply_to as string | null) ?? null,
+  createdAt: iso(r.created_at)!,
+});
+const CHAT_COLS = "id, subject_id, role, kind, content, citations_json, reveal, feedback, client_key, reply_to, created_at";
 
 const CHUNK_COLS = "id, subject_id, note_id, source_id, ordinal, page, text, content_hash";
 const SUBJECT_COLS = "id, name, colour, emoji, created_at, notes(count), sources(count)";
@@ -709,6 +724,88 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
       fail((await admin().from("weak_topics").delete().eq("id", id).eq("user_id", userId)).error, "deleteWeakTopic");
     },
 
+    // ---- Step 3 part 2 ----
+    // Retrieval runs as the student (RLS + the functions' own user_id = auth.uid() filter).
+    // Chat rows are read with the student's session and written with the secret key, pinned.
+    async matchChunks(subjectId, embedding, limit) {
+      const { data, error } = await db.rpc("match_chunks", { p_subject_id: subjectId, p_embedding: JSON.stringify(embedding), p_count: limit });
+      fail(error, "matchChunks");
+      return ((data ?? []) as Row[]).map((r) => ({ ...toChunk(r), similarity: Number(r.similarity) }));
+    },
+    async searchChunks(subjectId, query, limit, opts = {}) {
+      const { data, error } = await db.rpc("search_chunks", { p_subject_id: subjectId, p_query: query, p_count: limit, p_unembedded_only: !!opts.unembeddedOnly });
+      fail(error, "searchChunks");
+      return ((data ?? []) as Row[]).map(toChunk);
+    },
+    async embeddingCounts(subjectId) {
+      const [all, done] = await Promise.all([
+        db.from("chunks").select("id", { count: "exact", head: true }).eq("subject_id", subjectId),
+        db.from("chunks").select("id", { count: "exact", head: true }).eq("subject_id", subjectId).not("embedding", "is", null),
+      ]);
+      fail(all.error, "embeddingCounts");
+      fail(done.error, "embeddingCounts");
+      return { total: all.count ?? 0, embedded: done.count ?? 0 };
+    },
+    async listChat(subjectId, { limit, before }) {
+      let q = db.from("chat_messages").select(CHAT_COLS).eq("subject_id", subjectId);
+      if (before) q = q.lt("created_at", before);
+      const { data, error } = await q.order("created_at", { ascending: false }).order("id", { ascending: false }).limit(limit);
+      fail(error, "listChat");
+      return (data ?? []).map(toChat);
+    },
+    async getChatMessage(id) {
+      const { data, error } = await db.from("chat_messages").select(CHAT_COLS).eq("id", id).maybeSingle();
+      fail(error, "getChatMessage");
+      return data ? toChat(data) : null;
+    },
+    async findChatExchange(clientKey) {
+      const { data, error } = await db.from("chat_messages").select(CHAT_COLS).eq("client_key", clientKey).maybeSingle();
+      fail(error, "findChatExchange");
+      if (!data) return null;
+      const question = toChat(data);
+      const ans = await db.from("chat_messages").select(CHAT_COLS).eq("reply_to", question.id).maybeSingle();
+      fail(ans.error, "findChatExchange");
+      return { question, answer: ans.data ? toChat(ans.data) : null };
+    },
+    async addChatExchange(subjectId, { clientKey, question, answer, after }) {
+      const at = Math.max(Date.now(), after ? Date.parse(after) + 1 : 0);
+      const qid = crypto.randomUUID();
+      // One statement, so the answer's reply_to finds its question and nothing is half-saved.
+      const { data, error } = await admin().from("chat_messages").insert([
+        // Every column on both rows: in a multi-row insert a missing column is sent as null.
+        {
+          id: qid, user_id: userId, subject_id: subjectId, role: "user", kind: "question", content: question, citations_json: [],
+          reveal: null, client_key: clientKey, reply_to: null, created_at: new Date(at).toISOString(),
+        },
+        {
+          id: crypto.randomUUID(), user_id: userId, subject_id: subjectId, role: "assistant", kind: answer.kind, content: answer.content,
+          citations_json: answer.citations, reveal: answer.reveal, client_key: null, reply_to: qid, created_at: new Date(at + 1).toISOString(),
+        },
+      ]).select(CHAT_COLS);
+      fail(error, "addChatExchange");
+      const rows = (data ?? []).map(toChat);
+      return { question: rows.find((r) => r.role === "user")!, answer: rows.find((r) => r.role === "assistant")! };
+    },
+    async setChatFeedback(id, feedback) {
+      fail((await admin().from("chat_messages").update({ feedback }).eq("id", id).eq("user_id", userId).eq("role", "assistant")).error, "setChatFeedback");
+    },
+    async clearChat(subjectId) {
+      fail((await admin().from("chat_messages").delete().eq("subject_id", subjectId).eq("user_id", userId)).error, "clearChat");
+    },
+    async countChat(subjectId) {
+      const { count, error } = await db.from("chat_messages").select("id", { count: "exact", head: true }).eq("subject_id", subjectId);
+      fail(error, "countChat");
+      return count ?? 0;
+    },
+    async deleteOldestChat(subjectId, questions) {
+      const { data, error } = await db.from("chat_messages").select("id").eq("subject_id", subjectId).eq("role", "user")
+        .order("created_at").order("id").limit(questions);
+      fail(error, "deleteOldestChat");
+      const ids = (data ?? []).map((r) => r.id as string);
+      // Answers go with their questions (reply_to cascades).
+      if (ids.length) fail((await admin().from("chat_messages").delete().in("id", ids).eq("user_id", userId)).error, "deleteOldestChat");
+    },
+
     async getProfile(): Promise<Profile> {
       const { data, error } = await db.from("profiles").select("sound_on, volume, theme, timezone").maybeSingle();
       fail(error, "getProfile");
@@ -725,7 +822,7 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
       fail((await db.from("profiles").upsert(row)).error, "updateProfile");
     },
     async exportAll(): Promise<ExportBundle> {
-      const [subjects, notesRes, sourcesRes, chunksRes, profile, cardsRes, reviewsRes, mapsRes, quizzesRes, attemptsRes, answersRes, weakRes, questionsRes] = await Promise.all([
+      const [subjects, notesRes, sourcesRes, chunksRes, profile, cardsRes, reviewsRes, mapsRes, quizzesRes, attemptsRes, answersRes, weakRes, questionsRes, chatRes] = await Promise.all([
         repo.listSubjects(),
         db.from("notes").select("*"),
         db.from("sources").select("*"),
@@ -739,6 +836,7 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
         allRows("answers", "answered_at"),
         allRows("weak_topics", "created_at"),
         allQuestions(),
+        allRows("chat_messages", "created_at"),
       ]);
       fail(notesRes.error, "export notes");
       fail(sourcesRes.error, "export sources");
@@ -762,6 +860,7 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
         quizAttempts: attemptsRes.map(toAttempt),
         answers: answersRes.map(toAnswer),
         weakTopics: weakRes.map(toWeakTopic),
+        chatMessages: chatRes.map(toChat),
       };
     },
   };

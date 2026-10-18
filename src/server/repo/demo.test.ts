@@ -104,3 +104,39 @@ describe("demo repo: AI quota", () => {
     expect(await b.getAiCache("flashcards", "h")).toBeNull();
   });
 });
+
+describe("demo repo: ask your notes", () => {
+  const answer = { kind: "answer" as const, content: "Alpha. [1]", citations: [], reveal: null };
+
+  it("keeps each student's chat and passages to themselves", async () => {
+    const a = await setup();
+    await a.repo.replaceNoteChunks(a.noteId, a.subjectId, chunkPages([para("Mitochondria make ATP.")], { paged: false }));
+    const { question } = await a.repo.addChatExchange(a.subjectId, { clientKey: crypto.randomUUID(), question: "What makes ATP?", answer });
+    const b = demoRepo(crypto.randomUUID());
+    expect(await b.listChat(a.subjectId, { limit: 50 })).toEqual([]);
+    expect(await b.getChatMessage(question.id)).toBeNull();
+    expect(await b.searchChunks(a.subjectId, "mitochondria", 10)).toEqual([]);
+    await b.setChatFeedback(question.id, "wrong");
+    await b.clearChat(a.subjectId);
+    expect(await a.repo.countChat(a.subjectId)).toBe(2);
+    await expect(b.addChatExchange(a.subjectId, { clientKey: crypto.randomUUID(), question: "x", answer })).rejects.toThrow();
+    expect((await a.repo.searchChunks(a.subjectId, "What do mitochondria make?", 10)).length).toBe(1);
+    expect(await a.repo.embeddingCounts(a.subjectId)).toEqual({ total: 1, embedded: 0 });
+  });
+
+  it("orders a question before its answer, refuses a reused client key, exports and cascades", async () => {
+    const { repo, subjectId } = await setup();
+    const key = crypto.randomUUID();
+    const first = await repo.addChatExchange(subjectId, { clientKey: key, question: "One?", answer });
+    const second = await repo.addChatExchange(subjectId, { clientKey: crypto.randomUUID(), question: "Two?", answer, after: first.answer.createdAt });
+    expect(second.question.createdAt > first.answer.createdAt).toBe(true);
+    expect((await repo.listChat(subjectId, { limit: 10 })).map((m) => m.content)).toEqual(["Alpha. [1]", "Two?", "Alpha. [1]", "One?"]);
+    await expect(repo.addChatExchange(subjectId, { clientKey: key, question: "Again?", answer })).rejects.toThrow();
+    expect((await repo.findChatExchange(key))?.answer?.id).toBe(first.answer.id);
+    expect((await repo.exportAll()).chatMessages).toHaveLength(4);
+    await repo.deleteOldestChat(subjectId, 1);
+    expect((await repo.listChat(subjectId, { limit: 10 })).map((m) => m.content)).toEqual(["Alpha. [1]", "Two?"]);
+    await repo.deleteSubject(subjectId);
+    expect(await repo.countChat(subjectId)).toBe(0);
+  });
+});

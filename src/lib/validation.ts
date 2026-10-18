@@ -125,3 +125,14 @@ export const editQuestionInput = z.object({
   answer: z.string().trim().min(1, "Add the answer.").max(60, "Keep the answer under 60 characters.").optional(),
   accepted: z.array(z.string().trim().min(1).max(60)).max(6).optional(),
 });
+
+// ---- Step 3 part 2: ask your notes (chat.md) ---------------------------------------------
+export const CHAT_QUESTION_MAX = 500;
+export const askInput = z.object({
+  subjectId: id,
+  question: z.string().trim().min(1, "Type a question first.").max(CHAT_QUESTION_MAX, `Keep your question under ${CHAT_QUESTION_MAX} characters.`),
+  /** The composer's key for this question: a retried send answers once. */
+  clientKey: z.uuid(),
+});
+export const olderChatInput = z.object({ subjectId: id, before: z.iso.datetime({ offset: true }) });
+export const chatFeedbackInput = z.object({ messageId: id, feedback: z.enum(["wrong", "not_in_notes", "too_long"]) });
