@@ -160,7 +160,7 @@ test("build a quiz, take it (right and wrong), see results, weak topics and prac
   // The subject page shows the Quizzes tile, and no weak-topics strip once all are cleared.
   await page.getByRole("link", { name: "← Biology" }).click();
   await expect(page.getByRole("link", { name: /^Quizzes, best \d out of \d, 2 quizzes$/ })).toBeVisible();
-  await expect(page.getByTestId("ask-tile")).toContainText("Coming soon");
+  await expect(page.getByRole("link", { name: "Ask your notes, Ask anything in your notes" })).toBeVisible();
   await expect(page.getByTestId("weak-strip")).toHaveCount(0);
 });
 
