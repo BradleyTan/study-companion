@@ -6,7 +6,7 @@ import { isDemoMode } from "@/lib/env";
 import type { ChatMessage } from "./types";
 
 export const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
-export const GROQ_MODELS = { flashcards: "openai/gpt-oss-20b", mindmap: "openai/gpt-oss-20b", quiz: "openai/gpt-oss-120b" } as const;
+export const GROQ_MODELS = { flashcards: "openai/gpt-oss-20b", mindmap: "openai/gpt-oss-20b", quiz: "openai/gpt-oss-120b", chat: "openai/gpt-oss-120b" } as const;
 export const CLOUDFLARE_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
 
 export type Provider = "groq" | "cloudflare";

@@ -1,6 +1,7 @@
 // Deterministic local stand-in for the AI, used when no AI key is configured (demo mode,
 // CI, local development). Same input, same output, no network. It returns the same JSON
 // shape the real model is asked for, so it goes through the same validation.
+import { keyTerms, keywordScore } from "../chat/retrieve";
 import { clip, sentences, words } from "./text";
 import type { Passage } from "./types";
 
@@ -114,4 +115,40 @@ export function fakeQuiz(passages: Passage[], count: number, kind: "mcq" | "fill
     questions.push({ type: "fill", prompt: clip(blanked, 300), answer: key, accepted: [], ...base });
   }
   return { questions };
+}
+
+// ---- chat ---------------------------------------------------------------------
+
+/**
+ * Deterministic chat reply: the (up to 2) sentences of the passages that share the most key
+ * words with the question, each cited, in reading order; "not covered" when none share any.
+ * "Quiz me" blanks the key word of the first usable sentence and hides it as the answer.
+ */
+export function fakeChat(passages: Passage[], question: string, quiz: boolean) {
+  if (quiz) {
+    for (const p of passages) {
+      for (const s of sentences(p.text)) {
+        if (s.length < 30 || s.length > 300) continue;
+        const key = keyWord(s);
+        if (!key) continue;
+        const blanked = s.replace(new RegExp(`\\b${key}\\b`, "i"), "____").replace(/[.!?]+$/, "");
+        if (!blanked.includes("____")) continue;
+        return { covered: true, answer: `Fill the gap: ${blanked} [${p.ref}].`, reveal: `${key.charAt(0).toUpperCase()}${key.slice(1)} [${p.ref}].` };
+      }
+    }
+    return { covered: false, answer: "", reveal: null };
+  }
+  const terms = keyTerms(question);
+  const scored: { s: string; ref: string; at: number; score: number }[] = [];
+  let at = 0;
+  for (const p of passages) {
+    for (const s of sentences(p.text)) {
+      const { coverage, hits } = keywordScore(terms, s);
+      if (coverage > 0) scored.push({ s, ref: p.ref, at, score: coverage * 10 + hits });
+      at++;
+    }
+  }
+  const best = scored.sort((a, b) => b.score - a.score || a.at - b.at).slice(0, 2).sort((a, b) => a.at - b.at);
+  if (!best.length) return { covered: false, answer: "", reveal: null };
+  return { covered: true, answer: best.map((b) => `${b.s.replace(/[.!?]+$/, "")} [${b.ref}].`).join(" "), reveal: null };
 }

@@ -1,6 +1,7 @@
 // The generations (Step 2 flashcards and mindmaps, Step 3 quizzes), as tasks for runAiTask.
-import { fakeFlashcards, fakeMindmap, fakeQuiz } from "./fake";
-import { flashcardMessages, mindmapMessages, quizMessages } from "./prompts";
+import { normaliseChatReply, type ChatReply } from "../chat/answer";
+import { fakeChat, fakeFlashcards, fakeMindmap, fakeQuiz } from "./fake";
+import { chatMessages, flashcardMessages, mindmapMessages, quizMessages, type ChatTurn } from "./prompts";
 import { GROQ_MODELS } from "./providers";
 import type { AiTask } from "./run";
 import { normaliseFlashcardsWithStats, normaliseMindmap, type NormalisedCards } from "./schemas";
@@ -60,5 +61,19 @@ export function quizTask(passages: Passage[], opts: { count: number; kind: QuizK
       return out && out.questions.length ? out : null;
     },
     fake: () => fakeQuiz(passages, opts.count, opts.kind),
+  };
+}
+
+/**
+ * One Ask-your-notes answer (chat.md): Groq gpt-oss-120b, no streaming. The reply is validated
+ * as a whole (every sentence cited and grounded) before anything is shown.
+ */
+export function chatTask(passages: Passage[], question: string, history: ChatTurn[], opts: { quiz: boolean; subjectName: string }): AiTask<ChatReply> {
+  return {
+    groqModel: GROQ_MODELS.chat,
+    messages: chatMessages(passages, question, history, opts),
+    maxTokens: 1200,
+    parse: (json) => normaliseChatReply(json, passages, { quiz: opts.quiz }),
+    fake: () => fakeChat(passages, question, opts.quiz),
   };
 }

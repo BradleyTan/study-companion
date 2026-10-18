@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { APP_BUDGET, appBudgetFor, DAILY_ATTEMPTS, DAILY_LIMITS, quotaFrom, quotaLabel } from "./ai";
 
 describe("AI quotas", () => {
-  it("matches the plan: 15 flashcard sets, 3 mindmaps and 3 quizzes a day, tries capped at 3x", () => {
-    expect(DAILY_LIMITS).toEqual({ flashcards: 15, mindmap: 3, quiz: 3 });
-    expect(DAILY_ATTEMPTS).toEqual({ flashcards: 45, mindmap: 9, quiz: 9 });
+  it("matches the plan: 15 flashcard sets, 3 mindmaps, 3 quizzes and 20 chat questions a day, tries capped at 3x", () => {
+    expect(DAILY_LIMITS).toEqual({ flashcards: 15, mindmap: 3, quiz: 3, chat: 20 });
+    expect(DAILY_ATTEMPTS).toEqual({ flashcards: 45, mindmap: 9, quiz: 9, chat: 60 });
   });
 
   it("gives each Groq model its own app-wide budget, under the free plan's daily limit", () => {

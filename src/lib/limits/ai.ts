@@ -1,15 +1,15 @@
 // Free-plan AI limits. docs/PLAN.md sections 3b and 4.
 
-export type AiKind = "flashcards" | "mindmap" | "quiz";
+export type AiKind = "flashcards" | "mindmap" | "quiz" | "chat";
 
 /** Successful, non-cached generations per student per local day. */
-export const DAILY_LIMITS: Record<AiKind, number> = { flashcards: 15, mindmap: 3, quiz: 3 };
+export const DAILY_LIMITS: Record<AiKind, number> = { flashcards: 15, mindmap: 3, quiz: 3, chat: 20 };
 
 /**
  * Tries per student per local day, failed ones included. A failed generation gives the go
  * back, but it still used the shared allowance, so retries can't be endless.
  */
-export const DAILY_ATTEMPTS: Record<AiKind, number> = { flashcards: 45, mindmap: 9, quiz: 9 };
+export const DAILY_ATTEMPTS: Record<AiKind, number> = { flashcards: 45, mindmap: 9, quiz: 9, chat: 60 };
 
 /**
  * App-wide daily budget per model, kept below the free plan's limits so students get a
@@ -60,6 +60,13 @@ export function quotaFrom(kind: AiKind, used: number, appAllowanceLeft: boolean)
   const limit = DAILY_LIMITS[kind];
   return { kind, used, limit, left: Math.max(0, limit - used), appAllowanceLeft };
 }
+
+/**
+ * Ask your notes (chat.md): passages sent with one question. Six passages of up to 1,200
+ * characters each (CHUNK_MAX) plus the last 4 messages stay around 2,500 tokens, so a question,
+ * its rules and a reply of up to 1,200 tokens fit gpt-oss-120b's 8,000 tokens a minute.
+ */
+export const CHAT_MAX_CHARS = 7_200;
 
 /** Chip text, always a full sentence ("3 of 5 left today"). */
 export function quotaLabel(q: Pick<Quota, "left" | "limit">): string {
