@@ -48,7 +48,7 @@ Scope: quizzes, questions, attempts, answers, weak topics, Ask your notes (`chat
 ## Results
 - `npm run test:db` (local Postgres 16 + pgvector, throwaway database `studynest_sec`): GRANT TESTS PASSED, ALL RLS TESTS PASSED. Without the new migration, the grant test fails on `source_quote`, as expected.
 - `npm test`: 447 passed in 26 files. `npm run lint`, `npm run typecheck` and `npm run build` are clean.
-- `npm run test:e2e`: see the CHANGELOG entry for this review.
+- `npm run test:e2e` (full run, desktop Chrome and Pixel 7): 112 passed, 2 skipped (keyboard shortcuts on mobile, by design), 5.4 min.
 
 ## Before release
 - Apply `20261018000001`, `20261018000002` and then `20261018000003_step3_security_review.sql` to the live project **before** deploying this code, because `getAiCache` now uses the secret key. Then run the Supabase security advisor and the two-student checks again, as for Steps 1 and 2.
