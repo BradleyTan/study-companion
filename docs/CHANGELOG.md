@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-19 · Step 4 security review
+- **Import:** a hostile timetable file can no longer take seconds of server CPU (at most 8,000 dates worked out per file; zone checks cached). Undo of an import works only for the latest import and for 5 minutes on the server, the same in Supabase and demo.
+- **Calendar feed:** only real time zone names go into the feed (profile time zone checked on read, a format check on `timetable_slots.tz` in the not-yet-applied Step 4 migration); zone rules are cached and lines folded without per-character encoding, so a feed builds in well under 100 ms.
+- **Links:** sign-in and calendar links never use the Host header in production unless the app is the in-memory demo.
+- **Privacy page:** calendar apps keep the slots they already read after the link is reset or turned off.
+- Review in `docs/security/step-4-review.md`; threat model T21–T23.
+
 ## 2026-10-19 · Step 4 QA
 - **Re-import fixes:** "Replace my previous import" during a long break (Christmas between two terms) no longer fills the break with the class, and weeks the student moved or deleted with "Just this week" stay out instead of coming back beside the moved copy.
 - **Calendar feed:** the time zone rules always cover the current years, so one old slot can't make summer-time classes show an hour off in Google, Apple or Outlook.
