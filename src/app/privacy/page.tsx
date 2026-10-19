@@ -61,7 +61,8 @@ export default function PrivacyPage() {
           We never fetch a web address for you. Your calendar link lets the calendar app you add it to (Google, Apple or Outlook)
           read your timetable slots: their titles with the subject&apos;s emoji, rooms and times. Nothing else, such as notes or study
           history, is in it. Anyone who has the link can see those slots, so keep it to yourself; if it gets out, reset it in the
-          timetable or in Settings and the old link stops working at once.
+          timetable or in Settings and the old link stops working at once. A calendar app keeps its own copy of the slots it
+          already read until you remove the calendar there; turning off or resetting the link only stops new updates.
         </p>
 
         <h2>Keeping it safe</h2>
