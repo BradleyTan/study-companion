@@ -388,6 +388,13 @@ describe("calendar feed", () => {
     expect(buildFeed(slots, subjects, NOW)).toBe(text); // same input, same file
   });
 
+  it("an old slot doesn't push this year's daylight saving rules out of the zone", () => {
+    const old = { ...slot({ id: "44444444-4444-4444-8444-444444444444", recurrence: "none", startDate: "2004-03-01" }), updatedAt: "2026-10-18T12:00:00.000Z" };
+    const feed = unfold(buildFeed([old, slots[0]], subjects, NOW)).join("\n");
+    expect(feed).toContain("DTSTART:20261025T020000"); // London's change back on 25 Oct 2026
+    expect(feed).toContain("DTSTART:20260329T010000");
+  });
+
   it("round-trips through the importer to the same classes", () => {
     const plan = planImport(parseIcs(text)!, "Europe/London", NOW);
     const bio = plan.classes.find((c) => c.title === "🧬 Biology class")!;

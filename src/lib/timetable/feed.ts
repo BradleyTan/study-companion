@@ -136,7 +136,12 @@ export function buildFeed(slots: FeedSlot[], subjects: FeedSubject[], now: numbe
     const cur = years.get(s.tz);
     years.set(s.tz, { from: Math.min(cur?.from ?? a, a), to: Math.max(cur?.to ?? b, b) });
   }
-  for (const [tz, r] of years) lines.push(...vtimezone(tz, r.from, Math.min(r.to, r.from + 10)));
+  // At most 11 years of rules per zone, always around now: one slot typed years in the past must
+  // not leave this year's classes without their daylight saving rules (an hour off in calendars).
+  for (const [tz, r] of years) {
+    const from = Math.max(r.from, Math.min(r.to, thisYear) - 5);
+    lines.push(...vtimezone(tz, from, Math.min(r.to, from + 10)));
+  }
 
   const stamp = utcStamp(now);
   for (const s of slots) {
