@@ -25,7 +25,8 @@ export default function PrivacyPage() {
           <li>A list of numbers for each passage of your notes (an &ldquo;embedding&rdquo;), so &ldquo;Ask your notes&rdquo; can find the passages that match your question. These are worked out inside Supabase, with a model that runs there; your text isn&apos;t sent to anyone else for this.</li>
           <li>Your study timer rounds: when each focus round or break started and ended, how long you focused (pauses left out), whether it ran to the end, and which subject it was for. We use them for today&apos;s rounds and this week&apos;s study time. Rounds under a minute aren&apos;t saved. The timer&apos;s settings (round lengths, auto-start, quiet mode) are saved with your other settings.</li>
           <li>Your browser keeps the running timer, and any round it couldn&apos;t save yet (for example while offline), on your device until it is saved.</li>
-          <li>A later update will add your timetable. We&apos;ll update this page when it arrives.</li>
+          <li>Your timetable: each class, study block or other slot with its subject, title, room, times, time zone, how it repeats and the weeks you skipped, and whether it came from an imported timetable file. Deleting a subject keeps its slots as &ldquo;No subject&rdquo;.</li>
+          <li>If you make a calendar link: the secret part of the link, when you made it, and when a calendar last checked it. It isn&apos;t in your download, and resetting or turning off the link deletes it.</li>
         </ul>
 
         <h2>Where it&apos;s stored</h2>
@@ -52,6 +53,15 @@ export default function PrivacyPage() {
         <p>
           If you turn on &ldquo;Tell me when time&apos;s up&rdquo;, your browser shows the alert itself. StudyNest doesn&apos;t use a push
           service, so nothing about your timer is sent anywhere for it. You can turn it off in Settings or in your browser at any time.
+        </p>
+
+        <h2>Timetable import and calendar link</h2>
+        <p>
+          An imported timetable file is read on our server to find your classes and then thrown away; we keep only the slots you add.
+          We never fetch a web address for you. Your calendar link lets the calendar app you add it to (Google, Apple or Outlook)
+          read your timetable slots: their titles with the subject&apos;s emoji, rooms and times. Nothing else, such as notes or study
+          history, is in it. Anyone who has the link can see those slots, so keep it to yourself; if it gets out, reset it in the
+          timetable or in Settings and the old link stops working at once.
         </p>
 
         <h2>Keeping it safe</h2>
