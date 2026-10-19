@@ -253,6 +253,12 @@ export async function addImport(raw: unknown): Promise<ActionResult<Slots & { ba
       const merged = cleanSkips({ ...core, startDate: was.startDate, skipDates: [...was.skipDates.filter((d) => dayOf(d) < to), ...between, ...core.skipDates] });
       if (merged.length <= MAX_SKIPS) { core.startDate = was.startDate; core.skipDates = merged; }
     }
+    // Weeks the student took out themselves ("Just this week": deleted, or moved to a one-off)
+    // stay out, so a re-import never brings a moved class back beside its copy.
+    if (was.recurrence === "weekly" && core.recurrence === "weekly") {
+      const kept = cleanSkips({ ...core, skipDates: [...core.skipDates, ...was.skipDates.filter((d) => dayOf(d) >= to)] });
+      if (kept.length <= MAX_SKIPS) core.skipDates = kept;
+    }
     update.push({ id: was.id, next: { ...core, importUid: c.key } });
   }
   const inFile = new Set([...fileKeys, ...classes.map((c) => c.key)]);

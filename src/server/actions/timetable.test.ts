@@ -210,6 +210,29 @@ describe("import", () => {
     for (const d of ["2026-10-19", "2026-12-07", "2027-01-11", "2027-03-01"]) expect(meets(d), d).toBe(true);
   });
 
+  it("a re-import keeps the weeks the student moved or deleted", async () => {
+    const res = await previewImport(icsFile(fixture));
+    if (!res.ok) throw new Error(res.error);
+    const classes = res.preview.classes.map((c) => ({ ...c, subjectId: null }));
+    const fileKeys = classes.map((c) => c.key);
+    await addImport({ classes, replace: true, fileKeys });
+    const lecture = (await repo.listSlots()).find((s) => s.recurrence === "weekly" && s.title === "BIOL1001 Lecture")!;
+    // Two later weeks of the series: move one to 11:00 ("Just this week"), delete the other.
+    const day0 = Date.parse(`${lecture.startDate}T00:00:00Z`);
+    const dates = Array.from({ length: 6 }, (_, n) => new Date(day0 + n * 7 * 86_400_000).toISOString().slice(0, 10))
+      .filter((d) => !lecture.skipDates.includes(d) && (!lecture.repeatUntil || d <= lecture.repeatUntil));
+    const later = dates.slice(2, 4);
+    expect(later).toHaveLength(2);
+    const moved = await editSlot({ id: lecture.id, date: later[0], scope: "this", slot: form({ title: "BIOL1001 Lecture", date: later[0], startMin: 660, endMin: 720, repeats: "none" }) });
+    expect(moved).toMatchObject({ ok: true });
+    expect((await deleteSlot({ id: lecture.id, date: later[1], scope: "this" })).ok).toBe(true);
+
+    const again = await previewImport(icsFile(fixture));
+    if (!again.ok) throw new Error(again.error);
+    expect((await addImport({ classes: again.preview.classes.map((c) => ({ ...c, subjectId: null })), replace: true, fileKeys })).ok).toBe(true);
+    expect((await repo.getSlot(lecture.id))!.skipDates).toEqual(expect.arrayContaining(later));
+  });
+
   it("without Replace, classes imported before are left alone", async () => {
     const res = await previewImport(icsFile(fixture));
     if (!res.ok) throw new Error(res.error);
