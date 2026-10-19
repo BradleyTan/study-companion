@@ -32,7 +32,6 @@ export function TimerPanel() {
     setSheet(phone);
     // The side panel sits under the sticky header, so the chip (and the rest of the header) stays usable.
     const header = document.querySelector("body header");
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTop(phone ? 0 : Math.max(0, Math.round(header?.getBoundingClientRect().bottom ?? 0)));
     if (d.open) d.close();
     if (phone) d.showModal();

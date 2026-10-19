@@ -31,7 +31,7 @@ All tables: `id uuid pk`, `user_id uuid not null`, `created_at`, `updated_at`, R
 
 | Table | Key columns | Notes |
 |---|---|---|
-| `profiles` | display_name, timezone, sound_on, volume, theme, reduced_motion | settings remembered per user |
+| `profiles` | display_name, timezone, sound_on, volume, theme, timer_focus_min, timer_short_min, timer_long_min, timer_long_every, timer_auto_start, focus_quiet | settings remembered per user; timer defaults 25/5/15, long break every 4, checked ranges (Step 4) |
 | `subjects` | name, colour, emoji, exam_date (nullable), archived | `exam_date` ready for Phase 2 countdown |
 | `notes` | subject_id, title, content_json (rich text), content_text | typed notes |
 | `sources` | subject_id, file_name, mime, size_bytes, storage_path, page_count, extract_status, origin (`upload`/`ocr` later) | lecturer PDFs/slides |
@@ -44,9 +44,8 @@ All tables: `id uuid pk`, `user_id uuid not null`, `created_at`, `updated_at`, R
 | `quiz_attempts` / `answers` | score, finished_at / question_id, given, correct | Phase 2 dashboard reads these |
 | `weak_topics` | subject_id, topic, miss_count, last_missed_at, cleared_at | re-mixed into later quizzes |
 | `chat_messages` | subject_id, role, kind (question/answer/not_covered), content, citations_json (with quotes), reveal, feedback, client_key, reply_to | read-only to students; 1,000 per subject |
-| `study_sessions` | subject_id, kind (pomodoro/break), planned_min, started_at, ended_at | Phase 2 study hours |
-| `timetable_slots` | subject_id, starts_at, ends_at, recurrence, google_event_id, etag, sync_state | |
-| `calendar_connections` | provider, encrypted_refresh_token, scope, calendar_id | tokens encrypted (pgsodium/Vault) |
+| `study_sessions` | subject_id (null = no subject; set null when the subject is deleted), kind (focus/short_break/long_break), planned_sec, focused_sec, completed, started_at, ended_at, client_key | one row per timer phase that ended; read-only to students; Phase 2 study hours (Step 4) |
+| `timetable_slots` | subject_id, title, kind (class/study/other), location, starts_at, ends_at, recurrence, repeat_until, skip_dates, source, import_uid | Step 4 part 2; no Google columns (decision 9) |
 | `ai_usage` | day, kind, count, attempts, input_tokens, output_tokens | daily quota (successful goes and tries) + token tracking |
 | `ai_cache` | input_hash, kind, model, output_json | avoids paying twice for the same notes; server-only (a cached quiz holds its answers; Step 3 security review) |
 
@@ -71,7 +70,7 @@ Card generation (Groq `gpt-oss-20b`, cached, quota) with source quote per card; 
 ### Step 3: Quizzes, weak topics, ask-your-notes chat (built 2026-10-18, waiting for review)
 Quiz builder (MCQ / fill-in / mixed, N questions); feedback (celebration / gentle shake); weak-topic list per subject; re-mix of missed topics into new quizzes; chat with retrieval and clickable citations, refusing to answer beyond the notes. **Stop for review.**
 
-### Step 4: Pomodoro, timetable, Google Calendar
+### Step 4: Pomodoro, timetable, calendar link (part 1, the study timer, built 2026-10-19; part 2, timetable and calendar link, next)
 Timer with custom durations, wall-clock based (accurate in background tabs), filling/draining ring, chime, focus mode, sessions logged per subject; weekly timetable with drag to create; a private calendar link (.ics feed) students add to Google, Apple or Outlook Calendar, plus import of the university timetable file (.ics). Full two-way Google sync was dropped (Bradley, 2026-10-14): without a paid verified domain Google caps it at 100 users with weekly re-logins. **Stop for review.**
 
 ### After step 4
@@ -126,6 +125,19 @@ Polish pass, `docs/user-testing.md` (tester access, 20-minute task script, feedb
 - **Cache:** answers are cached by passages + question + recent conversation (`inputHash("chat", …)`), so asking the same thing again is free; quiz questions are never reused.
 - **Storage** (`20261018000002_step3_chat.sql`, not yet applied to the live project): `chat_messages`, read-only to students (server writes with the secret key pinned to the student's id), composite `(id, user_id)` foreign keys to subjects and to the question it answers, length and size caps, a unique client key per student (a double send returns the first exchange), and a cap of 1,000 messages per subject in the database. The server prunes the oldest exchanges down to 900 before adding when a subject is full. Clearing a chat deletes only that subject's messages.
 
+## 3f. Implementation decisions (Step 4, part 1: study timer)
+
+- **Wall-clock timer, all in the browser** (`src/lib/timer/machine.ts`, pure and unit-tested): running state is `{ sessionId, phase, subjectId, plannedSec, startedAt, endsAt }`, paused state keeps `remainingMs`; time left is always `endsAt − now`, shown rounded up. The state is saved to `localStorage` (`studynest:timer`) on every change, so a reload, a closed tab or a sleeping phone carries on. One `TimerProvider` in `src/app/(app)/layout.tsx` owns it; the header chip, the panel (side panel under the header from 640 px, bottom sheet on phones), `/timer` and the subject page's study strip read it.
+- **End detection:** one `setTimeout(endsAt − now)`, re-armed on every change and on `visibilitychange` / `pageshow` / `focus` (a single timer isn't throttled the way a ticking loop is in a hidden tab). A page that wakes after the end completes the phase with `ended_at = endsAt`; more than 2 minutes late it is silent (no chime, no auto-start) and the end card says when it finished.
+- **Several tabs:** the state syncs through the `storage` event. A tab claims an end inside a Web Lock (`navigator.locks`, with a read-back check where locks are missing) by writing the ended state with its tab id first (`claimEnd`, `src/lib/timer/store.ts`); only that tab chimes, notifies and logs. The log's client key is the timer's session id, so a double save still logs once.
+- **Logging:** `logStudySession` (`src/server/actions/timer.ts`) validates with zod (kinds, 60 s to 180 min, focused time no longer than the round or its plan, not in the future, at most 30 days old), logs another student's or a deleted subject's id as "No subject", and is idempotent on the client key. Phases under 60 s are never saved. A save that throws (offline, server down) stays in a `localStorage` queue (`studynest:timer:queue`) and is retried on load, on `online` and after the next round; the tally counts queued rounds, and after 3 failed tries it says a round is waiting. A save the server refuses is dropped.
+- **Cycle:** long break when the run's completed focus rounds are a multiple of "long break every" (default 4); "Done for now" or a gap of over an hour starts a new run. Stopped rounds don't count towards it. "+5 min" adds to the current phase only, up to 180 minutes. Auto-start (off by default) starts the next phase at the end; only the chime plays.
+- **Timer settings on `profiles`** (not a new table): they are per-student settings like sound and theme, read with the profile on every page and saved by the same `updateSettings` action; students already update their own profile under RLS, and check constraints keep values inside the stepper ranges (focus 5–120 step 5, short 1–30, long 5–60 step 5, every 2–8). The notification switch is per browser (`localStorage`), because the permission lives in the browser.
+- **Focus mode:** on while a focus round runs or is paused and "Quiet the app while I focus" is on. The provider calls `setFocusMode` (only `chime` plays) and sets `data-focus-mode` on `<html>`, which turns off decorative animation, rotation, lifts and transitions (the timer ring keeps moving). The chime is now the one sound that plays while read-aloud speaks (`allowed()` in `src/lib/sound/engine.ts`).
+- **Notifications (optional, free):** never asked on load; the nudge appears after the first completed focus round, "Not now" hides it for 30 days. Shown only when the tab is hidden at the end, through `public/sw.js` (`registration.showNotification`, tag `studynest-timer`, `silent` with sound off). The service worker caches nothing and handles no requests; a click focuses the tab and opens the panel. No push server.
+- **Header (design-system.md):** on phones the header is logo · timer chip · Menu (Subjects, Settings, Sign out). The Timetable link and icon arrive with the timetable in part 2; the study strip's "Next class" part likewise (it shows Start focus and this week's time until then).
+- **Database** (`20261019000001_step4_study_timer.sql`, not yet applied to the live project): `study_sessions` read-only to students (written by the server with the secret key, pinned to the student), composite `(subject_id, user_id)` foreign key with `on delete set null (subject_id)`, unique `(user_id, client_key)`, shape checks, a cap of 10,000 rows per student. Timer columns on `profiles` with checks. Export includes study sessions; deleting the account removes them (cascade).
+
 ## 3b. Zero-cost stack
 
 Bradley's rule: the app must cost nothing to run. Every service below is on a free plan that needs no credit card, so there is no way for a bill to arrive. When a free allowance runs out, the feature pauses until the next day; it never charges.
@@ -168,5 +180,5 @@ Enforced server-side in `ai_usage`; the UI shows "13 of 15 left today". Cached r
 5. **Free-tier numbers:** default, section 4 as written.
 6. **Accounts still needed from Bradley (all free, no card):** Supabase project (URL, publishable key, secret key), Groq API key (from Step 2), Cloudflare account ID + Workers AI token (from Step 2, fallback), Vercel Hobby account. No Google Calendar OAuth needed (calendar link instead).
 8. **Zero cost:** Bradley, 2026-10-11: everything must be free. AI moved from the Claude API to Groq + Cloudflare free plans (section 3b).
-9. **Calendar (Bradley, 2026-10-14):** calendar link (.ics) instead of two-way Google sync.
+9. **Calendar (Bradley, 2026-10-14):** calendar link (.ics) instead of two-way Google sync. No `calendar_connections` table, no Google event ids, etags or sync state on timetable slots.
 7. **Repository:** github.com/BradleyTan/study-companion; each build step lands as a pull request.

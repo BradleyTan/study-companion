@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-10-19 · Step 4 part 1: study timer
+- **Study timer** in the app frame: header chip (live time, ring, paused and "Round done!" states), a side panel under the header (bottom sheet on phones) and a full-size `/timer` page (Space to start, pause and resume). Subject picker (page subject, else last used, else No subject; can change mid-round), Focus · 25 / Short break · 5 / Long break · 15, a draining focus ring and filling break ring, round dots, +5 min (up to 180), Stop with an inline "End this round?", end cards ("Round done! 🍅", "Four in a row!", "Break's over"), today's tally with 🍅 stickers and time per subject.
+- **Accurate in the background:** wall-clock timing with one end timeout re-armed on wake; a phone that wakes late logs the round at its real end time silently and says when it finished. Several tabs stay in sync and exactly one of them chimes and logs. Rounds that couldn't be saved wait in the browser and are retried on load and when back online.
+- **Focus mode:** while a focus round runs or is paused, only the end chime plays and decorative motion stops (setting "Quiet the app while I focus"). The chime now also plays while read-aloud speaks.
+- **Settings → Study timer:** focus, short break, long break and "long break after" steppers, auto-start, quiet mode, and optional browser notifications (asked only from a click; the timer works fully without them).
+- **Subject page:** a study strip with Start focus (or the live "Focusing · 18:42") and this week's study time.
+- **Header on phones:** logo, timer chip and a Menu with Subjects, Settings and Sign out.
+- **Database:** migration `20261019000001_step4_study_timer.sql` (not yet applied to the live project): `study_sessions` (read-only to students, composite key to subjects that keeps the time as No subject when a subject is deleted, unique client key, checks, 10,000-row cap) and timer columns on `profiles`. Export includes study sessions; the privacy page says what the timer stores.
+- **Tests:** unit tests for the timer math, phase transitions, the multi-tab end claim, the retry queue, the tally, wording and the logging action (`src/lib/timer/timer.test.ts`, `src/server/actions/timer.test.ts`, sound rules); grant and RLS tests for `study_sessions` and the timer settings; e2e `e2e/step4-timer.spec.ts` (start/pause/resume/stop, background-tab accuracy with a fake clock, end cards and the long-break cycle, ended while away, two tabs, offline queue, settings defaults, subject defaults and the study strip, `/timer` keyboard and reduced motion, 375 px).
+
 ## 2026-10-18 · Step 3 security review
 - **Quiz answers can't be read early from the AI cache:** students can no longer read `ai_cache` (a cached quiz reply holds every answer). The server reads it with the secret key, pinned to the student. A question's source quote is hidden until it is answered too. Migration `20261018000003_step3_security_review.sql` (not yet applied to the live project; apply it before deploying).
 - **Chat CPU:** a reply with a long run of spaces inside a citation bracket no longer ties up the server for seconds (S3-1).

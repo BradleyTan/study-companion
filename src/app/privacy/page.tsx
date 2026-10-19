@@ -11,7 +11,7 @@ export default function PrivacyPage() {
       <Link href="/" className="font-bold underline-offset-4 hover:underline">← StudyNest</Link>
       <article className="sticker prose-page mt-4 p-6 sm:p-8">
         <h1 className="font-display text-4xl">How we look after your notes</h1>
-        <p className="hint">Last updated 18 October 2026</p>
+        <p className="hint">Last updated 19 October 2026</p>
 
         <h2>What we store</h2>
         <ul>
@@ -23,7 +23,9 @@ export default function PrivacyPage() {
           <li>How many AI flashcards, quizzes, mindmaps and questions you made or asked each day (for the daily limit), and a copy of what the AI sent back, so the same text never uses up your allowance twice.</li>
           <li>Your questions and the answers in &ldquo;Ask your notes&rdquo;, with the short quotes from your notes each answer cites, and any &ldquo;Not right?&rdquo; feedback you give. You can clear a subject&apos;s chat at any time; we keep at most the latest 1,000 messages per subject.</li>
           <li>A list of numbers for each passage of your notes (an &ldquo;embedding&rdquo;), so &ldquo;Ask your notes&rdquo; can find the passages that match your question. These are worked out inside Supabase, with a model that runs there; your text isn&apos;t sent to anyone else for this.</li>
-          <li>Later features will add your study sessions and timetable. We&apos;ll update this page when they arrive.</li>
+          <li>Your study timer rounds: when each focus round or break started and ended, how long you focused (pauses left out), whether it ran to the end, and which subject it was for. We use them for today&apos;s rounds and this week&apos;s study time. Rounds under a minute aren&apos;t saved. The timer&apos;s settings (round lengths, auto-start, quiet mode) are saved with your other settings.</li>
+          <li>Your browser keeps the running timer, and any round it couldn&apos;t save yet (for example while offline), on your device until it is saved.</li>
+          <li>A later update will add your timetable. We&apos;ll update this page when it arrives.</li>
         </ul>
 
         <h2>Where it&apos;s stored</h2>
@@ -44,6 +46,12 @@ export default function PrivacyPage() {
           Read aloud uses the voices built into your device, so by default the text never leaves it. Some browsers also offer online
           voices; these are marked &ldquo;(online)&rdquo; in the voice list, and if you pick one your browser sends the text to its maker
           (for example Google, Microsoft or Apple) to be spoken. StudyNest never sends it anywhere for read aloud.
+        </p>
+
+        <h2>Timer notifications</h2>
+        <p>
+          If you turn on &ldquo;Tell me when time&apos;s up&rdquo;, your browser shows the alert itself. StudyNest doesn&apos;t use a push
+          service, so nothing about your timer is sent anywhere for it. You can turn it off in Settings or in your browser at any time.
         </p>
 
         <h2>Keeping it safe</h2>
