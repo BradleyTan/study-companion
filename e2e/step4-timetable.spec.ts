@@ -418,6 +418,11 @@ test("subject page study strip: Add a class, then Next", async ({ page }) => {
   await next.click();
   await expect(page).toHaveURL(new RegExp(`/timetable\\?week=${date}`));
   await expect(slotNamed(page, /BIOL1001 Lecture/)).toBeVisible();
+  // The address keeps the class's day after the screen has loaded, so a reload (on a phone: the
+  // day strip) lands on it too. It used to be rewritten to the Monday (a flaky URL check here).
+  await page.reload();
+  await expect(slotNamed(page, /BIOL1001 Lecture/)).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/timetable\\?week=${date}$`));
 });
 
 test("keyboard: N adds, T goes back, arrows change week, Enter opens a slot", async ({ page, isMobile }) => {

@@ -82,13 +82,14 @@ export function TimetableScreen({ slots: initialSlots, subjects, timezone, weekS
     return () => { clearInterval(t); window.removeEventListener("online", on); window.removeEventListener("offline", off); };
   }, []);
 
-  // Keep ?week= in the address so a reload (or the subject page's link) lands on the same week.
+  // Keep ?week= in the address so a reload (or the subject page's link) lands on the same week, and
+  // on phones on the same day: it holds the chosen day, which a link's date already is.
   useEffect(() => {
     const url = new URL(window.location.href);
-    if (week === thisWeek) url.searchParams.delete("week"); else url.searchParams.set("week", isoOf(week));
+    if (week === thisWeek && sel === today - thisWeek) url.searchParams.delete("week"); else url.searchParams.set("week", isoOf(week + sel));
     url.searchParams.delete("add"); url.searchParams.delete("subject"); url.searchParams.delete("kind");
     window.history.replaceState(window.history.state, "", url.pathname + url.search);
-  }, [week, thisWeek]);
+  }, [week, thisWeek, sel, today]);
 
   const announce = useCallback((text: string) => { setSaid(""); setTimeout(() => setSaid(text), 50); }, []);
 
