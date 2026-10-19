@@ -94,6 +94,7 @@ test("wall-clock: a background tab keeps exact time, and the title shows it", as
   await startDemo(page);
   await openPanel(page);
   await panel(page).getByRole("button", { name: "Start focus" }).click();
+  await expect(panel(page).getByRole("button", { name: "Pause" })).toBeVisible(); // started before the clock jumps (QA)
   // Hide the tab: nothing redraws while it's hidden; the time is endsAt − now when it comes back.
   await page.evaluate(() => {
     Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
@@ -128,6 +129,7 @@ test("end card, round logging, long break after 4 and Done for now", async ({ pa
 
   for (let round = 1; round <= 4; round++) {
     await p.getByRole("button", { name: "Start focus" }).click();
+    await expect(p.getByRole("button", { name: "Pause" })).toBeVisible(); // started before the clock jumps (QA)
     await page.clock.fastForward(25 * MIN);
     const card = p.getByTestId("end-card");
     await expect(card.getByRole("heading", { name: "Round done! 🍅" })).toBeFocused();

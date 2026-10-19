@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-19 · Step 4 QA
+- **Re-import fixes:** "Replace my previous import" during a long break (Christmas between two terms) no longer fills the break with the class, and weeks the student moved or deleted with "Just this week" stay out instead of coming back beside the moved copy.
+- **Calendar feed:** the time zone rules always cover the current years, so one old slot can't make summer-time classes show an hour off in Google, Apple or Outlook.
+- **Timer:** a round that ends while an earlier save is still on its way is saved straight away instead of waiting for the next load.
+- **Timetable:** the address keeps the day a link opened (?week=<day>), so a reload on a phone shows that day; "Nothing this week" jumps to a finished series' last week, not its first; the import preview's tick boxes have 44 px targets.
+- **Database:** the 600-row backstop on `timetable_slots` no longer refuses import updates (upserts) during a replace import's Undo window (migration edited before it is applied).
+- **Tests:** `e2e/step4-qa.spec.ts` (daylight saving week with Sunday start in Europe/London, an Outlook export from Singapore at 375 px, `/timer` at 375 px in dark mode, a save still on its way), new action, lib and RLS tests; the axe helper polls past a `<title>` swap; the flaky study strip URL check is fixed at the cause. Sign-off `docs/qa/step-4.md`.
+
 ## 2026-10-19 · Step 4 part 2: timetable and calendar link
 - **Timetable** (`/timetable`, linked from the header; a calendar icon on phones): the week on graph paper with classes as subject stickers, study blocks dashed with a subject band, and "Other" slots. Overlaps sit side by side, a Now line moves each minute, empty weekend columns are narrower on laptops. Phones show one day with a day strip (swipe to change day).
 - **Adding and changing slots:** drag on the grid with a mouse or pen (15-minute steps, live "10:00–11:30" ghost; a click makes an hour), tap a time on touch screens, or use Add (N). Drag a slot to move it (also to another day) or its bottom edge to resize; Esc cancels. Slot details (popover, bottom sheet on phones) with Edit, Delete and Start focus for a Study block happening now. The form has Class / Study / Other, subject, optional title (default "Biology class"), day, start, end ("1 h 30 min"), Every week / Just once with an optional Until, and location. Weekly slots ask "Just this week" or "Every week" when edited, moved or deleted. Delete has a 6-second Undo.
