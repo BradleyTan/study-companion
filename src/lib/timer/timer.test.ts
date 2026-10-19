@@ -135,7 +135,7 @@ describe("phase transitions", () => {
       st = complete(s, s.endsAt, prefs, "tab").state;
       now = s.endsAt;
     }
-    expect(roundDots(st, prefs, now)).toMatchObject({ filled: 4 });
+    expect(roundDots(st, prefs, now)).toEqual({ filled: 4, total: 4, round: 4 });
     const brk = start(st, { phase: "long_break", subjectId: null, plannedSec: 900, now, sessionId: crypto.randomUUID() });
     expect(roundDots(brk, prefs, now)).toMatchObject({ filled: 4 });
     const next = focus(now + 15 * MIN, brk, crypto.randomUUID());

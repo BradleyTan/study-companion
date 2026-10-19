@@ -235,6 +235,5 @@ export function roundDots(s: TimerState, prefs: TimerPrefs, now: number): { fill
   const full = run.done > 0 && r === 0 && (
     (isActive(s) && s.phase === "long_break") || (s.status === "ended" && s.next === "long_break")
   );
-  const filled = full ? total : r;
-  return { filled, total, round: Math.min(total, r + 1) };
+  return full ? { filled: total, total, round: total } : { filled: r, total, round: r + 1 };
 }

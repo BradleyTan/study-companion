@@ -356,6 +356,48 @@ dialog.cite-popover { position: fixed; margin: 0; padding: 0; width: min(360px, 
 .day-chip { align-self: center; }
 }
 
+
+/* ---- Step 4 part 1: study timer (timer.md) ---- */
+@layer components {
+.timer-chip { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; min-height: 44px; min-width: 6.25rem; padding: 0.25rem 0.75rem;
+  font-weight: 700; color: var(--ink); background: var(--card); border: 2.5px solid var(--ink); border-radius: 999px; box-shadow: 2px 2px 0 var(--shadow);
+  cursor: pointer; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.timer-chip-focus { color: var(--on-colour); }
+.timer-chip-break { background: var(--success); color: var(--on-colour); }
+.timer-chip-paused { background: var(--card); color: var(--ink); border-style: dashed; }
+.timer-chip-ended { background: var(--highlight); color: var(--on-colour); }
+@media (max-width: 639px) { .timer-chip { min-width: 5.25rem; padding-inline: 0.6rem; } }
+
+/* ring digits: the one size outside the type scale (design-system.md "Step 4 additions") */
+.timer-digits { font-size: 48px; line-height: 1.05; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
+.timer-digits-lg { font-size: 56px; }
+.round-dot { width: 10px; height: 10px; border-radius: 999px; border: 2px solid var(--ink); background: transparent; }
+.round-dot-done { background: var(--ink); }
+.ring-move { transition: stroke-dasharray 1000ms linear, stroke-dashoffset 1000ms linear, transform 1000ms linear; }
+@keyframes ring-bump { 50% { transform: scale(1.04); } }
+.ring-bump { animation: ring-bump 350ms cubic-bezier(.3, 1.8, .5, 1); transform-origin: center; }
+.tomato-new { display: inline-block; animation: pop 350ms cubic-bezier(.3, 1.8, .5, 1) both; }
+
+dialog.side-panel.timer-side { width: 400px; overflow: hidden; }
+dialog.bottom-sheet.timer-sheet { height: auto; max-height: 90dvh; }
+@keyframes slide-in-right { from { transform: translateX(32px); opacity: 0; } }
+@keyframes slide-in-up { from { transform: translateY(32px); opacity: 0; } }
+dialog.timer-side[open] { animation: slide-in-right 250ms ease-out; }
+dialog.timer-sheet[open] { animation: slide-in-up 250ms ease-out; }
+
+.study-strip { flex-wrap: wrap; }
+@media (max-width: 639px) { .study-strip { flex-direction: column; align-items: stretch; } .study-strip .btn { width: 100%; } }
+}
+
+/* Focus mode (timer.md, design-system.md "Focus mode"): while a focus round runs or is paused,
+   decorative motion follows the reduced-motion rules. State changes (colour, text) still show,
+   and the timer ring keeps moving. */
+:root[data-focus-mode] .tile, :root[data-focus-mode] .topic-note, :root[data-focus-mode] .quiz-sheet, :root[data-focus-mode] .mm-node.mm-root { rotate: 0deg; }
+:root[data-focus-mode] [style*="--r"] { rotate: 0deg !important; }
+:root[data-focus-mode] .lift:hover { transform: none; }
+:root[data-focus-mode] *:not(.ring-move), :root[data-focus-mode] *::before, :root[data-focus-mode] *::after { animation: none !important; }
+:root[data-focus-mode] *:not(.ring-move) { transition: none !important; }
+
 @media (prefers-reduced-motion: reduce) {
   .typing-dots { display: none; }
   .typing-text { display: inline; }

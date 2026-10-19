@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PROTECTED = ["/subjects", "/settings", "/review"];
+const PROTECTED = ["/subjects", "/settings", "/review", "/timer"];
 const DEMO_COOKIE = "studynest_demo_uid";
 
 // Refreshes the Supabase session cookie on every request and sends signed-out

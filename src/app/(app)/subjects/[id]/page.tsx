@@ -5,6 +5,7 @@ import { NoteRow } from "@/components/note-row";
 import { WeakStrip } from "@/components/quiz/weak-strip";
 import { StudyTools } from "@/components/study-tools";
 import { SubjectHeader } from "@/components/subject-header";
+import { StudyStrip } from "@/components/timer/study-strip";
 import { Uploads } from "@/components/uploads";
 import { supabaseConfig } from "@/lib/env";
 import { id as idSchema } from "@/lib/validation";
@@ -41,6 +42,7 @@ export default async function SubjectPage({ params }: PageProps<"/subjects/[id]"
       <SubjectHeader subject={subject} />
       <StudyTools subjectId={id} due={due?.total ?? null} cards={due?.cards ?? null} mindmapUpdatedAt={mindmap === undefined ? undefined : mindmap?.createdAt ?? null} quiz={quiz} chat={chat} />
       {quiz && <WeakStrip subjectId={id} count={quiz.weak.count} names={quiz.weak.names} />}
+      <StudyStrip subjectId={id} name={subject.name} colour={subject.colour} />
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
         <section aria-labelledby="notes-h" className="flex min-w-0 flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-2">

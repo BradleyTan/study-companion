@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { deleteAccount, updateSettings } from "@/server/actions/settings";
 import type { Profile } from "@/server/repo/types";
 import { applyTheme, useSound } from "./sound-provider";
+import { TimerSettings } from "./timer/timer-settings";
 import { Button } from "./ui/button";
 import { useToast } from "./ui/live-toast";
 
@@ -60,9 +61,11 @@ export function SettingsForm({ profile }: { profile: Profile }) {
         </div>
       </section>
 
+      <TimerSettings />
+
       <section aria-labelledby="data-h" className="sticker flex flex-col items-start gap-3 p-5">
         <h2 id="data-h" className="text-xl font-bold">Your data</h2>
-        <p>Download your subjects, notes, the list of files you uploaded and the text we read from them, as one JSON file.</p>
+        <p>Download your subjects, notes, the list of files you uploaded and the text we read from them, your flashcards, quizzes, chats and study sessions, as one JSON file.</p>
         <a href="/api/export" className="btn" onClick={() => play("click")} download>Download everything</a>
         <Link href="/privacy" className="underline underline-offset-4">Read how we store your notes</Link>
       </section>

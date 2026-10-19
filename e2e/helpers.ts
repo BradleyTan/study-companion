@@ -69,3 +69,13 @@ export async function smallTargets(page: Page) {
     return out;
   });
 }
+
+/** Header "Settings": a link from 640 px, inside the "Menu" (⋯) on phones (Step 4 header). */
+export async function openSettings(page: Page) {
+  const direct = page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Settings" });
+  const menu = page.getByRole("button", { name: "Menu" });
+  await expect(direct.or(menu).filter({ visible: true }).first()).toBeVisible();
+  if (await menu.isVisible()) await menu.click();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Settings" }).filter({ visible: true }).click();
+  await expect(page).toHaveURL(/\/settings$/);
+}
