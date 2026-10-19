@@ -11,6 +11,7 @@ import type {
   Profile, Question, QuestionPatch, Quiz, QuizAnswer, QuizAttempt, Repo, SlotPatch, Source, StudySession, Subject, TimetableSlot, WeakTopic,
 } from "./types";
 import { cleanSkips, MAX_SLOTS, type SlotCore } from "@/lib/timetable/slots";
+import { safeTimeZone } from "@/lib/srs/due";
 import { tokenHash } from "@/lib/timetable/token";
 import type { Phase } from "@/lib/timer/machine";
 
@@ -1018,7 +1019,9 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
       fail(error, "getProfile");
       return data
         ? {
-          soundOn: data.sound_on, volume: data.volume, theme: data.theme, timezone: data.timezone,
+          // The column is writable by the student directly (own profile), so it is checked on the way
+          // out too: slots, imports and the calendar feed use it as a time zone (S4-4).
+          soundOn: data.sound_on, volume: data.volume, theme: data.theme, timezone: safeTimeZone(data.timezone),
           timerFocusMin: data.timer_focus_min ?? 25, timerShortMin: data.timer_short_min ?? 5, timerLongMin: data.timer_long_min ?? 15,
           timerLongEvery: data.timer_long_every ?? 4, timerAutoStart: data.timer_auto_start ?? false, focusQuiet: data.focus_quiet ?? true,
           weekStart: data.week_start === "sun" ? "sun" : "mon",

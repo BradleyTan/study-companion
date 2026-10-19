@@ -645,6 +645,10 @@ do $$ begin
     values ('aaaaaaaa-0000-0000-0000-000000000001', 'class', 'UTC', '2026-10-19', 600, 660, 'weekly', (select array_agg(date '2026-10-19' + 7 * g) from generate_series(1, 61) g));
   raise exception 'RLS TEST FAILED: 61 skipped weeks accepted';
 exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.timetable_slots (user_id, kind, tz, start_date, start_min, end_min, recurrence) values ('aaaaaaaa-0000-0000-0000-000000000001', 'class', E'Europe/London\r\nX-INJECTED:1', '2026-10-19', 600, 660, 'none');
+  raise exception 'RLS TEST FAILED: zone name with a line break accepted (it goes into the feed''s TZID)';
+exception when check_violation then null; end $$;
 -- the server can't put A's slot in B's subject (composite FK)
 do $$ begin
   insert into public.timetable_slots (user_id, subject_id, kind, tz, start_date, start_min, end_min, recurrence) values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000b9', 'class', 'UTC', '2026-10-19', 600, 660, 'none');

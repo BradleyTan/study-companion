@@ -23,7 +23,7 @@ create table public.timetable_slots (
   -- null: the default title ("Biology class", "Study: Biology", "Busy"), which follows subject renames.
   title text check (title is null or char_length(title) between 1 and 80),
   location text check (location is null or char_length(location) between 1 and 80),
-  tz text not null check (char_length(tz) between 1 and 64),
+  tz text not null check (tz ~ '^[A-Za-z0-9_+/-]{1,64}$'),             -- an IANA name (it goes into the feed's TZID)
   start_date date not null check (start_date between date '2000-01-01' and date '2100-12-31'),
   start_min smallint not null check (start_min between 0 and 1439),
   end_min smallint not null check (end_min between 1 and 1440),          -- 1440 = midnight at the end of the day

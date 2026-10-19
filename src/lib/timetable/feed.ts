@@ -3,7 +3,7 @@
 // RRULEs with UNTIL and an EXDATE per skipped week. Times are in each slot's own zone (TZID) with a
 // VTIMEZONE built from Intl, so a 10:00 class stays at 10:00 across daylight saving in Google,
 // Apple and Outlook Calendar. Nothing else (no notes, no study history) is in it.
-import { dayOf, instantOf, tzOffset, ymd } from "./dates";
+import { dayOf, instantOf, isValidTimeZone, tzOffset, ymd } from "./dates";
 import { slotTitle, type SlotLike } from "./slots";
 
 export type FeedSlot = SlotLike & { updatedAt: string };
@@ -24,17 +24,19 @@ export function escapeText(v: string): string {
   return out;
 }
 
-const encoder = new TextEncoder();
+/** UTF-8 length of one code point. */
+const utf8Len = (code: number) => (code < 0x80 ? 1 : code < 0x800 ? 2 : code < 0x10000 ? 3 : 4);
 
 /** Folds a content line at 75 octets without splitting a UTF-8 character (RFC 5545 3.1). */
 export function foldLine(line: string): string {
-  if (encoder.encode(line).length <= 75) return line;
+  // A line of 25 UTF-16 units or fewer is at most 75 octets (3 octets per unit at most).
+  if (line.length <= 25) return line;
   const out: string[] = [];
   let cur = "";
   let bytes = 0;
   let limit = 75;
   for (const ch of line) {
-    const b = encoder.encode(ch).length;
+    const b = utf8Len(ch.codePointAt(0)!);
     if (bytes + b > limit) {
       out.push(cur);
       cur = "";
@@ -88,8 +90,22 @@ export function transitions(tz: string, from: number, to: number): { at: number;
   return out;
 }
 
+// VTIMEZONE blocks take hundreds of time zone conversions each and are the same for every feed
+// that uses the zone, so they are remembered per zone and years (bounded: a few hundred zones exist).
+const zoneBlocks = new Map<string, string[]>();
+
 /** A VTIMEZONE for `tz` covering the given years: one observance per offset change. */
 export function vtimezone(tz: string, fromYear: number, toYear: number): string[] {
+  const key = `${tz} ${fromYear} ${toYear}`;
+  const known = zoneBlocks.get(key);
+  if (known) return known;
+  const lines = buildVtimezone(tz, fromYear, toYear);
+  if (zoneBlocks.size >= 2000) zoneBlocks.clear();
+  zoneBlocks.set(key, lines);
+  return lines;
+}
+
+function buildVtimezone(tz: string, fromYear: number, toYear: number): string[] {
   const from = Date.UTC(fromYear, 0, 1);
   const to = Date.UTC(toYear + 1, 0, 1);
   const changes = transitions(tz, from, to);
@@ -118,8 +134,17 @@ export function feedTitle(slot: SlotLike, subject: FeedSubject | null): string {
   return subject ? `${subject.emoji} ${title}` : title;
 }
 
+const ZONE_NAME = /^[A-Za-z0-9_+\-/]{1,64}$/;
+/** `tz` when it is a time zone name safe to put in a TZID, else "UTC". */
+export function feedZone(tz: string): string {
+  return ZONE_NAME.test(tz) && isValidTimeZone(tz) ? tz : "UTC";
+}
+
 /** The whole calendar file (CRLF line endings, folded lines). */
-export function buildFeed(slots: FeedSlot[], subjects: FeedSubject[], now: number): string {
+export function buildFeed(rows: FeedSlot[], subjects: FeedSubject[], now: number): string {
+  // A zone name goes into TZID unescaped, so only real IANA names are used; anything else (never
+  // written by the app) is read as UTC rather than breaking or injecting into the file.
+  const slots = rows.map((s) => (feedZone(s.tz) === s.tz ? s : { ...s, tz: "UTC" }));
   const byId = new Map(subjects.map((s) => [s.id, s]));
   const lines: string[] = [
     "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//StudyNest//Timetable//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",

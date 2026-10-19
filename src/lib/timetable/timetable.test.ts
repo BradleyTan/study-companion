@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { dayOf, instantOf, isoOf, localOf, parseTimeValue, timeValue, weekLabel, weekStartOf } from "./dates";
-import { buildFeed, escapeText, foldLine, transitions, vtimezone, type FeedSlot } from "./feed";
+import { buildFeed, escapeText, feedZone, foldLine, transitions, vtimezone, type FeedSlot } from "./feed";
 import { parseDuration, parseIcs, parseLine, parseRule, unescapeText, unfold } from "./ics";
 import { codeOwners, courseCodes, leftOutLine, matchSubject, planImport } from "./import";
 import {
@@ -368,6 +368,28 @@ describe("calendar feed", () => {
     { ...slot({ id: "33333333-3333-4333-8333-333333333333", kind: "other", tz: "UTC", startMin: 60, endMin: 120 }), updatedAt: "2026-10-18T12:00:00.000Z" },
   ];
   const text = buildFeed(slots, subjects, NOW);
+
+  it("never puts anything but a real zone name in TZID (S4-4)", () => {
+    expect(feedZone("Europe/London")).toBe("Europe/London");
+    for (const bad of ["Europe/London\r\nBEGIN:VEVENT", "Mars/Olympus", "Europe/London:x", "Europe/London;X=1", "", "x".repeat(65)]) expect(feedZone(bad)).toBe("UTC");
+    const evil = buildFeed([{ ...slots[0], tz: "Europe/London\r\nX-INJECTED:1" }], subjects, NOW);
+    expect(evil).not.toContain("X-INJECTED");
+    expect(evil).not.toContain("TZID=");
+  });
+
+  it("folds long lines with the same result as a byte-exact fold, and repeat feeds reuse zone rules", () => {
+    for (const line of ["SUMMARY:" + "é".repeat(60), "SUMMARY:" + "🧬x".repeat(40), "SUMMARY:" + "a".repeat(200), "X:" + "€".repeat(24)]) {
+      const parts = foldLine(line).split("\r\n ");
+      expect(parts.join("")).toBe(line);
+      parts.forEach((p, i) => expect(new TextEncoder().encode(p).length).toBeLessThanOrEqual(i ? 74 : 75));
+    }
+    const zones = Intl.supportedValuesOf("timeZone").slice(0, 100);
+    const many = zones.map((tz, i) => ({ ...slots[0], id: `z${i}`, tz }));
+    buildFeed(many, subjects, NOW);
+    const t0 = performance.now();
+    buildFeed(many, subjects, NOW);
+    expect(performance.now() - t0).toBeLessThan(250);
+  });
 
   it("is a valid calendar: CRLF, folded at 75 octets, escaped, stable UIDs", () => {
     expect(text.startsWith("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n")).toBe(true);
