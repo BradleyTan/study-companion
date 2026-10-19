@@ -151,15 +151,18 @@ function Preview({ preview, subjects, weekStart, onBack, onClose, onDone }: {
           <tbody>
             {preview.groups.map((g, i) => (
               <tr key={g.name} className="border-b border-[var(--rule)] align-top" data-testid="import-group">
-                <td className="p-1">
-                  <input
-                    id={`${uid}-g${i}`} type="checkbox" className="size-6 accent-[var(--highlight)]" checked={ticked.has(g.name)}
-                    aria-label={`Include ${g.name}`}
-                    onChange={(e) => {
-                      play("click");
-                      setTicked((cur) => { const n = new Set(cur); if (e.target.checked) n.add(g.name); else n.delete(g.name); return n; });
-                    }}
-                  />
+                <td className="p-0">
+                  {/* The whole 44 px cell ticks the box (timetable.md: targets of 44 px). */}
+                  <label className="flex size-11 cursor-pointer items-center justify-center" data-testid="import-tick">
+                    <input
+                      id={`${uid}-g${i}`} type="checkbox" className="size-6 accent-[var(--highlight)]" checked={ticked.has(g.name)}
+                      aria-label={`Include ${g.name}`}
+                      onChange={(e) => {
+                        play("click");
+                        setTicked((cur) => { const n = new Set(cur); if (e.target.checked) n.add(g.name); else n.delete(g.name); return n; });
+                      }}
+                    />
+                  </label>
                 </td>
                 <td className="p-1">
                   <label htmlFor={`${uid}-g${i}`} className="font-bold">{g.name}</label>
