@@ -4,7 +4,12 @@ import { newSrs } from "@/lib/srs/scheduler";
 import type { SettingsUpdate } from "@/lib/validation";
 import { topicKey } from "@/lib/quiz/weak";
 import { rankByKeywords } from "@/lib/chat/retrieve";
-import type { CardReview, ChatRow, ChunkRow, ExportBundle, Flashcard, Mindmap, Note, Profile, Question, Quiz, QuizAnswer, QuizAttempt, Repo, Source, StudySession, Subject, WeakTopic } from "./types";
+import { cleanSkips, MAX_SLOTS, type SlotCore } from "@/lib/timetable/slots";
+import { tokenHash } from "@/lib/timetable/token";
+import type {
+  CalendarFeedData, CalendarLink, CardReview, ChatRow, ChunkRow, ExportBundle, Flashcard, ImportPrev, Mindmap, Note, Profile, Question, Quiz, QuizAnswer, QuizAttempt, Repo,
+  Source, StudySession, Subject, TimetableSlot, WeakTopic,
+} from "./types";
 
 // In-memory store for demo mode (no Supabase configured). Kept on globalThis so it
 // survives hot reloads in dev. Each demo visitor gets their own random user id.
@@ -31,15 +36,20 @@ type Store = {
   weakTopics: Map<string, Owned<WeakTopic>>;
   chat: Map<string, Owned<ChatRow>>;
   studySessions: Map<string, Owned<StudySession>>;
+  slots: Map<string, Owned<DemoSlot>>;
+  /** By user id. */
+  calendarLinks: Map<string, CalendarLink & { hash: string }>;
 };
+type DemoSlot = TimetableSlot & { deletedAt: string | null; importPrev: ImportPrev | null };
 const g = globalThis as unknown as { __demoStore?: Store };
 export const store: Store = (g.__demoStore ??= {
   subjects: new Map(), notes: new Map(), sources: new Map(), chunks: new Map(), files: new Map(), profiles: new Map(), uploadLog: [],
   flashcards: new Map(), reviews: new Map(), mindmaps: new Map(), aiUsage: new Map(), appUsage: new Map(), aiCache: new Map(),
   quizzes: new Map(), questions: new Map(), attempts: new Map(), answers: new Map(), weakTopics: new Map(), chat: new Map(), studySessions: new Map(),
+  slots: new Map(), calendarLinks: new Map(),
 });
 // A store created by an older build (hot reload) may miss the Step 2 and Step 3 maps.
-for (const k of ["flashcards", "reviews", "mindmaps", "aiUsage", "appUsage", "aiCache", "quizzes", "questions", "attempts", "answers", "weakTopics", "chat", "studySessions"] as const) store[k] ??= new Map() as never;
+for (const k of ["flashcards", "reviews", "mindmaps", "aiUsage", "appUsage", "aiCache", "quizzes", "questions", "attempts", "answers", "weakTopics", "chat", "studySessions", "slots", "calendarLinks"] as const) store[k] ??= new Map() as never;
 
 const now = () => new Date().toISOString();
 /** Same cap as the database (1000 chat messages per subject). */
@@ -48,8 +58,20 @@ const CHAT_CAP = 1000;
 const STUDY_SESSION_CAP = 10_000;
 const DEFAULT_PROFILE: Profile = {
   soundOn: true, volume: 0.35, theme: "system", timezone: "UTC",
-  timerFocusMin: 25, timerShortMin: 5, timerLongMin: 15, timerLongEvery: 4, timerAutoStart: false, focusQuiet: true,
+  timerFocusMin: 25, timerShortMin: 5, timerLongMin: 15, timerLongEvery: 4, timerAutoStart: false, focusQuiet: true, weekStart: "mon",
 };
+/** Same backstop as the database: live plus soft-deleted slots. */
+const SLOT_ROWS_CAP = 600;
+const SLOT_FIELDS = ["subjectId", "kind", "title", "location", "tz", "startDate", "startMin", "endMin", "recurrence", "repeatUntil", "skipDates"] as const;
+const coreOf = (s: SlotCore): SlotCore => Object.fromEntries(SLOT_FIELDS.map((k) => [k, structuredClone(s[k])])) as SlotCore;
+/** The checks the database makes on a slot row (shape only; the server validates first). */
+function checkSlotRow(s: SlotCore & { source: string; importUid: string | null; importBatch: string | null }) {
+  const ok = s.endMin > s.startMin && s.endMin - s.startMin <= 720 && s.startMin >= 0 && s.endMin <= 1440
+    && (s.recurrence === "weekly" || (s.repeatUntil === null && s.skipDates.length === 0))
+    && (!s.repeatUntil || s.repeatUntil >= s.startDate) && s.skipDates.length <= 60
+    && (s.source === "import") === (s.importUid !== null && s.importBatch !== null);
+  if (!ok) throw new Error("timetable slot check failed");
+}
 const clone = <T>(v: T): T => structuredClone(v);
 
 /** What deleting a note or file does to cards and passages (mirrors the SQL foreign keys). */
@@ -85,6 +107,7 @@ export function demoRepo(userId: string): Repo {
     return clone(rest);
   };
   const myChunks = () => [...store.chunks.values()].flat().filter((c) => c.userId === userId);
+  const mySlots = () => [...store.slots.values()].filter((x) => x.userId === userId);
   const stripReview = (r: Owned<CardReview & { clientKey: string | null }>): CardReview => {
     const { userId: u, ...rest } = r;
     void u;
@@ -127,6 +150,8 @@ export function demoRepo(userId: string): Repo {
       for (const [k, m] of store.chat) if (m.subjectId === id) store.chat.delete(k);
       // Study time stays, as "No subject" (on delete set null in the database).
       for (const ss of store.studySessions.values()) if (ss.userId === userId && ss.subjectId === id) ss.subjectId = null;
+      // Timetable slots stay too, as "No subject".
+      for (const sl of store.slots.values()) if (sl.userId === userId && sl.subjectId === id) sl.subjectId = null;
     },
     async listNotes(subjectId) {
       return [...store.notes.values()]
@@ -570,6 +595,93 @@ export function demoRepo(userId: string): Repo {
         .map(strip);
     },
 
+    // ---- Step 4 part 2: timetable and calendar link ----
+    async listSlots() {
+      return mySlots().filter((x) => !x.deletedAt).sort((a, b) => a.startDate.localeCompare(b.startDate) || a.id.localeCompare(b.id)).map(stripSlot);
+    },
+    async getSlot(id, opts) {
+      const x = own(store.slots.get(id));
+      return x && (!x.deletedAt || opts?.deleted) ? stripSlot(x) : null;
+    },
+    async createSlots(rows) {
+      const live = mySlots().filter((x) => !x.deletedAt).length;
+      if (live + rows.length > MAX_SLOTS || mySlots().length + rows.length > SLOT_ROWS_CAP) throw new Error("timetable slot limit reached");
+      const at = now();
+      const made = rows.map((r) => {
+        checkSlotRow(r);
+        if (r.subjectId && !own(store.subjects.get(r.subjectId))) throw new Error("subject not found");
+        if (r.importUid && mySlots().some((x) => !x.deletedAt && x.importUid === r.importUid)) throw new Error("duplicate import key");
+        const row: Owned<DemoSlot> = { ...coreOf(r), source: r.source, importUid: r.importUid, importBatch: r.importBatch, id: crypto.randomUUID(), userId, createdAt: at, updatedAt: at, deletedAt: null, importPrev: null };
+        return row;
+      });
+      for (const row of made) store.slots.set(row.id, row);
+      return made.map(stripSlot);
+    },
+    async updateSlot(id, patch) {
+      const x = own(store.slots.get(id));
+      if (!x) return;
+      const next = { ...x, ...structuredClone(patch), updatedAt: now() };
+      if (patch.subjectId && !own(store.subjects.get(patch.subjectId))) throw new Error("subject not found");
+      checkSlotRow(next);
+      Object.assign(x, next);
+    },
+    async setSlotDeleted(id, deleted) {
+      const x = own(store.slots.get(id));
+      if (!x) return;
+      if (!deleted && x.deletedAt && mySlots().filter((y) => !y.deletedAt).length >= MAX_SLOTS) throw new Error("timetable slot limit reached");
+      x.deletedAt = deleted ? now() : null;
+      x.updatedAt = now();
+    },
+    async purgeDeletedSlots(beforeIso) {
+      for (const x of mySlots()) if (x.deletedAt && x.deletedAt < beforeIso) store.slots.delete(x.id);
+    },
+    async applyImport(batch, ops) {
+      for (const x of mySlots()) if (x.importPrev && !x.deletedAt) x.importPrev = null;
+      await repo.createSlots(ops.insert);
+      try {
+        for (const u of ops.update) {
+          const x = own(store.slots.get(u.id));
+          if (!x || x.deletedAt) continue;
+          const before = { ...coreOf(x), importBatch: x.importBatch };
+          const next = { ...x, ...coreOf(u.next), importUid: u.next.importUid, importBatch: batch, importPrev: { batch, before }, updatedAt: now() };
+          checkSlotRow(next);
+          Object.assign(x, next);
+        }
+        for (const id of ops.remove) {
+          const x = own(store.slots.get(id));
+          if (x && !x.deletedAt) Object.assign(x, { deletedAt: now(), importPrev: { batch, removed: true } });
+        }
+      } catch (e) {
+        await repo.undoImport(batch);
+        throw e;
+      }
+    },
+    async undoImport(batch) {
+      let n = 0;
+      for (const x of mySlots()) {
+        if (x.importBatch === batch && !x.importPrev && !x.deletedAt) { store.slots.delete(x.id); n++; continue; }
+        const prev = x.importPrev;
+        if (!prev || prev.batch !== batch) continue;
+        if ("removed" in prev) Object.assign(x, { deletedAt: null, importPrev: null });
+        else Object.assign(x, { ...coreOf(prev.before), importBatch: prev.before.importBatch, importPrev: null });
+        n++;
+      }
+      return n;
+    },
+
+    async getCalendarLink() {
+      const l = store.calendarLinks.get(userId);
+      return l ? { token: l.token, createdAt: l.createdAt, lastFetchedAt: l.lastFetchedAt } : null;
+    },
+    async setCalendarLink(token) {
+      const link = { token, hash: tokenHash(token), createdAt: now(), lastFetchedAt: null };
+      store.calendarLinks.set(userId, link);
+      return { token, createdAt: link.createdAt, lastFetchedAt: null };
+    },
+    async deleteCalendarLink() {
+      store.calendarLinks.delete(userId);
+    },
+
     async getProfile() {
       return { ...DEFAULT_PROFILE, ...store.profiles.get(userId) };
     },
@@ -595,10 +707,32 @@ export function demoRepo(userId: string): Repo {
         weakTopics: [...store.weakTopics.values()].filter((w) => w.userId === userId).map(strip),
         chatMessages: [...store.chat.values()].filter((m) => m.userId === userId).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map(strip),
         studySessions: [...store.studySessions.values()].filter((x) => x.userId === userId).sort((a, b) => a.startedAt.localeCompare(b.startedAt)).map(strip),
+        timetableSlots: await repo.listSlots(),
       };
     },
   };
   return repo;
+}
+
+function stripSlot(x: Owned<DemoSlot>): TimetableSlot {
+  const { userId: u, deletedAt: d, importPrev: p, ...rest } = x;
+  void u; void d; void p;
+  return { ...structuredClone(rest), skipDates: cleanSkips(rest) };
+}
+
+/**
+ * The public calendar feed (no signed-in student): the slots and subjects of whoever owns this
+ * token hash, or null. Records when a calendar last checked, at most every 15 minutes.
+ */
+export function demoCalendarFeed(hash: string, nowMs = Date.now()): CalendarFeedData | null {
+  let owner: string | null = null;
+  for (const [uid, l] of store.calendarLinks) if (l.hash === hash) owner = uid;
+  if (!owner) return null;
+  const link = store.calendarLinks.get(owner)!;
+  if (!link.lastFetchedAt || Date.parse(link.lastFetchedAt) < nowMs - 15 * 60_000) link.lastFetchedAt = new Date(nowMs).toISOString();
+  const slots = [...store.slots.values()].filter((x) => x.userId === owner && !x.deletedAt).slice(0, MAX_SLOTS).map(stripSlot);
+  const subjects = [...store.subjects.values()].filter((x) => x.userId === owner).map(({ id, name, emoji }) => ({ id, name, emoji }));
+  return { slots, subjects };
 }
 
 export function demoDeleteUser(userId: string) {
@@ -612,6 +746,8 @@ export function demoDeleteUser(userId: string) {
   for (const [k, w] of store.weakTopics) if (w.userId === userId) store.weakTopics.delete(k);
   for (const [k, m] of store.chat) if (m.userId === userId) store.chat.delete(k);
   for (const [k, x] of store.studySessions) if (x.userId === userId) store.studySessions.delete(k);
+  for (const [k, x] of store.slots) if (x.userId === userId) store.slots.delete(k);
+  store.calendarLinks.delete(userId);
   for (const k of store.aiUsage.keys()) if (k.startsWith(`${userId}|`)) store.aiUsage.delete(k);
   for (const k of store.aiCache.keys()) if (k.startsWith(`${userId}|`)) store.aiCache.delete(k);
   store.profiles.delete(userId);

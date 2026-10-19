@@ -159,7 +159,7 @@ describe("Just this week / Every week", () => {
 
   it("deleting: this week, every week from here, or the whole series", () => {
     expect(planDelete(series, "2026-10-26", "this")).toEqual({ update: { skipDates: ["2026-10-26", "2026-11-16"] }, create: null, remove: false });
-    expect(planDelete(series, "2026-11-23", "all")).toEqual({ update: { repeatUntil: "2026-11-22", skipDates: ["2026-11-16"] }, create: null, remove: false });
+    expect(planDelete(series, "2026-11-23", "all")).toEqual({ update: { repeatUntil: "2026-11-22" }, create: null, remove: false });
     expect(planDelete(series, "2026-10-19", "all")).toEqual({ update: null, create: null, remove: true });
     const full = { ...series, skipDates: Array.from({ length: 60 }, (_, i) => isoOf(dayOf("2026-10-26") + 7 * i)), repeatUntil: null };
     expect(planDelete(full, "2026-10-19", "this")).toEqual({ error: expect.stringMatching(/60 weeks/) });

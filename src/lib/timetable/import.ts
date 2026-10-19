@@ -11,10 +11,9 @@ import { parseRule, type IcsEvent, type IcsFile, type IcsTime, type Rule } from 
 import { LOCATION_MAX, MAX_SLOT_MIN, TITLE_MAX } from "./slots";
 import { COMMON_ZONES, zoneFromName } from "./zones";
 
-export const IMPORT_MAX_BYTES = 1024 * 1024;
-export const IMPORT_HORIZON_WEEKS = 26;
-/** Most classes (slots) one import may add. */
-export const IMPORT_MAX_CLASSES = 500;
+import { IMPORT_HORIZON_WEEKS, IMPORT_MAX_CLASSES } from "./limits";
+
+export { IMPORT_HORIZON_WEEKS, IMPORT_MAX_BYTES, IMPORT_MAX_CLASSES } from "./limits";
 /** Most dates kept across the whole file. */
 const MAX_OCCURRENCES = 5000;
 /** Work budget for stepping through repeat rules (keeps a hostile file cheap). */

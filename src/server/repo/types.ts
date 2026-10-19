@@ -6,6 +6,8 @@ import type { AttemptSlot, QuestionType, QuizKind } from "@/lib/quiz/order";
 import type { WeakPrev, WeakState } from "@/lib/quiz/weak";
 import type { Rating, SrsState, SrsStateNum } from "@/lib/srs/scheduler";
 import type { Phase } from "@/lib/timer/machine";
+import type { FeedSlot, FeedSubject } from "@/lib/timetable/feed";
+import type { SlotCore, SlotLike } from "@/lib/timetable/slots";
 import type { SettingsUpdate } from "@/lib/validation";
 
 export type Subject = {
@@ -47,6 +49,8 @@ export type Profile = {
   timerLongEvery: number;
   timerAutoStart: boolean;
   focusQuiet: boolean;
+  // Step 4 part 2: timetable (settings.md "Timetable and calendar").
+  weekStart: "mon" | "sun";
 };
 
 /** A stored passage of a note or lecture file. */
@@ -247,6 +251,27 @@ export type StudySession = {
 };
 export type NewStudySession = Omit<StudySession, "id" | "createdAt">;
 
+// ---- Step 4 part 2: timetable and calendar link -----------------------------------------
+
+/** A timetable slot (timetable.md). Times are wall-clock in the slot's own `tz`. */
+export type TimetableSlot = SlotLike & {
+  source: "manual" | "import";
+  /** Imported classes: stable key from the file, and the import they came from. */
+  importUid: string | null;
+  importBatch: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+export type NewTimetableSlot = SlotCore & Pick<TimetableSlot, "source" | "importUid" | "importBatch">;
+/** What a re-import changed (so its Undo can put it back). Server-only bookkeeping. */
+export type ImportPrev = { batch: string; removed: true } | { batch: string; before: SlotCore & { importBatch: string | null } };
+export type SlotPatch = Partial<SlotCore> & { importBatch?: string | null; importPrev?: ImportPrev | null };
+
+/** The student's private calendar link (server-only; never in the export). */
+export type CalendarLink = { token: string; createdAt: string; lastFetchedAt: string | null };
+/** What the public feed route serves for a token. */
+export type CalendarFeedData = { slots: FeedSlot[]; subjects: FeedSubject[] };
+
 export type ExportBundle = {
   exportedAt: string;
   profile: Profile;
@@ -263,6 +288,8 @@ export type ExportBundle = {
   weakTopics: WeakTopic[];
   chatMessages: ChatRow[];
   studySessions: StudySession[];
+  /** Step 4 part 2. The calendar link token is never exported. */
+  timetableSlots: TimetableSlot[];
 };
 
 /**
@@ -419,6 +446,31 @@ export interface Repo {
   addStudySession(input: NewStudySession): Promise<{ session: StudySession; created: boolean }>;
   /** Phases that ended at or after this instant, oldest first. */
   listStudySessions(filter: { endedSince: string }): Promise<StudySession[]>;
+
+  // ---- Step 4 part 2: timetable and calendar link ----
+  /** Live slots (not deleted), oldest first. */
+  listSlots(): Promise<TimetableSlot[]>;
+  /** A live slot, or with `deleted` a soft-deleted one too (for Undo). */
+  getSlot(id: string, opts?: { deleted?: boolean }): Promise<TimetableSlot | null>;
+  /** Saves new slots; throws "timetable slot limit reached" past 300 live slots. */
+  createSlots(rows: NewTimetableSlot[]): Promise<TimetableSlot[]>;
+  updateSlot(id: string, patch: SlotPatch): Promise<void>;
+  /** Soft delete (for Undo) or bring back; restoring past the cap throws like createSlots. */
+  setSlotDeleted(id: string, deleted: boolean): Promise<void>;
+  /** Removes slots deleted before this instant (their Undo has long expired). */
+  purgeDeletedSlots(beforeIso: string): Promise<void>;
+  /**
+   * Applies an import as one batch: inserts new classes, updates matching ones (remembering what
+   * they were) and soft-deletes removed ones. Clears earlier imports' Undo records first.
+   */
+  applyImport(batch: string, ops: { insert: NewTimetableSlot[]; update: { id: string; next: SlotCore & { importUid: string } }[]; remove: string[] }): Promise<void>;
+  /** Undoes an import batch: deletes its new classes and puts updated and removed ones back. */
+  undoImport(batch: string): Promise<number>;
+
+  getCalendarLink(): Promise<CalendarLink | null>;
+  /** Creates or replaces the link (a reset): the old token stops working at once. */
+  setCalendarLink(token: string): Promise<CalendarLink>;
+  deleteCalendarLink(): Promise<void>;
 
   getProfile(): Promise<Profile>;
   updateProfile(patch: SettingsUpdate): Promise<void>;

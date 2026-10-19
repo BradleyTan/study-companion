@@ -212,7 +212,8 @@ export function planDelete(slot: SlotCore, date: string, scope: EditScope): Plan
     return { update: { skipDates: cleanSkips({ ...slot, skipDates: [...slot.skipDates, date] }) }, create: null, remove: false };
   }
   if (occ <= dayOf(slot.startDate)) return { update: null, create: null, remove: true };
-  return { update: { repeatUntil: isoOf(occ - 1), skipDates: slot.skipDates.filter((d) => dayOf(d) < occ) }, create: null, remove: false };
+  // Skipped weeks after the end are kept (unused), so Undo only has to put `repeatUntil` back.
+  return { update: { repeatUntil: isoOf(occ - 1) }, create: null, remove: false };
 }
 
 // ---- week view ---------------------------------------------------------------------------
