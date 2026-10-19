@@ -4,7 +4,7 @@ import { newSrs } from "@/lib/srs/scheduler";
 import type { SettingsUpdate } from "@/lib/validation";
 import { topicKey } from "@/lib/quiz/weak";
 import { rankByKeywords } from "@/lib/chat/retrieve";
-import type { CardReview, ChatRow, ChunkRow, ExportBundle, Flashcard, Mindmap, Note, Profile, Question, Quiz, QuizAnswer, QuizAttempt, Repo, Source, Subject, WeakTopic } from "./types";
+import type { CardReview, ChatRow, ChunkRow, ExportBundle, Flashcard, Mindmap, Note, Profile, Question, Quiz, QuizAnswer, QuizAttempt, Repo, Source, StudySession, Subject, WeakTopic } from "./types";
 
 // In-memory store for demo mode (no Supabase configured). Kept on globalThis so it
 // survives hot reloads in dev. Each demo visitor gets their own random user id.
@@ -30,20 +30,26 @@ type Store = {
   answers: Map<string, Owned<QuizAnswer>>;
   weakTopics: Map<string, Owned<WeakTopic>>;
   chat: Map<string, Owned<ChatRow>>;
+  studySessions: Map<string, Owned<StudySession>>;
 };
 const g = globalThis as unknown as { __demoStore?: Store };
 export const store: Store = (g.__demoStore ??= {
   subjects: new Map(), notes: new Map(), sources: new Map(), chunks: new Map(), files: new Map(), profiles: new Map(), uploadLog: [],
   flashcards: new Map(), reviews: new Map(), mindmaps: new Map(), aiUsage: new Map(), appUsage: new Map(), aiCache: new Map(),
-  quizzes: new Map(), questions: new Map(), attempts: new Map(), answers: new Map(), weakTopics: new Map(), chat: new Map(),
+  quizzes: new Map(), questions: new Map(), attempts: new Map(), answers: new Map(), weakTopics: new Map(), chat: new Map(), studySessions: new Map(),
 });
 // A store created by an older build (hot reload) may miss the Step 2 and Step 3 maps.
-for (const k of ["flashcards", "reviews", "mindmaps", "aiUsage", "appUsage", "aiCache", "quizzes", "questions", "attempts", "answers", "weakTopics", "chat"] as const) store[k] ??= new Map() as never;
+for (const k of ["flashcards", "reviews", "mindmaps", "aiUsage", "appUsage", "aiCache", "quizzes", "questions", "attempts", "answers", "weakTopics", "chat", "studySessions"] as const) store[k] ??= new Map() as never;
 
 const now = () => new Date().toISOString();
 /** Same cap as the database (1000 chat messages per subject). */
 const CHAT_CAP = 1000;
-const DEFAULT_PROFILE: Profile = { soundOn: true, volume: 0.35, theme: "system", timezone: "UTC" };
+/** Same cap as the database (10,000 study sessions per student). */
+const STUDY_SESSION_CAP = 10_000;
+const DEFAULT_PROFILE: Profile = {
+  soundOn: true, volume: 0.35, theme: "system", timezone: "UTC",
+  timerFocusMin: 25, timerShortMin: 5, timerLongMin: 15, timerLongEvery: 4, timerAutoStart: false, focusQuiet: true,
+};
 const clone = <T>(v: T): T => structuredClone(v);
 
 /** What deleting a note or file does to cards and passages (mirrors the SQL foreign keys). */
@@ -119,6 +125,8 @@ export function demoRepo(userId: string): Repo {
       for (const [k, q] of store.quizzes) if (q.subjectId === id) dropQuiz(k);
       for (const [k, w] of store.weakTopics) if (w.subjectId === id) store.weakTopics.delete(k);
       for (const [k, m] of store.chat) if (m.subjectId === id) store.chat.delete(k);
+      // Study time stays, as "No subject" (on delete set null in the database).
+      for (const ss of store.studySessions.values()) if (ss.userId === userId && ss.subjectId === id) ss.subjectId = null;
     },
     async listNotes(subjectId) {
       return [...store.notes.values()]
@@ -545,6 +553,23 @@ export function demoRepo(userId: string): Repo {
       for (const [k, m] of store.chat) if (gone.has(k) || (m.replyTo && gone.has(m.replyTo))) store.chat.delete(k);
     },
 
+    async addStudySession(input) {
+      const mine = [...store.studySessions.values()].filter((x) => x.userId === userId);
+      const earlier = mine.find((x) => x.clientKey === input.clientKey);
+      if (earlier) return { session: strip(earlier), created: false };
+      if (mine.length >= STUDY_SESSION_CAP) throw new Error("study session limit reached");
+      if (input.subjectId && !own(store.subjects.get(input.subjectId))) throw new Error("subject not found");
+      const row: Owned<StudySession> = { ...input, id: crypto.randomUUID(), userId, createdAt: now() };
+      store.studySessions.set(row.id, row);
+      return { session: strip(row), created: true };
+    },
+    async listStudySessions({ endedSince }) {
+      return [...store.studySessions.values()]
+        .filter((x) => x.userId === userId && x.endedAt >= endedSince)
+        .sort((a, b) => a.endedAt.localeCompare(b.endedAt))
+        .map(strip);
+    },
+
     async getProfile() {
       return { ...DEFAULT_PROFILE, ...store.profiles.get(userId) };
     },
@@ -569,6 +594,7 @@ export function demoRepo(userId: string): Repo {
         answers: [...store.answers.values()].filter((a) => a.userId === userId).map(strip),
         weakTopics: [...store.weakTopics.values()].filter((w) => w.userId === userId).map(strip),
         chatMessages: [...store.chat.values()].filter((m) => m.userId === userId).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map(strip),
+        studySessions: [...store.studySessions.values()].filter((x) => x.userId === userId).sort((a, b) => a.startedAt.localeCompare(b.startedAt)).map(strip),
       };
     },
   };
@@ -585,6 +611,7 @@ export function demoDeleteUser(userId: string) {
   for (const [k, q] of store.quizzes) if (q.userId === userId) dropQuiz(k);
   for (const [k, w] of store.weakTopics) if (w.userId === userId) store.weakTopics.delete(k);
   for (const [k, m] of store.chat) if (m.userId === userId) store.chat.delete(k);
+  for (const [k, x] of store.studySessions) if (x.userId === userId) store.studySessions.delete(k);
   for (const k of store.aiUsage.keys()) if (k.startsWith(`${userId}|`)) store.aiUsage.delete(k);
   for (const k of store.aiCache.keys()) if (k.startsWith(`${userId}|`)) store.aiCache.delete(k);
   store.profiles.delete(userId);

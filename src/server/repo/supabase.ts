@@ -8,8 +8,9 @@ import type { Rating, SrsState, SrsStateNum } from "@/lib/srs/scheduler";
 import type { SubjectColour } from "@/lib/subjects";
 import type {
   CardReview, ChatCitation, ChatFeedback, ChatRow, ChunkRow, ExportBundle, Flashcard, Mindmap, MindmapSources, Note, NoteSummary, Profile, Question, QuestionPatch, Quiz, QuizAnswer, QuizAttempt, Repo,
-  Source, Subject, WeakTopic,
+  Source, StudySession, Subject, WeakTopic,
 } from "./types";
+import type { Phase } from "@/lib/timer/machine";
 
 type Row = Record<string, unknown>;
 
@@ -211,6 +212,21 @@ const toChat = (r: Row): ChatRow => ({
   createdAt: iso(r.created_at)!,
 });
 const CHAT_COLS = "id, subject_id, role, kind, content, citations_json, reveal, feedback, client_key, reply_to, created_at";
+
+const toStudySession = (r: Row): StudySession => ({
+  id: r.id as string,
+  subjectId: (r.subject_id as string | null) ?? null,
+  kind: r.kind as Phase,
+  plannedSec: r.planned_sec as number,
+  focusedSec: r.focused_sec as number,
+  completed: r.completed as boolean,
+  startedAt: iso(r.started_at)!,
+  endedAt: iso(r.ended_at)!,
+  clientKey: r.client_key as string,
+  createdAt: iso(r.created_at)!,
+});
+const STUDY_COLS = "id, subject_id, kind, planned_sec, focused_sec, completed, started_at, ended_at, client_key, created_at";
+const PROFILE_COLS = "sound_on, volume, theme, timezone, timer_focus_min, timer_short_min, timer_long_min, timer_long_every, timer_auto_start, focus_quiet";
 
 const CHUNK_COLS = "id, subject_id, note_id, source_id, ordinal, page, text, content_hash";
 const SUBJECT_COLS = "id, name, colour, emoji, created_at, notes(count), sources(count)";
@@ -807,12 +823,42 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
       if (ids.length) fail((await admin().from("chat_messages").delete().in("id", ids).eq("user_id", userId)).error, "deleteOldestChat");
     },
 
+    // ---- Step 4: study timer ----
+    // Sessions are read with the student's session and written with the secret key, pinned.
+    async addStudySession(input) {
+      const row = {
+        user_id: userId, subject_id: input.subjectId, kind: input.kind, planned_sec: input.plannedSec, focused_sec: input.focusedSec,
+        completed: input.completed, started_at: input.startedAt, ended_at: input.endedAt, client_key: input.clientKey,
+      };
+      const { data, error } = await admin().from("study_sessions").insert(row).select(STUDY_COLS).single();
+      if (error?.code === "23505") {
+        // Already saved (a retried save, or another tab): return the first row.
+        const earlier = await admin().from("study_sessions").select(STUDY_COLS).eq("user_id", userId).eq("client_key", input.clientKey).single();
+        fail(earlier.error, "addStudySession");
+        return { session: toStudySession(earlier.data), created: false };
+      }
+      fail(error, "addStudySession");
+      return { session: toStudySession(data), created: true };
+    },
+    async listStudySessions({ endedSince }) {
+      const { data, error } = await db.from("study_sessions").select(STUDY_COLS).gte("ended_at", endedSince).order("ended_at").order("id").limit(1000);
+      fail(error, "listStudySessions");
+      return (data ?? []).map(toStudySession);
+    },
+
     async getProfile(): Promise<Profile> {
-      const { data, error } = await db.from("profiles").select("sound_on, volume, theme, timezone").maybeSingle();
+      const { data, error } = await db.from("profiles").select(PROFILE_COLS).maybeSingle();
       fail(error, "getProfile");
       return data
-        ? { soundOn: data.sound_on, volume: data.volume, theme: data.theme, timezone: data.timezone }
-        : { soundOn: true, volume: 0.35, theme: "system", timezone: "UTC" };
+        ? {
+          soundOn: data.sound_on, volume: data.volume, theme: data.theme, timezone: data.timezone,
+          timerFocusMin: data.timer_focus_min ?? 25, timerShortMin: data.timer_short_min ?? 5, timerLongMin: data.timer_long_min ?? 15,
+          timerLongEvery: data.timer_long_every ?? 4, timerAutoStart: data.timer_auto_start ?? false, focusQuiet: data.focus_quiet ?? true,
+        }
+        : {
+          soundOn: true, volume: 0.35, theme: "system", timezone: "UTC",
+          timerFocusMin: 25, timerShortMin: 5, timerLongMin: 15, timerLongEvery: 4, timerAutoStart: false, focusQuiet: true,
+        };
     },
     async updateProfile(patch) {
       const row: Row = { user_id: userId };
@@ -820,10 +866,16 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
       if (patch.volume !== undefined) row.volume = patch.volume;
       if (patch.theme !== undefined) row.theme = patch.theme;
       if (patch.timezone !== undefined) row.timezone = patch.timezone;
+      if (patch.timerFocusMin !== undefined) row.timer_focus_min = patch.timerFocusMin;
+      if (patch.timerShortMin !== undefined) row.timer_short_min = patch.timerShortMin;
+      if (patch.timerLongMin !== undefined) row.timer_long_min = patch.timerLongMin;
+      if (patch.timerLongEvery !== undefined) row.timer_long_every = patch.timerLongEvery;
+      if (patch.timerAutoStart !== undefined) row.timer_auto_start = patch.timerAutoStart;
+      if (patch.focusQuiet !== undefined) row.focus_quiet = patch.focusQuiet;
       fail((await db.from("profiles").upsert(row)).error, "updateProfile");
     },
     async exportAll(): Promise<ExportBundle> {
-      const [subjects, notesRes, sourcesRes, chunksRes, profile, cardsRes, reviewsRes, mapsRes, quizzesRes, attemptsRes, answersRes, weakRes, questionsRes, chatRes] = await Promise.all([
+      const [subjects, notesRes, sourcesRes, chunksRes, profile, cardsRes, reviewsRes, mapsRes, quizzesRes, attemptsRes, answersRes, weakRes, questionsRes, chatRes, studyRes] = await Promise.all([
         repo.listSubjects(),
         db.from("notes").select("*"),
         db.from("sources").select("*"),
@@ -838,6 +890,7 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
         allRows("weak_topics", "created_at"),
         allQuestions(),
         allRows("chat_messages", "created_at"),
+        allRows("study_sessions", "started_at"),
       ]);
       fail(notesRes.error, "export notes");
       fail(sourcesRes.error, "export sources");
@@ -862,6 +915,7 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
         answers: answersRes.map(toAnswer),
         weakTopics: weakRes.map(toWeakTopic),
         chatMessages: chatRes.map(toChat),
+        studySessions: studyRes.map(toStudySession),
       };
     },
   };

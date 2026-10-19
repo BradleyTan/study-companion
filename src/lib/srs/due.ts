@@ -57,6 +57,16 @@ export function localDayBounds(tz: string, now: Date): { start: Date; end: Date 
   };
 }
 
+/** Local midnight starting this week (Monday by default) in `tz`, as a UTC instant. */
+export function localWeekStart(tz: string, now: Date, weekStart: "mon" | "sun" = "mon"): Date {
+  const zone = safeTimeZone(tz);
+  const p = zonedParts(zone, now.getTime());
+  const weekday = new Date(Date.UTC(p.y, p.m - 1, p.d)).getUTCDay(); // 0 = Sunday
+  const back = weekStart === "mon" ? (weekday + 6) % 7 : weekday;
+  const first = new Date(Date.UTC(p.y, p.m - 1, p.d - back));
+  return new Date(localMidnight(zone, first.getUTCFullYear(), first.getUTCMonth() + 1, first.getUTCDate()));
+}
+
 // ---- counts -----------------------------------------------------------------
 
 export type CardSchedule = {

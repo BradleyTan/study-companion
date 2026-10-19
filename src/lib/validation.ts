@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { safeTimeZone } from "./srs/due";
+import { MAX_PLANNED_SEC, MIN_LOG_SEC, RANGES } from "./timer/machine";
 import { COLOUR_NAMES, SUBJECT_EMOJIS } from "./subjects";
 
 export const subjectInput = z.object({
@@ -24,6 +25,13 @@ export const settingsUpdate = z.object({
   volume: z.number().min(0).max(1).optional(),
   theme: z.enum(["system", "light", "dark"]).optional(),
   timezone: z.string().max(64).refine((tz) => safeTimeZone(tz) === tz, "Unknown time zone.").optional(),
+  // Step 4: study timer defaults (settings.md, timer.md "Durations").
+  timerFocusMin: z.int().min(RANGES.focusMin.min).max(RANGES.focusMin.max).multipleOf(RANGES.focusMin.step).optional(),
+  timerShortMin: z.int().min(RANGES.shortMin.min).max(RANGES.shortMin.max).optional(),
+  timerLongMin: z.int().min(RANGES.longMin.min).max(RANGES.longMin.max).multipleOf(RANGES.longMin.step).optional(),
+  timerLongEvery: z.int().min(RANGES.longEvery.min).max(RANGES.longEvery.max).optional(),
+  timerAutoStart: z.boolean().optional(),
+  focusQuiet: z.boolean().optional(),
 });
 export type SettingsUpdate = z.infer<typeof settingsUpdate>;
 
@@ -137,3 +145,24 @@ export const askInput = z.object({
 });
 export const olderChatInput = z.object({ subjectId: id, before: z.iso.datetime({ offset: true }) });
 export const chatFeedbackInput = z.object({ messageId: id, feedback: z.enum(["wrong", "not_in_notes", "too_long"]) });
+
+// ---- Step 4: study timer --------------------------------------------------------------
+/** A queued round older than this is dropped instead of saved (timer.md: one device's timer). */
+export const STUDY_LOG_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export const studySessionInput = z.object({
+  clientKey: z.uuid(),
+  subjectId: z.uuid().nullable(),
+  kind: z.enum(["focus", "short_break", "long_break"]),
+  plannedSec: z.int().min(60).max(MAX_PLANNED_SEC),
+  focusedSec: z.int().min(MIN_LOG_SEC, "Rounds under a minute aren't saved.").max(MAX_PLANNED_SEC),
+  completed: z.boolean(),
+  startedAt: z.iso.datetime({ offset: true }),
+  endedAt: z.iso.datetime({ offset: true }),
+})
+  .refine((s) => Date.parse(s.endedAt) > Date.parse(s.startedAt), "A round ends after it starts.")
+  .refine((s) => Date.parse(s.endedAt) - Date.parse(s.startedAt) <= 2 * DAY_MS, "That round is too long.")
+  .refine((s) => s.focusedSec <= (Date.parse(s.endedAt) - Date.parse(s.startedAt)) / 1000 + 5, "More time than the round lasted.")
+  .refine((s) => s.focusedSec <= s.plannedSec + 5, "More time than the round was set for.");
+export type StudySessionInput = z.infer<typeof studySessionInput>;

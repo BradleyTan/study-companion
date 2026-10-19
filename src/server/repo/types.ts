@@ -5,6 +5,7 @@ import type { AiKind } from "@/lib/limits/ai";
 import type { AttemptSlot, QuestionType, QuizKind } from "@/lib/quiz/order";
 import type { WeakPrev, WeakState } from "@/lib/quiz/weak";
 import type { Rating, SrsState, SrsStateNum } from "@/lib/srs/scheduler";
+import type { Phase } from "@/lib/timer/machine";
 import type { SettingsUpdate } from "@/lib/validation";
 
 export type Subject = {
@@ -34,7 +35,19 @@ export type Source = {
   createdAt: string;
 };
 
-export type Profile = { soundOn: boolean; volume: number; theme: "system" | "light" | "dark"; timezone: string };
+export type Profile = {
+  soundOn: boolean;
+  volume: number;
+  theme: "system" | "light" | "dark";
+  timezone: string;
+  // Step 4: study timer defaults (settings.md "Study timer").
+  timerFocusMin: number;
+  timerShortMin: number;
+  timerLongMin: number;
+  timerLongEvery: number;
+  timerAutoStart: boolean;
+  focusQuiet: boolean;
+};
 
 /** A stored passage of a note or lecture file. */
 export type ChunkRow = {
@@ -214,6 +227,26 @@ export type ChatRow = {
 };
 export type NewChatAnswer = { kind: "answer" | "not_covered"; content: string; citations: ChatCitation[]; reveal: string | null };
 
+// ---- Step 4: study timer ---------------------------------------------------------------
+
+/** One timer phase that ended (completed, stopped, or ended while away). */
+export type StudySession = {
+  id: string;
+  /** null: "No subject", or its subject was deleted (the time still counts). */
+  subjectId: string | null;
+  kind: Phase;
+  plannedSec: number;
+  /** Running time, pauses excluded. */
+  focusedSec: number;
+  completed: boolean;
+  startedAt: string;
+  endedAt: string;
+  /** The timer's session id: a retried save logs once. */
+  clientKey: string;
+  createdAt: string;
+};
+export type NewStudySession = Omit<StudySession, "id" | "createdAt">;
+
 export type ExportBundle = {
   exportedAt: string;
   profile: Profile;
@@ -229,6 +262,7 @@ export type ExportBundle = {
   answers: QuizAnswer[];
   weakTopics: WeakTopic[];
   chatMessages: ChatRow[];
+  studySessions: StudySession[];
 };
 
 /**
@@ -375,6 +409,16 @@ export interface Repo {
   countChat(subjectId: string): Promise<number>;
   /** Removes the oldest questions (and their answers) of a subject. */
   deleteOldestChat(subjectId: string, questions: number): Promise<void>;
+
+  // ---- Step 4: study timer ----
+  /**
+   * Logs a timer phase. A client key that was already saved returns the earlier row instead
+   * (`created` false). The subject must be the student's (the caller checks; the database's
+   * composite key refuses anything else).
+   */
+  addStudySession(input: NewStudySession): Promise<{ session: StudySession; created: boolean }>;
+  /** Phases that ended at or after this instant, oldest first. */
+  listStudySessions(filter: { endedSince: string }): Promise<StudySession[]>;
 
   getProfile(): Promise<Profile>;
   updateProfile(patch: SettingsUpdate): Promise<void>;
