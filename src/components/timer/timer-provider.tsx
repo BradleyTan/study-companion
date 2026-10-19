@@ -139,6 +139,7 @@ export function TimerProvider({ children, subjects, prefs: initialPrefs, session
   const chipRef = useRef<HTMLButtonElement | null>(null);
   const tabId = useRef("");
   const flushing = useRef(false);
+  const flushAgain = useRef(false);
   const soundOnRef = useRef(soundOn);
   useEffect(() => { soundOnRef.current = soundOn; }, [soundOn]);
 
@@ -169,12 +170,16 @@ export function TimerProvider({ children, subjects, prefs: initialPrefs, session
 
   // ---- saving rounds ------------------------------------------------------------------
   const flush = useCallback(async () => {
-    if (flushing.current) return;
+    // A round queued while a flush is running is sent by one more pass, not left until the next load.
+    if (flushing.current) { flushAgain.current = true; return; }
     flushing.current = true;
     try {
-      const out = await flushQueue(storage(), saveLog);
-      if (out.saved.length) setSaved((cur) => [...cur, ...out.saved]);
-      setQueue(out.pending);
+      do {
+        flushAgain.current = false;
+        const out = await flushQueue(storage(), saveLog);
+        if (out.saved.length) setSaved((cur) => [...cur, ...out.saved]);
+        setQueue(out.pending);
+      } while (flushAgain.current);
     } finally {
       flushing.current = false;
     }

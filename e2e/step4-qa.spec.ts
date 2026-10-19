@@ -154,3 +154,28 @@ test.describe("focus view on a phone, dark mode", () => {
     await expectNoA11yViolations(page);
   });
 });
+
+test("a round that ends while an earlier save is still on its way is saved too", async ({ page }) => {
+  const MIN = 60_000;
+  await page.clock.install({ time: Date.now() - 6 * 60 * MIN });
+  await startDemo(page);
+  await page.getByTestId("timer-chip").click();
+  const p = page.getByRole("dialog", { name: "Study timer" });
+  // The first save takes a few seconds (a slow connection).
+  let slow = true;
+  await page.route("**/*", async (route) => {
+    if (route.request().method() === "POST" && slow && (route.request().headers()["next-action"] ?? "")) {
+      slow = false;
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+    await route.continue();
+  });
+  await p.getByRole("button", { name: "Start focus" }).click();
+  await page.clock.fastForward(25 * MIN + 500);
+  await p.getByTestId("end-card").getByRole("button", { name: "Start break" }).click();
+  await page.clock.fastForward(5 * MIN + 500);
+  await expect(p.getByTestId("end-card")).toContainText("Break's over");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("studynest:timer:queue")), { timeout: 10_000 }).toBeNull();
+  const rows = (await (await page.request.get("/api/export")).json()).studySessions as { kind: string }[];
+  expect(rows.map((r) => r.kind).sort()).toEqual(["focus", "short_break"]);
+});
