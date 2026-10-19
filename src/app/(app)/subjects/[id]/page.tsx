@@ -13,6 +13,8 @@ import { quotaFor } from "@/server/ai";
 import { subjectDue } from "@/server/cards";
 import { subjectQuizSummary } from "@/server/quiz";
 import { getRepo } from "@/server/session";
+import { nextForSubject } from "@/server/timetable";
+import { nowMs } from "@/lib/time";
 
 export async function generateMetadata({ params }: PageProps<"/subjects/[id]">): Promise<Metadata> {
   const { id } = await params;
@@ -27,7 +29,7 @@ export default async function SubjectPage({ params }: PageProps<"/subjects/[id]"
   const repo = await getRepo();
   const subject = await repo.getSubject(id);
   if (!subject) notFound();
-  const [notes, sources, due, mindmap, quiz, chat] = await Promise.all([
+  const [notes, sources, due, mindmap, quiz, chat, next] = await Promise.all([
     repo.listNotes(id),
     repo.listSources(id),
     // Counts that fail to load just leave the tile without its sub-line.
@@ -35,6 +37,10 @@ export default async function SubjectPage({ params }: PageProps<"/subjects/[id]"
     repo.getMindmap(id).catch(() => undefined),
     subjectQuizSummary(repo, id).catch(() => null),
     Promise.all([quotaFor(repo, "chat"), repo.countChat(id)]).then(([q, n]) => ({ left: q.left, asked: n > 0 })).catch(() => null),
+    // The study strip's "Next" part; a failed read hides just that part.
+    Promise.all([repo.listSlots(), repo.getProfile()])
+      .then(([slots, p]) => nextForSubject(slots, subject, nowMs(), p.timezone, p.weekStart))
+      .catch(() => undefined),
   ]);
 
   return (
@@ -42,7 +48,7 @@ export default async function SubjectPage({ params }: PageProps<"/subjects/[id]"
       <SubjectHeader subject={subject} />
       <StudyTools subjectId={id} due={due?.total ?? null} cards={due?.cards ?? null} mindmapUpdatedAt={mindmap === undefined ? undefined : mindmap?.createdAt ?? null} quiz={quiz} chat={chat} />
       {quiz && <WeakStrip subjectId={id} count={quiz.weak.count} names={quiz.weak.names} />}
-      <StudyStrip subjectId={id} name={subject.name} colour={subject.colour} />
+      <StudyStrip subjectId={id} name={subject.name} colour={subject.colour} next={next} />
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
         <section aria-labelledby="notes-h" className="flex min-w-0 flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-2">

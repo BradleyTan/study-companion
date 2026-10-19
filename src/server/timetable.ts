@@ -1,5 +1,5 @@
 import "server-only";
-import { isoOf, localOf, weekStartOf } from "@/lib/timetable/dates";
+import { hhmm, isoOf, localOf, longDate, shortDate, todayIn, weekdayName, weekdayShort, weekStartOf } from "@/lib/timetable/dates";
 import { nextOccurrence, occurrences, slotTitle } from "@/lib/timetable/slots";
 import type { CalendarLink, Repo, TimetableSlot } from "./repo/types";
 import { siteOrigin } from "./origin";
@@ -16,7 +16,7 @@ export async function calendarLinkView(link: CalendarLink | null): Promise<Calen
 /** The study strip's "Next" part (subject.md, Step 4). */
 export type NextClass =
   | { kind: "studyNow"; untilMin: number }
-  | { kind: "next"; title: string; start: number; location: string | null; weekOf: string }
+  | { kind: "next"; title: string; start: number; location: string | null; weekOf: string; date: string; when: string; whenLong: string }
   | null;
 
 /**
@@ -38,9 +38,15 @@ export function nextForSubject(slots: TimetableSlot[], subject: { id: string; na
     if (occ && (!best || occ.start < best.start)) best = { slot: s, start: occ.start };
   }
   if (!best) return null;
+  const at = localOf(tz, best.start);
+  // "Today 10:00" / "Tomorrow 10:00" read better than a weekday for the next two days.
+  const ahead = at.day - todayIn(tz, now);
+  const short = ahead === 0 ? "Today" : ahead === 1 ? "Tomorrow" : ahead < 7 ? weekdayShort(at.day) : shortDate(at.day);
+  const long = ahead === 0 ? "today" : ahead === 1 ? "tomorrow" : ahead < 7 ? weekdayName(at.day) : longDate(at.day);
   return {
     kind: "next", title: slotTitle(best.slot, subject.name), start: best.start, location: best.slot.location,
-    weekOf: isoOf(weekStartOf(localOf(tz, best.start).day, weekStart)),
+    weekOf: isoOf(weekStartOf(at.day, weekStart)), date: isoOf(at.day),
+    when: `${short} ${hhmm(at.min)}`, whenLong: `${long} ${hhmm(at.min)}`,
   };
 }
 

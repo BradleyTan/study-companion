@@ -105,8 +105,10 @@ async function swRegistration(): Promise<ServiceWorkerRegistration | null> {
  * The study timer (timer.md). One provider in the app layout owns the state, so navigation never
  * resets it; the header chip, the panel, `/timer` and the subject page read it.
  */
-export function TimerProvider({ children, subjects, prefs: initialPrefs, sessions: serverSessions, timezone, serverNow }: {
+export function TimerProvider({ children, subjects, prefs: initialPrefs, sessions: serverSessions, timezone, serverNow, studyBlocks = [] }: {
   children: ReactNode;
+  /** Timetable Study blocks today and tomorrow (a block happening now picks the default subject). */
+  studyBlocks?: { subjectId: string; start: number; end: number }[];
   subjects: TimerSubject[];
   prefs: TimerPrefs;
   /** This week's saved phases (null: they didn't load). */
@@ -186,7 +188,15 @@ export function TimerProvider({ children, subjects, prefs: initialPrefs, session
 
   // ---- starting and ending ----------------------------------------------------------------
   const ids = useMemo(() => new Set(subjects.map((s) => s.id)), [subjects]);
-  const defaultId = defaultSubjectId({ pathname, lastUsed, subjectIds: ids });
+  const [minute, setMinute] = useState(serverNow);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMinute(Date.now());
+    const id = setInterval(() => setMinute(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  const studyBlockSubjectId = studyBlocks.find((b) => b.start <= minute && minute < b.end)?.subjectId ?? null;
+  const defaultId = defaultSubjectId({ pathname, studyBlockSubjectId, lastUsed, subjectIds: ids });
   const pickedId = picked && picked.path === pathname && (picked.id === null || ids.has(picked.id)) ? picked.id : undefined;
   const subjectId = isActive(state) ? (state.subjectId && ids.has(state.subjectId) ? state.subjectId : null) : pickedId !== undefined ? pickedId : defaultId;
 

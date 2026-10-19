@@ -29,6 +29,8 @@ export async function deleteAccount(confirmText: string): Promise<ActionResult> 
     return { ok: false, error: "For safety, sign out and sign in again, then delete your account within 10 minutes." };
   }
   const repo = await getRepo();
+  // The calendar link stops working at once, before anything else (the cascade would remove it too).
+  await repo.deleteCalendarLink();
   // Files aren't covered by the database cascade, so remove them first.
   const paths: string[] = [];
   for (const s of await repo.listSubjects()) paths.push(...(await repo.listSources(s.id)).map((x) => x.storagePath));

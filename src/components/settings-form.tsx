@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { deleteAccount, updateSettings } from "@/server/actions/settings";
 import type { Profile } from "@/server/repo/types";
 import { applyTheme, useSound } from "./sound-provider";
+import { CalendarLinkContent } from "./timetable/calendar-link-panel";
 import { TimerSettings } from "./timer/timer-settings";
 import { Button } from "./ui/button";
 import { useToast } from "./ui/live-toast";
@@ -11,6 +12,7 @@ import { useToast } from "./ui/live-toast";
 export function SettingsForm({ profile }: { profile: Profile }) {
   const { soundOn, volume, setPrefs, play } = useSound();
   const [theme, setTheme] = useState(profile.theme);
+  const [weekStart, setWeekStart] = useState(profile.weekStart);
   const [confirm, setConfirm] = useState("");
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleting, startDelete] = useTransition();
@@ -63,9 +65,32 @@ export function SettingsForm({ profile }: { profile: Profile }) {
 
       <TimerSettings />
 
+      <section aria-labelledby="timetable-h" className="sticker flex flex-col gap-4 p-5">
+        <h2 id="timetable-h" className="text-xl font-bold">Timetable and calendar</h2>
+        <fieldset className="flex flex-col gap-2">
+          <legend className="label mb-1">Week starts on</legend>
+          <div className="seg self-start">
+            {(["mon", "sun"] as const).map((w) => (
+              <label key={w}>
+                <input
+                  type="radio" name="week-start" className="sr-only" checked={weekStart === w}
+                  onChange={() => { setWeekStart(w); play("click"); void persist({ weekStart: w }); }}
+                />
+                {w === "mon" ? "Monday" : "Sunday"}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <p className="hint">Times are shown in {profile.timezone} (from this device).</p>
+        <div className="flex flex-col gap-3 border-t-2 border-ink pt-4">
+          <h3 className="text-lg font-bold">Calendar link</h3>
+          <CalendarLinkContent timezone={profile.timezone} headingLevel={4} />
+        </div>
+      </section>
+
       <section aria-labelledby="data-h" className="sticker flex flex-col items-start gap-3 p-5">
         <h2 id="data-h" className="text-xl font-bold">Your data</h2>
-        <p>Download your subjects, notes, the list of files you uploaded and the text we read from them, your flashcards, quizzes, chats and study sessions, as one JSON file.</p>
+        <p>Download your subjects, notes, the list of files you uploaded and the text we read from them, your flashcards, quizzes, chats, study sessions and timetable, as one JSON file. Your calendar link is never in it.</p>
         <a href="/api/export" className="btn" onClick={() => play("click")} download>Download everything</a>
         <Link href="/privacy" className="underline underline-offset-4">Read how we store your notes</Link>
       </section>
@@ -73,6 +98,7 @@ export function SettingsForm({ profile }: { profile: Profile }) {
       <section aria-labelledby="delete-h" className="sticker flex flex-col gap-3 border-[#d6453a] p-5">
         <h2 id="delete-h" className="text-xl font-bold">Delete account</h2>
         <p>This permanently deletes your account, notes and files. It can&apos;t be undone.</p>
+        <p className="hint">Your calendar link stops working straight away too.</p>
         <div className="field">
           <label htmlFor="confirm-delete">Type DELETE to confirm</label>
           <input id="confirm-delete" className="input max-w-xs" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="off" aria-describedby={deleteError ? "delete-error" : undefined} />

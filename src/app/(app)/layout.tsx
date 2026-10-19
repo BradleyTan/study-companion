@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { HeaderMenu } from "@/components/header-menu";
+import { NavLink } from "@/components/nav-link";
+import { CalendarIcon } from "@/components/timetable/icons";
 import { ProfileSync } from "@/components/sound-provider";
 import { SignOutButton } from "@/components/sign-out-button";
 import { TimerChip } from "@/components/timer/timer-chip";
@@ -7,6 +9,7 @@ import { TimerProvider } from "@/components/timer/timer-provider";
 import { localWeekStart } from "@/lib/srs/due";
 import { nowMs } from "@/lib/time";
 import { getRepo, requireUser } from "@/server/session";
+import { studyBlocksSoon } from "@/server/timetable";
 
 // Every page in here is per-student; never prerender or cache it.
 export const dynamic = "force-dynamic";
@@ -18,9 +21,10 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const now = nowMs();
   // The timer's subject picker and this week's study time (today's tally and the subject page).
   // A failed count only hides the numbers; the timer itself works from this browser.
-  const [subjects, sessions] = await Promise.all([
+  const [subjects, sessions, slots] = await Promise.all([
     repo.listSubjects().catch(() => []),
     repo.listStudySessions({ endedSince: localWeekStart(profile.timezone, new Date(now)).toISOString() }).catch(() => null),
+    repo.listSlots().catch(() => []),
   ]);
   return (
     <TimerProvider
@@ -32,6 +36,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       sessions={sessions?.map((s) => ({ clientKey: s.clientKey, subjectId: s.subjectId, kind: s.kind, focusedSec: s.focusedSec, completed: s.completed, endedAt: s.endedAt })) ?? null}
       timezone={profile.timezone}
       serverNow={now}
+      studyBlocks={studyBlocksSoon(slots, now)}
     >
       <ProfileSync {...profile} />
       <header className="sticky top-[env(safe-area-inset-top,0px)] z-30 border-b-[2.5px] border-ink bg-paper">
@@ -41,9 +46,11 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           </Link>
           {user.demo && <span className="chip ml-1 hidden md:inline-flex">Demo mode</span>}
           <div className="ml-auto flex items-center gap-1">
-            <Link href="/subjects" className="btn btn-ghost btn-sm hidden sm:inline-flex">Subjects</Link>
+            <NavLink href="/subjects" className="btn btn-ghost btn-sm hidden sm:inline-flex">Subjects</NavLink>
+            <NavLink href="/timetable" className="btn btn-ghost btn-sm hidden sm:inline-flex">Timetable</NavLink>
             <TimerChip />
-            <Link href="/settings" className="btn btn-ghost btn-sm hidden sm:inline-flex">Settings</Link>
+            <NavLink href="/timetable" className="btn btn-sm icon-btn min-h-11 sm:hidden" label="Timetable"><CalendarIcon /></NavLink>
+            <NavLink href="/settings" className="btn btn-ghost btn-sm hidden sm:inline-flex">Settings</NavLink>
             <div className="hidden sm:block"><SignOutButton /></div>
             <HeaderMenu />
           </div>
