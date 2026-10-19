@@ -1,5 +1,5 @@
 import { hhmm, isoOf, localOf, longDate, shortDate, weekdayName } from "./dates";
-import { KIND_LABEL, MAX_SLOT_MIN, nextOccurrence, SNAP_MIN, slotTitle, snapDown, type SlotLike } from "./slots";
+import { KIND_LABEL, MAX_SLOT_MIN, nextOccurrence, occurrences, SNAP_MIN, slotTitle, snapDown, type SlotLike } from "./slots";
 
 // Pure helpers for the week grid (timetable.md "Drag to create", "Accessibility"). No DOM here, so
 // the drag maths and the spoken names are unit-tested.
@@ -102,8 +102,8 @@ export function nearestOutside<S extends SlotLike>(slots: S[], weekFromMs: numbe
   if (!best) {
     // Only earlier weeks: the latest occurrence before this week (one-offs and finished series).
     for (const s of slots) {
-      const occ = nextOccurrence(s, weekFromMs - 400 * 86_400_000);
-      if (occ && occ.start < weekFromMs && (!best || occ.start > best.start)) best = { start: occ.start, kind: s.kind };
+      const occ = occurrences(s, weekFromMs - 400 * 86_400_000, weekFromMs).filter((o) => o.start < weekFromMs).at(-1);
+      if (occ && (!best || occ.start > best.start)) best = { start: occ.start, kind: s.kind };
     }
   }
   if (!best) return null;

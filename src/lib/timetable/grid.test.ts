@@ -80,6 +80,10 @@ describe("nearestOutside", () => {
     const r = nearestOutside([slot("a", "2026-09-01"), slot("b", "2026-10-06")], from, to, tz);
     expect(r?.week).toBe("2026-10-06");
   });
+  it("for a weekly series that ended, falls back to its last week, not its first", () => {
+    const ended = { ...slot("a", "2026-09-07", true), repeatUntil: "2026-10-05" };
+    expect(nearestOutside([ended], from, to, tz)?.week).toBe("2026-10-05");
+  });
   it("is null with no slots", () => {
     expect(nearestOutside([], from, to, tz)).toBeNull();
   });
