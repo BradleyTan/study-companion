@@ -481,6 +481,9 @@ test("phone at 375 px: day strip, tap to create, no sideways scroll", async ({ p
   await strip.getByRole("radio").nth(2).check({ force: true });
   await expect(page.getByRole("region", { name: new RegExp(`^Wednesday`) })).toBeVisible();
   const layer = page.getByTestId("drag-layer-0");
+  // The grid sits low on a phone: put 10:00 at the top of the grid and the grid on screen,
+  // otherwise the tap can land below the viewport (it did on CI) or on the empty-week sticker.
+  await page.locator(".tt-scroll").evaluate((el) => { el.scrollTop = 9.75 * 48; el.scrollIntoView({ block: "nearest" }); });
   const box = (await layer.boundingBox())!;
   await page.touchscreen.tap(box.x + box.width / 2, box.y + 10.2 * 48);
   const f = form(page);
