@@ -663,6 +663,21 @@ do $$ begin
   update public.timetable_slots set deleted_at = null where user_id = 'bbbbbbbb-0000-0000-0000-000000000002' and deleted_at is not null;
   raise exception 'RLS TEST FAILED: Undo brought back a slot over the cap';
 exception when check_violation then null; end $$;
+-- with 300 live and 300 soft-deleted rows (a replace import's Undo window), an upsert that only
+-- updates an existing slot is not refused by the 600-row backstop; a real new row still is
+delete from public.timetable_slots where user_id = 'bbbbbbbb-0000-0000-0000-000000000002';
+insert into public.timetable_slots (user_id, kind, tz, start_date, start_min, end_min, recurrence, deleted_at)
+  select 'bbbbbbbb-0000-0000-0000-000000000002', 'study', 'UTC', date '2026-10-19' + g, 600, 660, 'none', case when g > 300 then now() end from generate_series(1, 600) g;
+insert into public.timetable_slots (id, user_id, kind, tz, start_date, start_min, end_min, recurrence)
+  select id, user_id, kind, tz, start_date, 700, 760, recurrence from public.timetable_slots
+  where user_id = 'bbbbbbbb-0000-0000-0000-000000000002' and deleted_at is null limit 5
+  on conflict (id) do update set start_min = excluded.start_min, end_min = excluded.end_min;
+select pg_temp.check((select count(*) from public.timetable_slots where user_id = 'bbbbbbbb-0000-0000-0000-000000000002' and start_min = 700) = 5, 'upsert updates are not counted as new rows by the backstop');
+update public.timetable_slots set deleted_at = now() where id = (select id from public.timetable_slots where user_id = 'bbbbbbbb-0000-0000-0000-000000000002' and deleted_at is null limit 1);
+do $$ begin
+  insert into public.timetable_slots (user_id, kind, tz, start_date, start_min, end_min, recurrence) values ('bbbbbbbb-0000-0000-0000-000000000002', 'study', 'UTC', '2026-10-19', 600, 660, 'none');
+  raise exception 'RLS TEST FAILED: 601st row accepted';
+exception when check_violation then null; end $$;
 delete from public.timetable_slots where user_id = 'bbbbbbbb-0000-0000-0000-000000000002';
 -- the calendar link: the token must match its hash
 insert into public.calendar_links (user_id, token, token_hash) values

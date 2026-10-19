@@ -68,7 +68,10 @@ begin
       raise exception 'timetable slot limit reached' using errcode = 'check_violation';
     end if;
   end if;
-  if tg_op = 'INSERT' and (select count(*) from public.timetable_slots where user_id = new.user_id) >= 600 then
+  -- An upsert (applyImport, undoImport) fires this on INSERT for rows that already exist; it adds
+  -- no row, so the backstop only counts real new rows.
+  if tg_op = 'INSERT' and (select count(*) from public.timetable_slots where user_id = new.user_id) >= 600
+     and not exists (select 1 from public.timetable_slots where id = new.id) then
     raise exception 'timetable slot limit reached' using errcode = 'check_violation';
   end if;
   return new;
