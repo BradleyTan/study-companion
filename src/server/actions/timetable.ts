@@ -245,7 +245,12 @@ export async function addImport(raw: unknown): Promise<ActionResult<Slots & { ba
     // Weeks already past stay part of the class: keep the earlier start of the same weekly class.
     const from = dayOf(was.startDate), to = dayOf(core.startDate);
     if (was.recurrence === "weekly" && core.recurrence === "weekly" && from < to && (to - from) % 7 === 0 && was.tz === core.tz) {
-      const merged = cleanSkips({ ...core, startDate: was.startDate, skipDates: [...was.skipDates.filter((d) => dayOf(d) < to), ...core.skipDates] });
+      // Weeks between them that weren't dates of the earlier class (a break after its last date)
+      // stay skipped, so the merged class never fills a holiday.
+      const wasUntil = was.repeatUntil ? dayOf(was.repeatUntil) : Infinity;
+      const between: string[] = [];
+      for (let d = from; d < to; d += 7) if (d > wasUntil) between.push(isoOf(d));
+      const merged = cleanSkips({ ...core, startDate: was.startDate, skipDates: [...was.skipDates.filter((d) => dayOf(d) < to), ...between, ...core.skipDates] });
       if (merged.length <= MAX_SKIPS) { core.startDate = was.startDate; core.skipDates = merged; }
     }
     update.push({ id: was.id, next: { ...core, importUid: c.key } });

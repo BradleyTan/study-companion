@@ -169,6 +169,47 @@ describe("import", () => {
     ]);
   });
 
+  it("a re-import during a long break never fills the break with classes", async () => {
+    // Autumn term, four weeks off at Christmas, spring term: two weekly runs of the same class.
+    const year = [
+      "BEGIN:VCALENDAR", "BEGIN:VEVENT", "UID:lec", "SUMMARY:BIOL1001 Lecture",
+      "DTSTART;TZID=Europe/London:20261019T100000", "DTEND;TZID=Europe/London:20261019T110000",
+      "RRULE:FREQ=WEEKLY;UNTIL=20270301T235959Z",
+      "EXDATE;TZID=Europe/London:20261214T100000,20261221T100000,20261228T100000,20270104T100000",
+      "END:VEVENT", "END:VCALENDAR", "",
+    ].join("\r\n");
+    const run = async () => {
+      const res = await previewImport(icsFile(year));
+      if (!res.ok) throw new Error(res.error);
+      const r = await addImport({ classes: res.preview.classes.map((c) => ({ ...c, subjectId: null })), replace: true, fileKeys: res.preview.classes.map((c) => c.key) });
+      expect(r.ok).toBe(true);
+    };
+    const meets = (day: string) => calendarDates().includes(day);
+    const calendarDates = () => {
+      const out: string[] = [];
+      for (const s of slotsNow) {
+        for (let d = Date.parse(s.startDate); d <= Date.parse(s.repeatUntil ?? s.startDate); d += 7 * 86_400_000) {
+          const iso = new Date(d).toISOString().slice(0, 10);
+          if (!s.skipDates.includes(iso)) out.push(iso);
+          if (s.recurrence === "none") break;
+        }
+      }
+      return out;
+    };
+    let slotsNow = [] as Awaited<ReturnType<Repo["listSlots"]>>;
+    await run();
+    slotsNow = await repo.listSlots();
+    expect(slotsNow).toHaveLength(2);
+    expect(meets("2026-12-21")).toBe(false);
+
+    // Re-imported in the holidays: the autumn run is over, only the spring run is in the file's future.
+    vi.setSystemTime(new Date("2026-12-16T12:00:00Z"));
+    await run();
+    slotsNow = await repo.listSlots();
+    for (const d of ["2026-12-14", "2026-12-21", "2026-12-28", "2027-01-04"]) expect(meets(d), d).toBe(false);
+    for (const d of ["2026-10-19", "2026-12-07", "2027-01-11", "2027-03-01"]) expect(meets(d), d).toBe(true);
+  });
+
   it("without Replace, classes imported before are left alone", async () => {
     const res = await previewImport(icsFile(fixture));
     if (!res.ok) throw new Error(res.error);
