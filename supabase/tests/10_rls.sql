@@ -521,6 +521,99 @@ set role authenticated;
 set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
 select pg_temp.check((select count(*) from public.chat_messages where feedback is null) = 2, 'A chat unchanged by B');
 
+-- ===== Step 4 part 1: study sessions (server-written, read-only to students) and timer settings
+-- Timer settings sit on the profile, which students update themselves, inside the stepper ranges.
+update public.profiles set timer_focus_min = 30, timer_short_min = 7, timer_long_min = 20, timer_long_every = 3, timer_auto_start = true, focus_quiet = false;
+select pg_temp.check((select timer_focus_min = 30 and timer_short_min = 7 and timer_long_every = 3 and timer_auto_start and not focus_quiet from public.profiles), 'A saves timer settings');
+do $$ begin
+  update public.profiles set timer_focus_min = 7;
+  raise exception 'RLS TEST FAILED: a 7-minute focus default accepted (step 5)';
+exception when check_violation then null; end $$;
+do $$ begin
+  update public.profiles set timer_focus_min = 125;
+  raise exception 'RLS TEST FAILED: a 125-minute focus default accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  update public.profiles set timer_short_min = 0;
+  raise exception 'RLS TEST FAILED: a 0-minute short break accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  update public.profiles set timer_long_every = 9;
+  raise exception 'RLS TEST FAILED: a long break every 9 rounds accepted';
+exception when check_violation then null; end $$;
+-- B can't change A's timer settings
+set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
+update public.profiles set timer_focus_min = 120 where user_id = 'aaaaaaaa-0000-0000-0000-000000000001';
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+select pg_temp.check((select timer_focus_min from public.profiles) = 30, 'B cannot change A timer settings');
+
+reset role;
+insert into public.study_sessions (id, user_id, subject_id, kind, planned_sec, focused_sec, completed, started_at, ended_at, client_key) values
+  ('5a000000-0000-0000-0000-000000000051', 'aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'focus', 1500, 1500, true, '2026-10-19 09:00+00', '2026-10-19 09:25+00', '0d000000-0000-4000-8000-000000000001'),
+  ('5a000000-0000-0000-0000-000000000052', 'aaaaaaaa-0000-0000-0000-000000000001', null, 'short_break', 300, 300, true, '2026-10-19 09:25+00', '2026-10-19 09:30+00', '0d000000-0000-4000-8000-000000000002');
+-- shape checks
+do $$ begin
+  insert into public.study_sessions (user_id, kind, planned_sec, focused_sec, completed, started_at, ended_at, client_key)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', 'focus', 1500, 59, false, '2026-10-19 10:00+00', '2026-10-19 10:01+00', gen_random_uuid());
+  raise exception 'RLS TEST FAILED: a round under a minute was saved';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.study_sessions (user_id, kind, planned_sec, focused_sec, completed, started_at, ended_at, client_key)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', 'focus', 1500, 1500, true, '2026-10-19 10:00+00', '2026-10-19 10:10+00', gen_random_uuid());
+  raise exception 'RLS TEST FAILED: more focused time than wall-clock time accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.study_sessions (user_id, kind, planned_sec, focused_sec, completed, started_at, ended_at, client_key)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', 'focus', 10860, 10860, true, '2026-10-19 10:00+00', '2026-10-19 14:00+00', gen_random_uuid());
+  raise exception 'RLS TEST FAILED: a round over 180 minutes accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.study_sessions (user_id, kind, planned_sec, focused_sec, completed, started_at, ended_at, client_key)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', 'nap', 1500, 1500, true, '2026-10-19 10:00+00', '2026-10-19 10:30+00', gen_random_uuid());
+  raise exception 'RLS TEST FAILED: unknown kind accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.study_sessions (user_id, kind, planned_sec, focused_sec, completed, started_at, ended_at, client_key)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', 'focus', 1500, 1500, true, '2026-10-19 11:00+00', '2026-10-19 11:30+00', '0d000000-0000-4000-8000-000000000001');
+  raise exception 'RLS TEST FAILED: client key reused';
+exception when unique_violation then null; end $$;
+-- even the server can't log B's round under A's subject (composite FK)
+do $$ begin
+  insert into public.study_sessions (user_id, subject_id, kind, planned_sec, focused_sec, completed, started_at, ended_at, client_key)
+    values ('bbbbbbbb-0000-0000-0000-000000000002', '5a000000-0000-0000-0000-000000000001', 'focus', 1500, 1500, true, '2026-10-19 10:00+00', '2026-10-19 10:30+00', gen_random_uuid());
+  raise exception 'RLS TEST FAILED: server put a B round in an A subject';
+exception when foreign_key_violation then null; end $$;
+-- cap: at most 10,000 sessions per student
+insert into public.study_sessions (user_id, kind, planned_sec, focused_sec, completed, started_at, ended_at, client_key)
+  select 'aaaaaaaa-0000-0000-0000-000000000001', 'focus', 1500, 1500, true, '2026-01-01 00:00+00'::timestamptz + g * interval '1 hour', '2026-01-01 00:30+00'::timestamptz + g * interval '1 hour', gen_random_uuid()
+  from generate_series(3, 10000) g;
+do $$ begin
+  insert into public.study_sessions (user_id, kind, planned_sec, focused_sec, completed, started_at, ended_at, client_key)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', 'focus', 1500, 1500, true, '2026-10-20 10:00+00', '2026-10-20 10:30+00', gen_random_uuid());
+  raise exception 'RLS TEST FAILED: 10,001st study session accepted';
+exception when check_violation then null; end $$;
+delete from public.study_sessions where id not in ('5a000000-0000-0000-0000-000000000051', '5a000000-0000-0000-0000-000000000052');
+
+-- A reads own sessions but can't write them
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+select pg_temp.check((select count(*) from public.study_sessions) = 2, 'A sees own study sessions');
+do $$ begin
+  insert into public.study_sessions (kind, planned_sec, focused_sec, completed, started_at, ended_at, client_key)
+    values ('focus', 1500, 1500, true, '2026-10-19 12:00+00', '2026-10-19 12:25+00', gen_random_uuid());
+  raise exception 'RLS TEST FAILED: student inserted a study session directly';
+exception when insufficient_privilege then null; end $$;
+update public.study_sessions set focused_sec = 9000, planned_sec = 9000;
+delete from public.study_sessions;
+select pg_temp.check((select sum(focused_sec) from public.study_sessions) = 1800, 'student cannot rewrite or delete study sessions');
+-- B sees and changes none of it
+set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
+select pg_temp.check((select count(*) from public.study_sessions) = 0, 'B cannot see A study sessions');
+update public.study_sessions set focused_sec = 60;
+delete from public.study_sessions;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+select pg_temp.check((select sum(focused_sec) from public.study_sessions) = 1800, 'A study sessions unchanged by B');
+
 -- ===== anon sees nothing
 reset request.jwt.claim.sub;
 set role anon;
@@ -548,10 +641,13 @@ select pg_temp.check((select count(*) from public.notes) + (select count(*) from
   + (select count(*) from public.flashcards) + (select count(*) from public.card_reviews) + (select count(*) from public.mindmaps)
   + (select count(*) from public.quizzes) + (select count(*) from public.questions) + (select count(*) from public.quiz_attempts)
   + (select count(*) from public.answers) + (select count(*) from public.weak_topics) + (select count(*) from public.chat_messages) = 0, 'subject delete cascades');
+-- study time stays after its subject is deleted, as "No subject"
+select pg_temp.check((select count(*) from public.study_sessions where subject_id is null) = 2, 'study sessions survive subject delete as No subject');
 
 reset role;
 -- deleting a user removes their profile
 delete from auth.users where id = 'aaaaaaaa-0000-0000-0000-000000000001';
 select pg_temp.check((select count(*) from public.profiles where user_id = 'aaaaaaaa-0000-0000-0000-000000000001') = 0, 'account delete cascades');
+select pg_temp.check((select count(*) from public.study_sessions where user_id = 'aaaaaaaa-0000-0000-0000-000000000001') = 0, 'account delete removes study sessions');
 
 select 'ALL RLS TESTS PASSED' as result;
