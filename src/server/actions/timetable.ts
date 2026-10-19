@@ -279,11 +279,17 @@ export async function addImport(raw: unknown): Promise<ActionResult<Slots & { ba
   return { ok: true, batch, added: insert.length + update.length, firstDate: dates.find((d) => d >= today) ?? dates[0], slots: await repo.listSlots() };
 }
 
+/** How long after an import its Undo still works on the server. */
+const IMPORT_UNDO_MS = 5 * 60_000;
+
 export async function undoImport(raw: unknown): Promise<ActionResult<Slots>> {
   const parsed = undoImportInput.safeParse(raw);
   if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
   const repo = await getRepo();
-  await repo.undoImport(parsed.data.batch);
+  // The toast offers Undo for 6 seconds; the server takes it for a few minutes (slow networks), and
+  // only for the latest import (S4-3). Later, the student deletes classes themselves.
+  const n = await repo.undoImport(parsed.data.batch, new Date(Date.now() - IMPORT_UNDO_MS).toISOString());
+  if (!n) return { ok: false, error: "That import can't be undone any more." };
   return { ok: true, slots: await repo.listSlots() };
 }
 

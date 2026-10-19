@@ -241,6 +241,35 @@ describe("import", () => {
     expect(await addImport({ classes, replace: false, fileKeys: [] })).toEqual({ ok: false, error: "Those classes are already in your timetable." });
   });
 
+  it("Undo works only for the latest import and only for a few minutes (S4-3)", async () => {
+    const res = await previewImport(icsFile(fixture));
+    if (!res.ok) throw new Error(res.error);
+    const classes = res.preview.classes.map((c) => ({ ...c, subjectId: null }));
+    const first = (await addImport({ classes: classes.slice(0, 2), replace: false, fileKeys: [] })) as { ok: true; batch: string };
+    const second = (await addImport({ classes: classes.slice(2), replace: false, fileKeys: [] })) as { ok: true; batch: string };
+    expect(first.ok && second.ok).toBe(true);
+    const before = (await repo.listSlots()).map((s) => s.id).sort();
+    // A new import ends the earlier one's Undo: a late or replayed call changes nothing.
+    expect(await undoImport({ batch: first.batch })).toEqual({ ok: false, error: "That import can't be undone any more." });
+    expect((await repo.listSlots()).map((s) => s.id).sort()).toEqual(before);
+    // A batch id that was never ours, or isn't an import, changes nothing either.
+    expect(await undoImport({ batch: crypto.randomUUID() })).toMatchObject({ ok: false });
+    // Five minutes later the latest one can't be undone on the server either.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 6 * 60_000);
+    try {
+      expect(await undoImport({ batch: second.batch })).toMatchObject({ ok: false });
+    } finally {
+      vi.useRealTimers();
+    }
+    expect((await repo.listSlots()).map((s) => s.id).sort()).toEqual(before);
+    // Within the window it works, once.
+    const third = (await addImport({ classes, replace: true, fileKeys: classes.map((c) => c.key) })) as { ok: true; batch: string };
+    expect(third.ok).toBe(true);
+    expect((await undoImport({ batch: third.batch })).ok).toBe(true);
+    expect(await undoImport({ batch: third.batch })).toMatchObject({ ok: false });
+  });
+
   it("refuses forged classes", async () => {
     const bad = { key: "k", subjectId: null, title: "X", location: null, startDate: "2026-10-19", startMin: 600, endMin: 2000, recurrence: "none", repeatUntil: null, skipDates: [] };
     expect(await addImport({ classes: [bad], replace: false, fileKeys: [] })).toMatchObject({ ok: false });

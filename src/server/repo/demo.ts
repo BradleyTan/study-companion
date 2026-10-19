@@ -611,7 +611,7 @@ export function demoRepo(userId: string): Repo {
         checkSlotRow(r);
         if (r.subjectId && !own(store.subjects.get(r.subjectId))) throw new Error("subject not found");
         if (r.importUid && mySlots().some((x) => !x.deletedAt && x.importUid === r.importUid)) throw new Error("duplicate import key");
-        const row: Owned<DemoSlot> = { ...coreOf(r), source: r.source, importUid: r.importUid, importBatch: r.importBatch, id: crypto.randomUUID(), userId, createdAt: at, updatedAt: at, deletedAt: null, importPrev: null };
+        const row: Owned<DemoSlot> = { ...coreOf(r), source: r.source, importUid: r.importUid, importBatch: r.importBatch, id: crypto.randomUUID(), userId, createdAt: at, updatedAt: at, deletedAt: null, importPrev: r.importPrev ? structuredClone(r.importPrev) : null };
         return row;
       });
       for (const row of made) store.slots.set(row.id, row);
@@ -636,33 +636,35 @@ export function demoRepo(userId: string): Repo {
       for (const x of mySlots()) if (x.deletedAt && x.deletedAt < beforeIso) store.slots.delete(x.id);
     },
     async applyImport(batch, ops) {
-      for (const x of mySlots()) if (x.importPrev && !x.deletedAt) x.importPrev = null;
-      await repo.createSlots(ops.insert);
+      // A new import ends the previous one's Undo (removed rows waiting for the purge included).
+      for (const x of mySlots()) if (x.importPrev) x.importPrev = null;
+      const at = now();
+      await repo.createSlots(ops.insert.map((r) => ({ ...r, importPrev: { batch, at, added: true } })));
       try {
         for (const u of ops.update) {
           const x = own(store.slots.get(u.id));
           if (!x || x.deletedAt) continue;
           const before = { ...coreOf(x), importBatch: x.importBatch };
-          const next = { ...x, ...coreOf(u.next), importUid: u.next.importUid, importBatch: batch, importPrev: { batch, before }, updatedAt: now() };
+          const next = { ...x, ...coreOf(u.next), importUid: u.next.importUid, importBatch: batch, importPrev: { batch, at, before }, updatedAt: now() };
           checkSlotRow(next);
           Object.assign(x, next);
         }
         for (const id of ops.remove) {
           const x = own(store.slots.get(id));
-          if (x && !x.deletedAt) Object.assign(x, { deletedAt: now(), importPrev: { batch, removed: true } });
+          if (x && !x.deletedAt) Object.assign(x, { deletedAt: now(), importPrev: { batch, at, removed: true } });
         }
       } catch (e) {
-        await repo.undoImport(batch);
+        await repo.undoImport(batch, at);
         throw e;
       }
     },
-    async undoImport(batch) {
+    async undoImport(batch, sinceIso) {
       let n = 0;
       for (const x of mySlots()) {
-        if (x.importBatch === batch && !x.importPrev && !x.deletedAt) { store.slots.delete(x.id); n++; continue; }
         const prev = x.importPrev;
-        if (!prev || prev.batch !== batch) continue;
-        if ("removed" in prev) Object.assign(x, { deletedAt: null, importPrev: null });
+        if (!prev || prev.batch !== batch || !(Date.parse(prev.at) >= Date.parse(sinceIso))) continue;
+        if ("added" in prev) store.slots.delete(x.id);
+        else if ("removed" in prev) Object.assign(x, { deletedAt: null, importPrev: null });
         else Object.assign(x, { ...coreOf(prev.before), importBatch: prev.before.importBatch, importPrev: null });
         n++;
       }

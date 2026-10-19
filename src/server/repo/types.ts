@@ -262,9 +262,13 @@ export type TimetableSlot = SlotLike & {
   createdAt: string;
   updatedAt: string;
 };
-export type NewTimetableSlot = SlotCore & Pick<TimetableSlot, "source" | "importUid" | "importBatch">;
-/** What a re-import changed (so its Undo can put it back). Server-only bookkeeping. */
-export type ImportPrev = { batch: string; removed: true } | { batch: string; before: SlotCore & { importBatch: string | null } };
+export type NewTimetableSlot = SlotCore & Pick<TimetableSlot, "source" | "importUid" | "importBatch"> & { importPrev?: ImportPrev };
+/**
+ * What an import did to a slot (so its Undo can take it back): added it, removed it, or changed it
+ * from `before`. `at` is when. Server-only bookkeeping; the next import clears it, so only the
+ * latest import can be undone, and only for a few minutes (S4-3).
+ */
+export type ImportPrev = { batch: string; at: string } & ({ added: true } | { removed: true } | { before: SlotCore & { importBatch: string | null } });
 export type SlotPatch = Partial<SlotCore> & { importBatch?: string | null; importPrev?: ImportPrev | null };
 
 /** The student's private calendar link (server-only; never in the export). */
@@ -465,7 +469,8 @@ export interface Repo {
    */
   applyImport(batch: string, ops: { insert: NewTimetableSlot[]; update: { id: string; next: SlotCore & { importUid: string } }[]; remove: string[] }): Promise<void>;
   /** Undoes an import batch: deletes its new classes and puts updated and removed ones back. */
-  undoImport(batch: string): Promise<number>;
+  /** Takes back what import `batch` did, if it is the latest import and was made at or after `sinceIso`. */
+  undoImport(batch: string, sinceIso: string): Promise<number>;
 
   getCalendarLink(): Promise<CalendarLink | null>;
   /** Creates or replaces the link (a reset): the old token stops working at once. */

@@ -935,7 +935,7 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
     },
     async createSlots(rows) {
       if (!rows.length) return [];
-      const ins = rows.map((r: NewTimetableSlot) => ({ ...slotRow(coreOf(r)), user_id: userId, source: r.source, import_uid: r.importUid, import_batch: r.importBatch }));
+      const ins = rows.map((r: NewTimetableSlot) => ({ ...slotRow(coreOf(r)), user_id: userId, source: r.source, import_uid: r.importUid, import_batch: r.importBatch, import_prev: r.importPrev ?? null }));
       const { data, error } = await admin().from("timetable_slots").insert(ins).select(SLOT_COLS);
       fail(error, "createSlots");
       return (data ?? []).map(toSlot);
@@ -950,9 +950,10 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
       fail((await admin().from("timetable_slots").delete().eq("user_id", userId).lt("deleted_at", beforeIso)).error, "purgeDeletedSlots");
     },
     async applyImport(batch, ops) {
-      // A new import ends the previous one's Undo.
-      fail((await admin().from("timetable_slots").update({ import_prev: null }).eq("user_id", userId).is("deleted_at", null).not("import_prev", "is", null)).error, "applyImport");
-      await repo.createSlots(ops.insert);
+      // A new import ends the previous one's Undo (removed rows waiting for the purge included).
+      fail((await admin().from("timetable_slots").update({ import_prev: null }).eq("user_id", userId).not("import_prev", "is", null)).error, "applyImport");
+      const at = new Date().toISOString();
+      await repo.createSlots(ops.insert.map((r) => ({ ...r, importPrev: { batch, at, added: true } })));
       try {
         if (ops.update.length) {
           const ids = ops.update.map((u) => u.id);
@@ -961,35 +962,39 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
           const byId = new Map((cur.data ?? []).map((r) => [r.id as string, toSlot(r)]));
           const rows = ops.update.filter((u) => byId.has(u.id)).map((u) => {
             const was = byId.get(u.id)!;
-            const prev: ImportPrev = { batch, before: { ...coreOf(was), importBatch: was.importBatch } };
+            const prev: ImportPrev = { batch, at, before: { ...coreOf(was), importBatch: was.importBatch } };
             return { ...slotRow(coreOf(u.next)), id: u.id, user_id: userId, source: "import", import_uid: u.next.importUid, import_batch: batch, import_prev: prev };
           });
           if (rows.length) fail((await admin().from("timetable_slots").upsert(rows, { onConflict: "id" })).error, "applyImport");
         }
         if (ops.remove.length) {
-          const prev: ImportPrev = { batch, removed: true };
+          const prev: ImportPrev = { batch, at, removed: true };
           fail((await admin().from("timetable_slots").update({ deleted_at: new Date().toISOString(), import_prev: prev }).eq("user_id", userId).is("deleted_at", null).in("id", ops.remove)).error, "applyImport");
         }
       } catch (e) {
-        await repo.undoImport(batch);
+        await repo.undoImport(batch, at);
         throw e;
       }
     },
-    async undoImport(batch) {
-      const added = await admin().from("timetable_slots").delete().eq("user_id", userId).eq("import_batch", batch).is("import_prev", null).select("id");
-      fail(added.error, "undoImport");
+    async undoImport(batch, sinceIso) {
+      // Only rows this import touched still carry its batch in import_prev (the next import clears it).
       const touched = await admin().from("timetable_slots").select("id, import_prev").eq("user_id", userId).filter("import_prev->>batch", "eq", batch);
       fail(touched.error, "undoImport");
+      const since = Date.parse(sinceIso);
+      const added: string[] = [];
       const restore: Row[] = [];
       const undelete: string[] = [];
       for (const r of touched.data ?? []) {
         const prev = r.import_prev as ImportPrev;
-        if ("removed" in prev) undelete.push(r.id as string);
+        if (!(Date.parse(prev.at) >= since)) continue;
+        if ("added" in prev) added.push(r.id as string);
+        else if ("removed" in prev) undelete.push(r.id as string);
         else restore.push({ ...slotRow(prev.before), id: r.id, user_id: userId, source: "import", import_batch: prev.before.importBatch, import_prev: null });
       }
+      if (added.length) fail((await admin().from("timetable_slots").delete().eq("user_id", userId).in("id", added)).error, "undoImport");
       if (restore.length) fail((await admin().from("timetable_slots").upsert(restore, { onConflict: "id" })).error, "undoImport");
       if (undelete.length) fail((await admin().from("timetable_slots").update({ deleted_at: null, import_prev: null }).eq("user_id", userId).in("id", undelete)).error, "undoImport");
-      return (added.data?.length ?? 0) + restore.length + undelete.length;
+      return added.length + restore.length + undelete.length;
     },
 
     // The calendar link table is server-only (no student access at all): secret key, pinned.
