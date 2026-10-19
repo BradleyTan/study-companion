@@ -270,6 +270,19 @@ describe("import", () => {
     expect(await undoImport({ batch: third.batch })).toMatchObject({ ok: false });
   });
 
+  it("a hostile calendar file costs well under a second to preview (S4-1)", async () => {
+    // 1 MB of events that each repeat daily for ever took about 5 s of server CPU before the date budget.
+    let text = "BEGIN:VCALENDAR\r\n";
+    for (let i = 0; text.length < 1_000_000; i++) {
+      text += `BEGIN:VEVENT\r\nUID:${i}\r\nSUMMARY:E${i}\r\nDTSTART;TZID=Europe/London:20261020T100000\r\nDTEND;TZID=Europe/London:20261020T110000\r\nRRULE:FREQ=DAILY;COUNT=100000000\r\nEND:VEVENT\r\n`;
+    }
+    const t0 = performance.now();
+    const res = await previewImport(icsFile(text + "END:VCALENDAR\r\n"));
+    expect(performance.now() - t0).toBeLessThan(2500);
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.preview.leftOut).toContain("over the import limit");
+  });
+
   it("refuses forged classes", async () => {
     const bad = { key: "k", subjectId: null, title: "X", location: null, startDate: "2026-10-19", startMin: 600, endMin: 2000, recurrence: "none", repeatUntil: null, skipDates: [] };
     expect(await addImport({ classes: [bad], replace: false, fileKeys: [] })).toMatchObject({ ok: false });

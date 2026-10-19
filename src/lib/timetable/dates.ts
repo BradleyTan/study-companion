@@ -36,14 +36,23 @@ export function weekStartOf(day: number, weekStart: "mon" | "sun" = "mon"): numb
   return day - (weekStart === "mon" ? (wd + 6) % 7 : wd);
 }
 
+// Building an Intl.DateTimeFormat is slow, and an imported file can name thousands of zones, so
+// answers are remembered (bounded, so a hostile file can't grow it without limit).
+const validZones = new Map<string, boolean>();
 export function isValidTimeZone(tz: string): boolean {
   if (!tz || tz.length > 64) return false;
+  const known = validZones.get(tz);
+  if (known !== undefined) return known;
+  let ok: boolean;
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: tz });
-    return true;
+    ok = true;
   } catch {
-    return false;
+    ok = false;
   }
+  if (validZones.size >= 2000) validZones.clear();
+  validZones.set(tz, ok);
+  return ok;
 }
 
 const formatters = new Map<string, Intl.DateTimeFormat>();

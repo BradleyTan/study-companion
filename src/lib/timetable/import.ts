@@ -18,6 +18,12 @@ export { IMPORT_HORIZON_WEEKS, IMPORT_MAX_BYTES, IMPORT_MAX_CLASSES } from "./li
 const MAX_OCCURRENCES = 5000;
 /** Work budget for stepping through repeat rules (keeps a hostile file cheap). */
 const MAX_STEPS = 200_000;
+/**
+ * Most dates worked out across the whole file. Each one costs a few time zone conversions, so
+ * this, not MAX_STEPS, bounds the CPU a hostile file can take (5,000 daily repeats took 5 s before
+ * it). A real timetable has a few thousand dates at most within 26 weeks.
+ */
+const MAX_DATES_WORKED = 8_000;
 /** A gap of more than 4 weeks starts a new class instead of skipping weeks. */
 const MAX_GAP_DAYS = 28;
 
@@ -160,6 +166,7 @@ function expand(ev: IcsEvent, ctx: Ctx, overrides: Set<number>): { occ: { start:
   const out: { start: number; end: number }[] = [];
   const push = (day: number, min: number) => {
     if (exDays.has(day) || exKeys.has(wallKey(day, min))) return;
+    if (ctx.budget.dates-- <= 0) return;
     const st = tz === "UTC" ? day * DAY_MS + min * 60_000 : instantOf(tz, day, min);
     out.push({ start: st, end: st + dur });
   };
@@ -188,6 +195,8 @@ function expand(ev: IcsEvent, ctx: Ctx, overrides: Set<number>): { occ: { start:
       if (d > endDay || wallKey(d, local0.min) > untilKey) break;
       if (rule.count !== null && n >= rule.count) break;
       n++;
+      // Dates well before today (a COUNT rule that started long ago) are only counted: they're past.
+      if (d < ctx.today - 2) continue;
       push(d, local0.min);
       if (out.length > MAX_OCCURRENCES) break;
     }
@@ -195,9 +204,11 @@ function expand(ev: IcsEvent, ctx: Ctx, overrides: Set<number>): { occ: { start:
   }
   for (const r of ev.rdates) {
     if (r.kind === "date") { push(r.day, local0.min); continue; }
+    if (ctx.budget.dates-- <= 0) break;
     const at = instant(r, ctx.zoneOf, ctx.floating);
     if (at !== null) out.push({ start: at, end: at + dur });
   }
+  if (ctx.budget.dates < 0) return { occ: [], fail: "overLimit" };
   return { occ: out };
 }
 
@@ -206,7 +217,7 @@ type Ctx = {
   floating: string;
   today: number;
   windowEndDay: number;
-  budget: { steps: number };
+  budget: { steps: number; dates: number };
 };
 
 const keyHash = (s: string) => createHash("sha256").update(s).digest("base64url").slice(0, 32);
@@ -236,7 +247,7 @@ export function planImport(file: IcsFile, tz: string, now: number): ImportPlan {
     return zoneCache.get(tzid)!;
   };
   const calZone = file.calendarZone ? zoneFromName(file.calendarZone) : null;
-  const ctx: Ctx = { zoneOf, floating: calZone ?? tz, today, windowEndDay, budget: { steps: MAX_STEPS } };
+  const ctx: Ctx = { zoneOf, floating: calZone ?? tz, today, windowEndDay, budget: { steps: MAX_STEPS, dates: MAX_DATES_WORKED } };
 
   // Moved or cancelled weeks (RECURRENCE-ID) take that date out of their series.
   const masters = new Map<string, IcsEvent>();
