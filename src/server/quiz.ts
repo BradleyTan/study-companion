@@ -257,11 +257,12 @@ export function weakSummary(topics: WeakTopic[]): WeakSummary {
 }
 
 /** Subject page: the Quizzes tile line and the weak-topics strip. */
-export async function subjectQuizSummary(repo: Repo, subjectId: string): Promise<{ quizzes: number; best: { score: number; total: number } | null; unfinished: { answered: number; total: number } | null; weak: WeakSummary }> {
+export async function subjectQuizSummary(repo: Repo, subjectId: string): Promise<{ quizzes: number; best: { score: number; total: number } | null; tries: number; unfinished: { answered: number; total: number } | null; weak: WeakSummary }> {
   const { quizzes, weak } = await shelf(repo, subjectId);
+  const tries = quizzes.reduce((n, q) => n + q.tries, 0);
   const best = quizzes.reduce<{ score: number; total: number } | null>((b, q) => (q.best && (!b || q.best.score / q.best.total > b.score / b.total) ? q.best : b), null);
   const open = quizzes.find((q) => q.unfinished && q.unfinished.answered > 0)?.unfinished ?? null;
-  return { quizzes: quizzes.length, best, unfinished: open ? { answered: open.answered, total: open.total } : null, weak };
+  return { quizzes: quizzes.length, best, tries, unfinished: open ? { answered: open.answered, total: open.total } : null, weak };
 }
 
 export type TopicSource = { key: string } & ({ kind: "note"; title: string; href: string } | { kind: "file"; title: string; page: number | null; href: string } | { kind: "deleted" });

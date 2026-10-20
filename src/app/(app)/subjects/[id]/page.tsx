@@ -4,7 +4,9 @@ import { NewNoteButton } from "@/components/new-note-button";
 import { NoteRow } from "@/components/note-row";
 import { WeakStrip } from "@/components/quiz/weak-strip";
 import { StudyTools } from "@/components/study-tools";
+import { StartHere } from "@/components/start-here";
 import { SubjectHeader } from "@/components/subject-header";
+import { subjectStyle } from "@/components/ui/subject-style";
 import { StudyStrip } from "@/components/timer/study-strip";
 import { Uploads } from "@/components/uploads";
 import { supabaseConfig } from "@/lib/env";
@@ -43,12 +45,16 @@ export default async function SubjectPage({ params }: PageProps<"/subjects/[id]"
       .catch(() => undefined),
   ]);
 
+  // First run: nothing to study from yet (polish.md P1-1).
+  const empty = notes.length === 0 && sources.length === 0;
+
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-8" style={subjectStyle(subject.colour)}>
       <SubjectHeader subject={subject} />
-      <StudyTools subjectId={id} due={due?.total ?? null} cards={due?.cards ?? null} mindmapUpdatedAt={mindmap === undefined ? undefined : mindmap?.createdAt ?? null} quiz={quiz} chat={chat} />
+      {empty && <StartHere subjectId={id} />}
+      <StudyTools empty={empty} subjectId={id} due={due?.total ?? null} cards={due?.cards ?? null} mindmapUpdatedAt={mindmap === undefined ? undefined : mindmap?.createdAt ?? null} quiz={quiz} chat={chat} />
       {quiz && <WeakStrip subjectId={id} count={quiz.weak.count} names={quiz.weak.names} />}
-      <StudyStrip subjectId={id} name={subject.name} colour={subject.colour} next={next} />
+      <StudyStrip subjectId={id} name={subject.name} next={next} />
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
         <section aria-labelledby="notes-h" className="flex min-w-0 flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -56,7 +62,7 @@ export default async function SubjectPage({ params }: PageProps<"/subjects/[id]"
             {notes.length > 0 && <NewNoteButton subjectId={id} />}
           </div>
           {notes.length === 0 ? (
-            <div className="sticker-flat flex flex-col items-start gap-3 p-5">
+            <div className="flex flex-col items-start gap-3 rounded-lg border-[2.5px] border-dashed border-ink bg-card/70 p-5">
               <p>No notes yet. Type your first one.</p>
               <NewNoteButton subjectId={id} label="Write a note" />
             </div>
@@ -67,7 +73,7 @@ export default async function SubjectPage({ params }: PageProps<"/subjects/[id]"
           )}
         </section>
         <section aria-labelledby="files-h" className="flex min-w-0 flex-col gap-4">
-          <h2 id="files-h" className="text-2xl font-bold">Lecture files</h2>
+          <h2 id="files-h" className="scroll-mt-4 text-2xl font-bold">Lecture files</h2>
           <Uploads subjectId={id} subjectName={subject.name} sources={sources} supabase={supabaseConfig()} />
         </section>
       </div>

@@ -3,7 +3,6 @@ import Link from "next/link";
 import { hhmm } from "@/lib/timetable/dates";
 import type { NextClass } from "@/server/timetable";
 import { useSound } from "../sound-provider";
-import { SUBJECT_COLOURS, type SubjectColour } from "@/lib/subjects";
 import { clock } from "@/lib/timer/copy";
 import { displaySec, isActive, remainingMs } from "@/lib/timer/machine";
 import { formatDuration, weekFocusSec } from "@/lib/timer/tally";
@@ -13,9 +12,9 @@ import { useTimer } from "./timer-provider";
 /**
  * Subject page study strip (subject.md, Step 4): Start focus for this subject, this week's focus
  * time and the next class (or a Study block happening now). `next` undefined: it didn't load, so
- * that part is hidden.
+ * that part is hidden. The band takes `--subject` from the page root (subject page).
  */
-export function StudyStrip({ subjectId, name, colour, next }: { subjectId: string; name: string; colour: SubjectColour; next?: NextClass }) {
+export function StudyStrip({ subjectId, name, next }: { subjectId: string; name: string; next?: NextClass }) {
   const t = useTimer();
   const { play } = useSound();
   const { state } = t;
@@ -53,7 +52,7 @@ export function StudyStrip({ subjectId, name, colour, next }: { subjectId: strin
   }
 
   return (
-    <div className="strip study-strip" style={{ ["--subject" as string]: SUBJECT_COLOURS[colour] }} data-testid="study-strip">
+    <div className="strip study-strip" data-testid="study-strip">
       <div className="shrink-0">{action}</div>
       {week !== null && (
         <p className="min-w-0">
@@ -63,15 +62,15 @@ export function StudyStrip({ subjectId, name, colour, next }: { subjectId: strin
       {next !== undefined && (
         <p className="min-w-0 sm:ml-auto" data-testid="study-next">
           {next === null ? (
-            <Link href={`/timetable?add=1&subject=${subjectId}&kind=class`} className="font-bold underline underline-offset-4" onClick={() => play("click")}>Add a class</Link>
+            <Link href={`/timetable?add=1&subject=${subjectId}&kind=class`} className="inline-flex min-h-11 items-center font-bold underline underline-offset-4" onClick={() => play("click")}>Add a class</Link>
           ) : next.kind === "studyNow" ? (
             <>Study block now · until {hhmm(next.untilMin)}</>
           ) : (
             <Link
-              href={`/timetable?week=${next.date}`} className="underline underline-offset-4" onClick={() => play("click")}
+              href={`/timetable?week=${next.date}`} className="inline-flex min-h-11 items-center underline underline-offset-4" onClick={() => play("click")}
               aria-label={`Next class: ${next.title}, ${next.whenLong}${next.location ? `, ${next.location}` : ""}`}
             >
-              Next: <strong>{next.title}</strong>, {next.when}{next.location ? ` · ${next.location}` : ""}
+              <span>Next: <strong>{next.title}</strong>, {next.when}{next.location ? ` · ${next.location}` : ""}</span>
             </Link>
           )}
         </p>

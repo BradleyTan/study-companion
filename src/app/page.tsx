@@ -4,9 +4,9 @@ import { getCurrentUser } from "@/server/session";
 
 const STICKERS = [
   { emoji: "🗂️", title: "A folder per subject", text: "Notes and lecture slides live together, one colour per course." },
-  { emoji: "🃏", title: "Flashcards that come back", text: "Cards made from your notes return right before you'd forget them.", soon: true },
-  { emoji: "✅", title: "Quizzes on your weak spots", text: "Questions you miss come back in later quizzes until they stick.", soon: true },
-  { emoji: "⏱️", title: "Focus timer and timetable", text: "Pomodoro sessions logged per subject, plus your study plan.", soon: true },
+  { emoji: "🃏", title: "Flashcards that come back", text: "Make cards from your notes, then review them right before you'd forget." },
+  { emoji: "✅", title: "Quizzes on your weak spots", text: "Anything you miss goes on your weak-topics list until you've got it." },
+  { emoji: "⏱️", title: "Focus timer and timetable", text: "Pomodoro rounds per subject, your classes, and a link for your calendar." },
 ];
 
 export default async function Home({ searchParams }: PageProps<"/">) {
@@ -31,7 +31,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
           <li key={s.title} className="sticker flex gap-4 p-5" style={{ rotate: i % 2 ? "0.8deg" : "-0.8deg" }}>
             <span className="text-4xl" aria-hidden="true">{s.emoji}</span>
             <div>
-              <h2 className="text-lg font-bold">{s.title} {s.soon && <span className="chip ml-1">Coming soon</span>}</h2>
+              <h2 className="text-lg font-bold">{s.title}</h2>
               <p className="text-ink-soft">{s.text}</p>
             </div>
           </li>

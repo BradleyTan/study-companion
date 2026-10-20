@@ -7,6 +7,8 @@ import type { Subject } from "@/server/repo/types";
 import { SubjectFormDialog } from "./subject-form";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
+import { RowMenu } from "./ui/row-menu";
+import { useSound } from "./sound-provider";
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
@@ -14,13 +16,24 @@ export function SubjectHeader({ subject }: { subject: Subject }) {
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [pending, start] = useTransition();
+  const { play } = useSound();
   return (
     <div className="flex flex-col gap-3">
-      <Link href="/subjects" className="w-fit inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline">← All subjects</Link>
-      <div className="sticker on-colour flex flex-wrap items-center gap-4 p-5" style={{ background: SUBJECT_COLOURS[subject.colour] }}>
-        <span className="text-5xl" role="img" aria-hidden="true">{subject.emoji}</span>
-        <h1 className="font-display min-w-0 flex-1 break-words text-4xl">{subject.name}</h1>
-        <div className="flex gap-2">
+      <Link href="/subjects" className="w-fit inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline" onClick={() => play("click")}>← All subjects</Link>
+      <div className="sticker on-colour flex flex-wrap items-center gap-3 p-4 sm:gap-4 sm:p-5" style={{ background: SUBJECT_COLOURS[subject.colour] }}>
+        <span className="text-4xl sm:text-5xl" role="img" aria-hidden="true">{subject.emoji}</span>
+        {/* overflow-wrap:anywhere only splits a single word wider than the row; short words never break. */}
+        <h1 className="font-display min-w-0 flex-1 text-3xl hyphens-auto [overflow-wrap:anywhere] sm:text-4xl" data-testid="subject-title">{subject.name}</h1>
+        {/* Phones: one "⋯" menu keeps the title wide and the red Delete away from the thumb (polish.md P1-3). */}
+        <RowMenu
+          className="sm:hidden"
+          label={`More for ${subject.name}`}
+          items={[
+            { label: "Edit subject", onSelect: () => setEditing(true) },
+            { label: "Delete subject", onSelect: () => setConfirming(true), danger: true },
+          ]}
+        />
+        <div className="hidden gap-2 sm:flex">
           <Button size="sm" onClick={() => setEditing(true)}>Edit</Button>
           <Button size="sm" variant="danger" onClick={() => setConfirming(true)}>Delete</Button>
         </div>
