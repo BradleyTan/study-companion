@@ -13,10 +13,23 @@ export function topicKey(topic: string): string {
 export const TOPIC_MAX = 40;
 /** The database stops at 500 weak topics per subject (trigger); the server checks first. */
 export const WEAK_TOPICS_MAX = 500;
+/**
+ * Most hand-added topics (no passages yet) looked up by keyword in one Practise request. A request
+ * may tick up to 100 topics; this keeps one click to at most this many searches. A quiz has at
+ * most 15 questions, so more topics than this would not fit anyway.
+ */
+export const WEAK_KEYWORD_SEARCHES = 20;
 
-/** A typed topic name: control characters become spaces, runs of spaces collapse, ends trimmed. */
+/**
+ * A typed topic name: control characters become spaces, runs of spaces collapse, ends trimmed.
+ * Invisible format characters (bidi overrides and isolates, zero-width space, word joiner, BOM)
+ * are removed so a name can't display reversed or slip past the duplicate check. ZWJ and ZWNJ stay
+ * (emoji sequences and some scripts need them).
+ */
 export function cleanTopic(raw: string): string {
-  return raw.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").replace(/\s+/g, " ").trim();
+  return raw
+    .replace(/[\u200b\u200e\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g, "")
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").replace(/\s+/g, " ").trim();
 }
 
 /**

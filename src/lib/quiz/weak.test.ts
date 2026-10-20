@@ -9,6 +9,12 @@ describe("cleanTopic", () => {
     expect(cleanTopic("a\u0000b\u007fc")).toBe("a b c");
     expect(cleanTopic("   ")).toBe("");
   });
+  it("removes invisible bidi and zero-width characters but keeps emoji joiners", () => {
+    expect(cleanTopic("\u202eelcyc sberK\u202c")).toBe("elcyc sberK");
+    expect(cleanTopic("Os\u200bmo\u2066sis\u2069\ufeff")).toBe("Osmosis");
+    expect(cleanTopic("\u200b \u200b")).toBe("");
+    expect(cleanTopic("Lab \u{1F469}\u200d\u{1F52C}")).toBe("Lab \u{1F469}\u200d\u{1F52C}");
+  });
   it("matches the database key once cleaned", () => {
     expect(topicKey(cleanTopic(" KREBS   Cycle "))).toBe("krebs cycle");
   });

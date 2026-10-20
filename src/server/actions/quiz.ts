@@ -10,7 +10,7 @@ import type { GeneratedQuestion } from "@/lib/ai/types";
 import { DAILY_ATTEMPTS, DAILY_LIMITS, QUIZ_MAX_CHARS, type Quota } from "@/lib/limits/ai";
 import { matchFill, normaliseAnswer } from "@/lib/quiz/match";
 import { attemptOrder, KIND_LABEL, permutation, quizTitle, type QuizKind } from "@/lib/quiz/order";
-import { applyMiss, applyRight, sortOpen, topicKey, undoMiss, type WeakPrev } from "@/lib/quiz/weak";
+import { applyMiss, applyRight, sortOpen, topicKey, undoMiss, WEAK_KEYWORD_SEARCHES, type WeakPrev } from "@/lib/quiz/weak";
 import {
   attemptQuestionInput, checkAnswerInput, editQuestionInput, id as idSchema, makeQuizInput, reportQuestionInput, startAttemptInput,
 } from "@/lib/validation";
@@ -89,7 +89,7 @@ async function pickPassages(repo: Repo, subjectId: string, subjectName: string, 
     if (bare.length) {
       const files = await repo.listSources(subjectId);
       const ready = new Set(files.filter((f) => f.extractStatus === "ready").map((f) => f.id));
-      for (const t of bare) {
+      for (const t of bare.slice(0, WEAK_KEYWORD_SEARCHES)) {
         const found = await keywordPassages(repo, subjectId, t.topic, ready);
         if (found.length) focus.push(t.topic);
         for (const c of found) byId.set(c.id, c);

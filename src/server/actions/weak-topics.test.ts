@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { WEAK_TOPICS_MAX } from "@/lib/quiz/weak";
+import { WEAK_KEYWORD_SEARCHES, WEAK_TOPICS_MAX } from "@/lib/quiz/weak";
 import { demoRepo } from "../repo/demo";
 import type { Repo } from "../repo/types";
 
@@ -116,6 +116,17 @@ describe("practising a hand-added topic", () => {
     await weak.addWeakTopic({ subjectId, topic: "Osmosis" });
     const r = await quiz.makeQuiz({ subjectId, source: { type: "weak", topics: ["Osmosis"] }, kind: "mixed", count: 5 });
     expect(r.ok && r.result.status).toBe("weak_no_notes");
+    expect(await used()).toBe(0);
+  });
+
+  it(`looks up at most ${WEAK_KEYWORD_SEARCHES} hand-added topics per Practise click, with no AI`, async () => {
+    const subjectId = await setup();
+    const names = Array.from({ length: 60 }, (_, i) => `Zebra topic ${i}`);
+    for (const topic of names) await weak.addWeakTopic({ subjectId, topic });
+    const search = vi.spyOn(repo, "searchChunks");
+    const r = await quiz.makeQuiz({ subjectId, source: { type: "weak", topics: names }, kind: "mixed", count: 5 });
+    expect(r.ok && r.result.status).toBe("weak_no_notes");
+    expect(search).toHaveBeenCalledTimes(WEAK_KEYWORD_SEARCHES);
     expect(await used()).toBe(0);
   });
 
