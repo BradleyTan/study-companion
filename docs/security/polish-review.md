@@ -70,4 +70,4 @@ Scope: `git diff d98a803..52f651a` (commits `3bafca8`, `97211dc`, `3aefc3f`, `52
 - **RLS**: no migration, so `npm run test:db` was not re-run (no `DATABASE_URL` here).
 
 ## Results
-- `npm test`: 587 passed in 37 files (2 new). `tsc --noEmit` and eslint on the changed files are clean.
+- `npm test` at `c797638`: 585 passed in 37 files (2 new). The QA agent's uncommitted change adding `missCount` and `recent` to `AddedTopic` was also reviewed: it returns only the student's own row fields, no finding. `tsc --noEmit` and eslint on the changed files are clean.
