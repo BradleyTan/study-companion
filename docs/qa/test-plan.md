@@ -11,6 +11,7 @@ Rules
 - Every screen gets an axe check in light mode; settings is also checked in dark.
 - Every new table gets cross-student tests in `supabase/tests/10_rls.sql`.
 - Mobile: assert no horizontal scroll on each new screen at 412 px, and at 375 px with touch emulation assert every control is at least 44 × 44 px (`smallTargets` in `e2e/helpers.ts`).
+- Long names (from the polish pass): at 375 px, a 60-character subject name and a 45-letter single word must not cause sideways scroll on any subject page; anything that shows a subject name uses `SubjectChip` or wraps with `overflow-wrap:anywhere`. Opening a stored file goes through `openFileUrl()` (popup blockers).
 - From Step 2: new screens are also checked with axe in dark mode with reduced motion.
 - Server actions with quota, idempotency or ownership rules get action-level Vitest tests against the demo repo (`src/server/actions/*.test.ts`, `getRepo` mocked).
 - e2e helpers never branch on an `isVisible()` snapshot of something still loading: wait for one of the candidates first (`createSubject`, `rowAction`). Before signing off, run the suite at least twice, once with `--workers=4`.

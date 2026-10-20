@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-20 · Polish pass QA
+- **Phones:** a long subject name (up to the 60-character limit, or one long word) no longer pushes Flashcards, Mindmap, Quizzes, Weak topics, Review, the note editor or the subjects grid sideways; the subject chip cuts the name with "…". The subject header's "More for …" menu is readable in dark mode.
+- **Open a file:** "Open" and "Open the original file" download in the same tab when a popup blocker (Safari, iOS) refuses the new tab, instead of doing nothing.
+- **Quiz results:** the focus button says "Open the timer" while a round or break is running.
+- **Student test kit:** sign-in links must open in the browser that asked for them; real button names, upload status, export contents, .ics import, free re-generations and session length corrected.
+- **Tests:** `src/lib/open-file.test.ts`; e2e in `e2e/polish.spec.ts` (Open with and without a popup blocker, long names at 375 px in dark mode, focus button with a round running). Sign-off `docs/qa/polish.md`.
+
 ## 2026-10-20 · Polish pass (before the student test)
 Every P1 and P2 item of the designer's audit (`docs/design/polish.md`), plus the small P3 fixes that were risk-free. No new features, no migrations, nothing paid.
 - **First run:** a brand-new subject shows a "Start with your notes" sticker (Write a note / Upload a file, and the 1-2-3-4 path) until it has a note or a file, and the four tool tiles say "Add a note first". Flashcards, Mindmap, Quizzes and Ask your notes share one "nothing to work from" empty state with "Write a note" and "Upload a file" (Ask hides its composer there). Review end screens offer "Quiz yourself", quiz results offer "Start a focus round".
