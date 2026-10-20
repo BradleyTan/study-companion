@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-20 · Polish pass security review
+- **Open a file:** only http(s) addresses are ever opened, in a new tab or in the same-tab fallback.
+- **Headers:** a baseline Content-Security-Policy (`base-uri 'self'; object-src 'none'; frame-ancestors 'none'`) on every page.
+- **Student test kit:** delete the tester's account together at the end of the session (it needs a recent sign-in); if they've left, delete their Storage folder before the user in the dashboard; give testers a contact address; keep tester names, files and screenshots out of forms, issues and recordings.
+- Review: `docs/security/polish-review.md`. No critical or high findings.
+
 ## 2026-10-20 · Polish pass QA
 - **Phones:** a long subject name (up to the 60-character limit, or one long word) no longer pushes Flashcards, Mindmap, Quizzes, Weak topics, Review, the note editor or the subjects grid sideways; the subject chip cuts the name with "…". The subject header's "More for …" menu is readable in dark mode.
 - **Open a file:** "Open" and "Open the original file" download in the same tab when a popup blocker (Safari, iOS) refuses the new tab, instead of doing nothing.
