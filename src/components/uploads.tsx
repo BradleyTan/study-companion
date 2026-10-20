@@ -41,7 +41,7 @@ export function Uploads({ subjectId, subjectName, sources, supabase }: { subject
       if (!supabase) return fail("Uploads aren't set up yet.");
       const sb = createSupabaseBrowserClient(supabase.url, supabase.key);
       const { error } = await sb.storage.from("sources").uploadToSignedUrl(started.path, started.token, file, { contentType: file.type || undefined });
-      if (error) return fail("The upload failed. Check your connection and try again.");
+      if (error) return fail("That upload didn't go through. Check your connection and try again.");
     } else {
       const form = new FormData();
       form.set("sourceId", started.sourceId);

@@ -25,7 +25,7 @@ AI output limits the developer validates with zod: at most 40 nodes, depth ≤ 3
 - **Edges:** smooth bezier, 2 px `--ink`, no arrowheads.
 - **Selected node:** 3 px `--focus` ring, shadow grows to 6 px.
 - **Controls** bottom-right, stacked sticker icon buttons, 44 px: "Zoom in", "Zoom out", "Fit map to screen". Zoom range 0.3–2. React Flow's free attribution link stays visible bottom-left (we don't hide it; hiding it is meant for paid subscribers).
-- First load: `fitView` with 24 px padding.
+- First load: `fitView` with 24 px padding (phones: see "375 px phone specifics").
 
 **Initial layout:** the AI returns only the tree; the client lays it out radially (root in the centre, level-1 nodes evenly around it, children fanned outward) using `d3-hierarchy` (free, ISC) or an equivalent small function. If saved positions exist they win.
 
@@ -63,6 +63,8 @@ AI output limits the developer validates with zod: at most 40 nodes, depth ≤ 3
 
 ## 375 px phone specifics
 - Header actions wrap to one row: [Map | Outline] toggle (left), "Regenerate" (right, icon + "New map" label), ⋯ menu. Quota chip moves into the Regenerate confirm dialog and the ⋯ menu to save width.
+- Zoom on a phone (below 640 px, polish pass): `fitView` with 24 px padding and `minZoom: 0.7`, then centre on the root node, so the root and level-1 topics are readable and the student pans to explore. `0` does the same; "Fit map to screen" keeps the 0.7 minimum.
+- Under the Map | Outline toggle, a hint line (map view only): "Tip: Outline is easier to read on a phone."
 - Canvas: full-bleed, min 420 px tall, controls 44 px stacked bottom-right with 12 px inset, clear of the iOS home bar (`env(safe-area-inset-bottom)`).
 - On first visit on a touch device, a one-time hint sticker over the map: "Pinch to zoom, drag to move around, tap a topic to see its notes." with "Got it" (remembered in `localStorage`).
 - Passage panel is a bottom sheet (see above), focus trapped while open.

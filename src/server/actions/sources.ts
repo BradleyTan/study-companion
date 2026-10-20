@@ -45,11 +45,11 @@ export async function uploadDemoFile(form: FormData): Promise<ActionResult> {
   if (!user.demo) return { ok: false, error: "Not available." };
   const sourceId = String(form.get("sourceId") ?? "");
   const file = form.get("file");
-  if (!(file instanceof File) || !idSchema.safeParse(sourceId).success) return { ok: false, error: "Upload failed." };
+  if (!(file instanceof File) || !idSchema.safeParse(sourceId).success) return { ok: false, error: "That upload didn't go through. Try again." };
   if (file.size > MAX_UPLOAD_BYTES) return { ok: false, error: "That file is over 25 MB." };
   const repo = await getRepo();
   const source = await repo.getSource(sourceId);
-  if (!source) return { ok: false, error: "Upload failed." };
+  if (!source) return { ok: false, error: "That upload didn't go through. Try again." };
   store.files.set(source.storagePath, new Uint8Array(await file.arrayBuffer()));
   return { ok: true };
 }
