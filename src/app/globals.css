@@ -293,6 +293,8 @@ dialog.side-panel[open]:not(:modal) { position: fixed; inset: 0 0 0 auto; z-inde
 @keyframes tick-in { 0%, 15% { stroke-dashoffset: 20; } 45%, 100% { stroke-dashoffset: 0; } }
 
 /* weak topics: sticky notes with a subject band and recent-tries dots */
+/* An open ⋯ menu lifts its card above the next card (rotated cards each paint in their own layer); 25 sits above the chat composer (20), below the header (30). */
+:is(li, article):has([data-row-menu-open]) { position: relative; z-index: 25; }
 .topic-note { position: relative; background: var(--card); color: var(--ink); border: 2.5px solid var(--ink); border-left-width: 8px; border-left-color: var(--subject);
   border-radius: 8px; box-shadow: 4px 4px 0 var(--shadow); rotate: var(--r, 0deg); }
 .try-dot { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 999px; border: 1.5px solid var(--ink);

@@ -8,10 +8,13 @@ export type MenuItem = { label: string; onSelect: () => void; danger?: boolean }
  * "⋯" button (44 px) with a small list of actions. A disclosure, so Tab moves through it.
  * With `text`, the button shows that word instead of "⋯" (chat's "Not right?").
  * With `flip`, the list opens upwards when the button sits low on the screen (above a sticky composer).
+ * The list opens to the right instead when a right-aligned list would run off the left edge, and
+ * `data-row-menu-open` lifts the card it sits in above its neighbours (globals.css).
  */
 export function RowMenu({ label, items, className = "", text, align = "right", flip = false }: { label: string; items: MenuItem[]; className?: string; text?: string; align?: "left" | "right"; flip?: boolean }) {
   const [open, setOpen] = useState(false);
   const [up, setUp] = useState(false);
+  const [toLeft, setToLeft] = useState(align === "left");
   const ref = useRef<HTMLDivElement>(null);
   const btn = useRef<HTMLButtonElement>(null);
   const id = useId();
@@ -25,19 +28,22 @@ export function RowMenu({ label, items, className = "", text, align = "right", f
     return () => { document.removeEventListener("click", onDoc); document.removeEventListener("keydown", onKey); };
   }, [open]);
   return (
-    <div ref={ref} className={`relative ${className}`}>
+    <div ref={ref} className={`relative ${className}`} data-row-menu-open={open || undefined}>
       <button
         ref={btn} type="button" className={`btn btn-sm min-h-11 ${text ? "" : "icon-btn"}`} aria-label={label} aria-expanded={open} aria-controls={id}
         onClick={(e) => {
           play("click");
-          if (flip) setUp(e.currentTarget.getBoundingClientRect().bottom > window.innerHeight * 0.55);
+          const r = e.currentTarget.getBoundingClientRect();
+          if (flip) setUp(r.bottom > window.innerHeight * 0.55);
+          // min-w-48 (192 px) plus a little room: a right-aligned list would spill off the left edge.
+          setToLeft(align === "left" || r.right < 208);
           setOpen(!open);
         }}
       >
         {text ?? <span aria-hidden="true">⋯</span>}
       </button>
       {open && (
-        <ul id={id} className={`sticker absolute text-ink ${align === "left" ? "left-0" : "right-0"} ${up ? "bottom-full mb-2" : "top-full mt-2"} z-30 flex min-w-48 flex-col p-1`}>
+        <ul id={id} className={`sticker absolute text-ink ${toLeft ? "left-0" : "right-0"} ${up ? "bottom-full mb-2" : "top-full mt-2"} z-30 flex min-w-48 flex-col p-1`}>
           {items.map((it) => (
             <li key={it.label}>
               <button

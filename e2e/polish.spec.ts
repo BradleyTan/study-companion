@@ -213,6 +213,26 @@ test("quiz: a wrong pick turns coral, the right one mint; weak topics don't make
   await expectNoHorizontalScroll(page);
   if (isMobile) expect(await smallTargets(page)).toEqual([]);
   await expectNoA11yViolations(page);
+
+  // Weak topics at 375 px: the first card's ⋯ menu opens on screen and above the next card,
+  // and "From <file>" stays one flowing line (Bradley's phone report).
+  await page.goto(page.url().replace(/\/?$/, "/weak-topics"));
+  const cards = page.getByRole("list", { name: "Open weak topics" }).getByRole("article");
+  await expect(cards.nth(1)).toBeVisible();
+  const from = cards.first().getByRole("link").first();
+  expect(await from.evaluate((el) => getComputedStyle(el).display)).toBe("inline");
+  await cards.first().getByRole("button", { name: /^More actions for / }).click();
+  const gotIt = cards.first().getByRole("button", { name: "Mark as got it" });
+  await expect(gotIt).toBeVisible();
+  const box = (await gotIt.boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(375);
+  for (const item of [gotIt, cards.first().getByRole("button", { name: "See the questions" })]) {
+    const b = (await item.boundingBox())!;
+    const hit = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.textContent?.trim(), [b.x + b.width / 2, b.y + b.height / 2]);
+    expect(hit).toBe(await item.textContent());
+  }
+  await expectNoHorizontalScroll(page);
 });
 
 test("Settings theme is a segmented control with a visible keyboard focus ring", async ({ page, isMobile }) => {

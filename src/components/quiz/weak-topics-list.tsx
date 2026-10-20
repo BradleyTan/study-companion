@@ -211,7 +211,7 @@ function TopicNote({ topic: t, rotate, onPractise, onGotIt }: { topic: TopicView
           {sources.map((s) => (
             <li key={s.key}>
               {s.kind === "deleted" ? <span className="chip">Source deleted</span> : (
-                <span>From <Link href={s.href} className="inline-flex min-h-11 items-center font-bold underline underline-offset-2" onClick={() => play("click")}>{s.title}</Link>{s.kind === "file" && s.page ? `, page ${s.page}` : ""}</span>
+                <span className="block py-1 [overflow-wrap:anywhere]">From <Link href={s.href} className="py-2.5 font-bold underline underline-offset-2" onClick={() => play("click")}>{s.title}</Link>{s.kind === "file" && s.page ? `, page ${s.page}` : ""}</span>
               )}
             </li>
           ))}
