@@ -11,7 +11,8 @@ export function useToast() {
   }, [msg]);
   const node = (
     <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-[calc(16px+env(safe-area-inset-bottom,0px))] z-50 flex justify-center px-4">
-      {msg && <span className="chip chip-ready pop-in px-4 py-1 text-base shadow-[3px_3px_0_var(--shadow)]">{msg}</span>}
+      {/* Same sticker look as the action toast ("Card deleted · Undo"), polish.md P3-1. */}
+      {msg && <span className="sticker pop-in px-4 py-2 font-bold">{msg === "Saved" && <span aria-hidden="true">✓ </span>}{msg}</span>}
     </div>
   );
   return { show: setMsg, node };

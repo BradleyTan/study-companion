@@ -2,7 +2,7 @@
 
 Sections as stacked sticker cards:
 1. **Sound:** toggle "Play sounds" (default on), volume slider 0–100 (default 35) with a "Test" button that plays `pop`. Saved immediately; toast "Saved".
-2. **Theme:** radio group System / Light / Dark.
+2. **Theme:** radio group "Match my device" / "Light" / "Dark" (polish pass: the friendlier app wording), drawn as a segmented control (`.seg`, like "Week starts on"): the chosen one in `--highlight`, a visible focus ring on the keyboard-focused option, 44 px targets.
 3. **Study timer** (Step 4, timer.md). Saved immediately to the profile, toast "Saved"; a running phase keeps its length, the change applies from the next one.
    - Steppers (− value +, buttons 44 px, value in an `output`, labels visible): "Focus" 25 min (5–120, step 5), "Short break" 5 min (1–30, step 1), "Long break" 15 min (5–60, step 5), "Long break after" 4 rounds (2–8).
    - Toggle "Start the next round or break by itself" (default off).

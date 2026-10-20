@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-10-20 · Polish pass security review
+- **Open a file:** only http(s) addresses are ever opened, in a new tab or in the same-tab fallback.
+- **Headers:** a baseline Content-Security-Policy (`base-uri 'self'; object-src 'none'; frame-ancestors 'none'`) on every page.
+- **Student test kit:** delete the tester's account together at the end of the session (it needs a recent sign-in); if they've left, delete their Storage folder before the user in the dashboard; give testers a contact address; keep tester names, files and screenshots out of forms, issues and recordings.
+- Review: `docs/security/polish-review.md`. No critical or high findings.
+
+## 2026-10-20 · Polish pass QA
+- **Phones:** a long subject name (up to the 60-character limit, or one long word) no longer pushes Flashcards, Mindmap, Quizzes, Weak topics, Review, the note editor or the subjects grid sideways; the subject chip cuts the name with "…". The subject header's "More for …" menu is readable in dark mode.
+- **Open a file:** "Open" and "Open the original file" download in the same tab when a popup blocker (Safari, iOS) refuses the new tab, instead of doing nothing.
+- **Quiz results:** the focus button says "Open the timer" while a round or break is running.
+- **Student test kit:** sign-in links must open in the browser that asked for them; real button names, upload status, export contents, .ics import, free re-generations and session length corrected.
+- **Tests:** `src/lib/open-file.test.ts`; e2e in `e2e/polish.spec.ts` (Open with and without a popup blocker, long names at 375 px in dark mode, focus button with a round running). Sign-off `docs/qa/polish.md`.
+
+## 2026-10-20 · Polish pass (before the student test)
+Every P1 and P2 item of the designer's audit (`docs/design/polish.md`), plus the small P3 fixes that were risk-free. No new features, no migrations, nothing paid.
+- **First run:** a brand-new subject shows a "Start with your notes" sticker (Write a note / Upload a file, and the 1-2-3-4 path) until it has a note or a file, and the four tool tiles say "Add a note first". Flashcards, Mindmap, Quizzes and Ask your notes share one "nothing to work from" empty state with "Write a note" and "Upload a file" (Ask hides its composer there). Review end screens offer "Quiz yourself", quiz results offer "Start a focus round".
+- **Phones:** the subject page no longer scrolls sideways when weak topics exist; the subject title never splits a short word, and Edit/Delete sit in a "More for Biology" menu below 640 px; the mindmap opens at a readable zoom centred on the root, with a "Tip: Outline is easier to read on a phone." line; the empty timetable sticker leaves the hour labels visible; every listed small target is 44 px.
+- **Fixes:** a wrong quiz pick turns coral (it stayed yellow), the right one mint; the chat "Today" divider is a pill again (class clash with the timetable day strip); Settings → Theme is a segmented control with a visible keyboard focus ring; the landing page no longer says flashcards, quizzes and the timer are "Coming soon"; lecture file rows keep the file name on its own line and say "Open" (new tab).
+- **Consistency:** the subject colour is set on the subject page, note editor and source page; breadcrumbs read "← Biology" everywhere (with the subject chip on Mindmap and quiz results, "← All subjects" after an all-subjects review); page titles share one size and alignment; quota chips sit right after the button they limit and page headers line up with their lists; the deck shows "All caught up ✓" and "Next card due in 8 days" (from the deck itself) instead of a disabled button and a fixed "tomorrow"; a best quiz score of 0 reads "Tried once · have another go"; subject and note pages get their own loading skeletons; note rows play `flip`, and the remaining breadcrumbs play `click`.
+- **Tokens:** `--danger-line` (light `#c23a30`, dark `#ff8a7a`) replaces the last hard-coded colours (Delete account card, invalid inputs).
+- **Small P3s:** the "Saved" toast uses the sticker look with a ✓; friendlier upload error copy; tool tiles lean alternately; the empty Notes box is dashed like the drop zone. Left for later: P3-2 (disabled button look), P3-4 (timer page steppers; timer.md asks for ghost), P3-5 (phone timetable day heading).
+- **Specs:** `design-system.md` (`--danger-line`), `settings.md` (Theme wording and control), `subject.md` (Start sticker, phone header, file row, score copy), `mindmap.md` (phone zoom).
+- **Tests:** unit tests for "Next card due …" and the best-score copy; e2e `e2e/polish.spec.ts` (first-run sticker show/hide and the four empty states, file row, 375 px header and menu, wrong/right option colours in both themes, no sideways scroll with weak topics, theme focus ring, 44 px targets, landing copy, phone mindmap zoom) and updated Step 1–3 specs.
+
 ## 2026-10-19 · Step 4 security review
 - **Import:** a hostile timetable file can no longer take seconds of server CPU (at most 8,000 dates worked out per file; zone checks cached). Undo of an import works only for the latest import and for 5 minutes on the server, the same in Supabase and demo.
 - **Calendar feed:** only real time zone names go into the feed (profile time zone checked on read, a format check on `timetable_slots.tz` in the not-yet-applied Step 4 migration); zone rules are cached and lines folded without per-character encoding, so a feed builds in well under 100 ms.

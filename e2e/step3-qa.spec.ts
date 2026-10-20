@@ -17,13 +17,13 @@ async function subjectWithNote(page: Page, subject: string, text = NOTE) {
   await startDemo(page);
   await createSubject(page, subject);
   await page.getByRole("link", { name: new RegExp(subject) }).click();
-  await page.getByRole("button", { name: "+ Write a note" }).click();
+  await page.getByRole("button", { name: "+ Write a note" }).first().click();
   await expect(page).toHaveURL(/\/notes\//);
   await page.getByLabel("Title").fill(TITLE);
   await page.getByRole("textbox", { name: "Note text" }).click();
   await page.keyboard.insertText(text);
   await expect(page.getByTestId("save-state")).toHaveText("Saved ✓", { timeout: 10_000 });
-  await page.getByRole("link", { name: `← Back to ${subject}` }).click();
+  await page.getByRole("link", { name: `← ${subject}`, exact: true }).click();
   await expect(page).toHaveURL(/\/subjects\/[^/]+$/);
 }
 

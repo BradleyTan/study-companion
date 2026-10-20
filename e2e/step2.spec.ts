@@ -15,7 +15,7 @@ async function subjectWithNote(page: Page, subject: string, title = "Cell struct
   await startDemo(page);
   await createSubject(page, subject);
   await page.getByRole("link", { name: new RegExp(subject) }).click();
-  await page.getByRole("button", { name: "+ Write a note" }).click();
+  await page.getByRole("button", { name: "+ Write a note" }).first().click();
   await expect(page).toHaveURL(/\/notes\//);
   await page.getByLabel("Title").fill(title);
   await page.getByRole("textbox", { name: "Note text" }).click();
@@ -59,7 +59,7 @@ test("make flashcards from a note, edit and delete a card, follow its source lin
   await expectNoA11yViolations(page);
   await dialog.getByRole("button", { name: "Done" }).click();
 
-  await page.getByRole("link", { name: "← Back to Biology" }).click();
+  await page.getByRole("link", { name: "← Biology", exact: true }).click();
   await page.getByRole("link", { name: /^Flashcards/ }).click();
   await expect(page).toHaveURL(/\/flashcards$/);
   const cards = page.getByRole("list", { name: "Cards" }).getByRole("article");
@@ -127,7 +127,7 @@ test("review session: flip, grade, undo, finish", async ({ page }) => {
 
 test("mindmap: make, open a passage, move a topic, outline view", async ({ page }) => {
   await subjectWithNote(page, "Physics", "Forces");
-  await page.getByRole("link", { name: "← Back to Physics" }).click();
+  await page.getByRole("link", { name: "← Physics", exact: true }).click();
   await page.getByRole("link", { name: /^Mindmap/ }).click();
   await expect(page.getByText("No mindmap yet")).toBeVisible();
   await expect(page.getByTestId("quota-chip").first()).toHaveText("3 of 3 left today");

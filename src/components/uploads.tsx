@@ -3,6 +3,7 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { formatBytes } from "@/lib/time";
+import { openFileUrl } from "@/lib/open-file";
 import { MAX_UPLOAD_BYTES } from "@/lib/validation";
 import { deleteSource, getDownloadUrl, processUpload, startUpload, uploadDemoFile } from "@/server/actions/sources";
 import type { Source } from "@/server/repo/types";
@@ -41,7 +42,7 @@ export function Uploads({ subjectId, subjectName, sources, supabase }: { subject
       if (!supabase) return fail("Uploads aren't set up yet.");
       const sb = createSupabaseBrowserClient(supabase.url, supabase.key);
       const { error } = await sb.storage.from("sources").uploadToSignedUrl(started.path, started.token, file, { contentType: file.type || undefined });
-      if (error) return fail("The upload failed. Check your connection and try again.");
+      if (error) return fail("That upload didn't go through. Check your connection and try again.");
     } else {
       const form = new FormData();
       form.set("sourceId", started.sourceId);
@@ -120,9 +121,10 @@ function SourceRow({ source, subjectName }: { source: Source; subjectName: strin
   const { play } = useSound();
   const router = useRouter();
   const ready = source.extractStatus === "ready";
-  const download = () => start(async () => {
+  // "Open": the original in a new tab, like the source page's "Open the original file" (subject.md).
+  const openFile = () => start(async () => {
     const res = await getDownloadUrl(source.id);
-    if (res.ok) window.location.assign(res.url);
+    if (res.ok) openFileUrl(res.url);
     else { setError(res.error); play("boop"); }
   });
   const make = () => { setEverMade(true); setMaking(true); };
@@ -130,16 +132,15 @@ function SourceRow({ source, subjectName }: { source: Source; subjectName: strin
   const [everQuizzed, setEverQuizzed] = useState(false);
   const makeQuiz = () => { setEverQuizzed(true); setQuizzing(true); };
   return (
-    <li className="sticker-flat flex flex-wrap items-center gap-2 p-3">
+    <li className="sticker-flat flex flex-wrap items-center gap-2 p-3" data-testid="source-row">
+      {/* Line 1: type, name, size. Line 2: status, then the actions (polish.md P1-8). */}
       <span className="chip">{source.kind.toUpperCase()}</span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate font-bold">{source.fileName}</span>
-        <span className="hint">{formatBytes(source.sizeBytes)}</span>
-      </span>
-      {statusChip(source)}
+      <span className="min-w-0 flex-1 truncate font-bold" title={source.fileName}>{source.fileName}</span>
+      <span className="hint">{formatBytes(source.sizeBytes)}</span>
       {source.extractStatus === "no_text" && <span className="hint basis-full">Handwritten and scanned files will be supported later.</span>}
       {confirm ? (
         <div className="flex basis-full flex-wrap items-center justify-end gap-2">
+          <span className="mr-auto">{statusChip(source)}</span>
           <span className="hint">Flashcards and quizzes made from it stay, with their quotes.</span>
           <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>Keep</Button>
           <Button
@@ -150,9 +151,10 @@ function SourceRow({ source, subjectName }: { source: Source; subjectName: strin
           </Button>
         </div>
       ) : (
-        <>
-          <div className="hidden gap-1 sm:flex">
-            <Button size="sm" onClick={download}>Download</Button>
+        <div className="flex basis-full flex-wrap items-center gap-2">
+          {statusChip(source)}
+          <div className="ml-auto hidden gap-1 sm:flex">
+            <Button size="sm" onClick={openFile} aria-label={`Open ${source.fileName}`}>Open</Button>
             {ready && <Button size="sm" onClick={make} aria-label={`Make flashcards from ${source.fileName}`}>Make flashcards</Button>}
           </div>
           {/* Tablet and laptop: "Make a quiz" and "Delete" sit in "⋯" so the row doesn't overflow (subject.md). */}
@@ -165,15 +167,15 @@ function SourceRow({ source, subjectName }: { source: Source; subjectName: strin
             ]}
           />
           <RowMenu
-            className="sm:hidden"
+            className="ml-auto sm:hidden"
             label={`More for ${source.fileName}`}
             items={[
-              { label: "Download", onSelect: download },
+              { label: "Open", onSelect: openFile },
               ...(ready ? [{ label: "Make flashcards", onSelect: make }, { label: "Make a quiz", onSelect: makeQuiz }] : []),
               { label: "Delete", onSelect: () => setConfirm(true), danger: true },
             ]}
           />
-        </>
+        </div>
       )}
       {error && <p role="alert" className="error-text basis-full">{error}</p>}
       {everMade && (

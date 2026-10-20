@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SourceText, type SourcePage } from "@/components/source-text";
-import { SUBJECT_COLOURS } from "@/lib/subjects";
+import { subjectStyle } from "@/components/ui/subject-style";
+import { SubjectChip } from "@/components/subject-chip";
 import { findLoose } from "@/lib/text/find";
 import { id as idSchema } from "@/lib/validation";
 import { passageTarget } from "@/server/passages";
@@ -48,17 +49,16 @@ export default async function SourcePageView({ params, searchParams }: PageProps
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4" style={subjectStyle(subject.colour)}>
       <div className="flex flex-wrap items-center gap-3">
-        <Link href={`/subjects/${subject.id}`} className="inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline">← {subject.name}</Link>
-        <span className="chip on-colour" style={{ background: SUBJECT_COLOURS[subject.colour] }}>
-          <span role="img" aria-label={subject.name}>{subject.emoji}</span> {subject.name}
-        </span>
+        <Link href={`/subjects/${subject.id}`} className="inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline [overflow-wrap:anywhere]">← {subject.name}</Link>
+        <SubjectChip name={subject.name} emoji={subject.emoji} colour={subject.colour} />
       </div>
       <SourceText
         sourceId={source.id}
         fileName={source.fileName}
         kind={source.kind}
+        pageCount={source.pageCount}
         pages={[...pages.values()].sort((a, b) => a.page - b.page)}
         missing={!!target && !marked}
         quote={target?.quote ?? null}

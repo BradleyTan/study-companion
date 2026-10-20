@@ -76,6 +76,7 @@ Timer with custom durations, wall-clock based (accurate in background tabs), fil
 
 ### After step 4
 Polish pass, `docs/user-testing.md` (tester access, 20-minute task script, feedback form). Bradley runs the student test and decides on Phase 2.
+- Polish pass built 2026-10-20 on `claude/polish` from the designer's audit `docs/design/polish.md` (all P1 and P2 items, small P3s); waiting for QA, security and Bradley's review. `docs/user-testing.md` is still to do.
 
 ## 3a. Implementation decisions (Step 1)
 

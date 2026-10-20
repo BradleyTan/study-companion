@@ -9,6 +9,9 @@ import type { ResultRow, ResultsView } from "@/server/quiz";
 import { SUBJECT_COLOURS } from "@/lib/subjects";
 import { SourceQuote } from "../flashcards/source-quote";
 import { Confetti } from "../review/confetti";
+import { isActive } from "@/lib/timer/machine";
+import { SubjectChip } from "../subject-chip";
+import { useTimer } from "../timer/timer-provider";
 import { useSound } from "../sound-provider";
 import { useActionToast } from "../ui/action-toast";
 import { Button } from "../ui/button";
@@ -32,8 +35,21 @@ export function QuizResults({ subject, results, celebrate, calm, onRetake, onCha
   const [make, setMake] = useState<QuizPreset | "plain" | null>(null);
   const [everMade, setEverMade] = useState(false);
   const { play } = useSound();
+  const timer = useTimer();
   const toast = useActionToast();
   const uid = useId();
+  // Same as the study strip's "Start focus" for this subject. A round (or break) already running is
+  // left alone: the button then says "Open the timer" and only opens it, so the label never promises a restart.
+  const running = isActive(timer.state);
+  const startFocus = () => {
+    if (!running) timer.startPhase("focus", { subjectId: subject.id });
+    timer.openPanel();
+  };
+  const focusButton = (
+    <Button className="w-full sm:w-auto" disabled={!timer.hydrated} onClick={startFocus}>
+      <span aria-hidden="true">🍅</span> {running ? "Open the timer" : "Start a focus round"}
+    </Button>
+  );
   const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => { headingRef.current?.focus(); }, []);
 
@@ -47,6 +63,7 @@ export function QuizResults({ subject, results, celebrate, calm, onRetake, onCha
     <>
       <div className="flex flex-wrap items-center gap-3">
         <Link href={`/subjects/${subject.id}/quizzes`} className="inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline" onClick={() => play("click")}>← Quizzes</Link>
+        <SubjectChip name={subject.name} emoji={subject.emoji} colour={subject.colour} />
       </div>
       {celebrate && celebrates(r.band) && <Confetti colours={[SUBJECT_COLOURS[subject.colour], "var(--highlight)"]} />}
       <section aria-labelledby={`${uid}-h`} className="sticker relative mx-auto mt-2 flex w-full max-w-lg flex-col items-center gap-2 p-6 text-center sm:p-8" style={{ rotate: calm ? "0deg" : "-1deg" }}>
@@ -76,12 +93,14 @@ export function QuizResults({ subject, results, celebrate, calm, onRetake, onCha
           <>
             <Button variant="primary" className="w-full sm:w-auto" onClick={() => openMake({ type: "weak", topics: missedTopics })}>Practise what I missed</Button>
             <Button className="w-full sm:w-auto" onClick={onRetake}>Retake this quiz</Button>
+            {focusButton}
             <Link href={`/subjects/${subject.id}/quizzes`} className="btn btn-ghost w-full sm:w-auto" onClick={() => play("click")}>Back to quizzes</Link>
           </>
         ) : (
           <>
             <Button className="w-full sm:w-auto" onClick={onRetake}>Retake this quiz</Button>
-            <Link href={`/subjects/${subject.id}`} className="btn btn-ghost w-full sm:w-auto" onClick={() => play("click")}>Back to {subject.name}</Link>
+            {focusButton}
+            <Link href={`/subjects/${subject.id}`} className="btn btn-ghost w-full sm:w-auto [overflow-wrap:anywhere]" onClick={() => play("click")}>Back to {subject.name}</Link>
           </>
         )}
       </div>
@@ -154,7 +173,7 @@ function AnswerRow({ row, onEdited, onRemove }: { row: ResultRow; onEdited: () =
           </p>
           {row.edited && <span className="chip w-fit">Edited</span>}
           <details className="text-sm">
-            <summary className="min-h-11 w-fit cursor-pointer content-center font-bold" onClick={() => play("click")}>Why?</summary>
+            <summary className="inline-flex min-h-11 w-fit cursor-pointer items-center font-bold" onClick={() => play("click")}>Why?</summary>
             <div className="flex flex-col gap-2 pt-1">
               {row.explanation && <p>{row.explanation}</p>}
               <SourceQuote quote={row.quote} source={row.source} newTab />

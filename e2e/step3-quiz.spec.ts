@@ -32,13 +32,13 @@ async function subjectWithNote(page: Page, subject: string) {
   await startDemo(page);
   await createSubject(page, subject);
   await page.getByRole("link", { name: new RegExp(subject) }).click();
-  await page.getByRole("button", { name: "+ Write a note" }).click();
+  await page.getByRole("button", { name: "+ Write a note" }).first().click();
   await expect(page).toHaveURL(/\/notes\//);
   await page.getByLabel("Title").fill(TITLE);
   await page.getByRole("textbox", { name: "Note text" }).click();
   await page.keyboard.insertText(NOTE);
   await expect(page.getByTestId("save-state")).toHaveText("Saved ✓", { timeout: 10_000 });
-  await page.getByRole("link", { name: `← Back to ${subject}` }).click();
+  await page.getByRole("link", { name: `← ${subject}`, exact: true }).click();
 }
 
 async function makeQuizFromNote(page: Page, kind: "Multiple choice" | "Fill in the blank" | "Mixed" = "Mixed", count = "5") {

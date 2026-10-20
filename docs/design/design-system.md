@@ -18,6 +18,7 @@ Tokens live in `src/app/globals.css`. Components never use raw colours.
 | `--success` | `#7be0b0` | `#3fbf87` | correct, ready |
 | `--danger` | `#ff9a8b` | `#ff8a7a` | wrong, delete |
 | `--focus` | `#3d6bff` | `#8fb8ff` | focus ring |
+| `--danger-line` | `#c23a30` | `#ff8a7a` | outline of a danger card / invalid input (5.0:1 / 6.9:1 on `--card`); never text fill (polish pass) |
 
 Text on `--highlight`, `--success`, `--danger` and subject colours is always `#1b1b2f` (contrast ≥ 7:1).
 

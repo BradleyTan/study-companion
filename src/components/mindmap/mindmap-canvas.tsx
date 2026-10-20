@@ -1,12 +1,13 @@
 "use client";
 import {
-  Background, BackgroundVariant, Controls, Handle, Position, ReactFlow, ReactFlowProvider, useNodesState, useReactFlow,
+  Background, BackgroundVariant, Controls, Handle, Position, ReactFlow, ReactFlowProvider, useNodesInitialized, useNodesState, useReactFlow,
   type Edge, type Node, type NodeProps, type NodeTypes,
 } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, type KeyboardEvent } from "react";
 import type { MindmapGraph } from "@/lib/ai/types";
 import { positionsFor, treeOrder } from "@/lib/mindmap/layout";
 import { edgeSides, entranceOrder, nodeLabel, nudge, type Side } from "@/lib/mindmap/view";
+import { usePhone } from "../ui/use-media";
 
 type Data = { label: string; depth: number; hasPassage: boolean; emoji: string; order: number; animate: boolean };
 type MmNode = Node<Data, "mm">;
@@ -45,6 +46,10 @@ function MindmapNodeView({ data }: NodeProps<MmNode>) {
 
 const nodeTypes: NodeTypes = { mm: MindmapNodeView };
 
+const FIT = { padding: "24px" } as const;
+/** Phones: never smaller than 0.7, so the root and level-1 topics stay readable (polish.md P2-9). */
+const FIT_PHONE = { padding: "24px", minZoom: 0.7 } as const;
+
 function buildNodes(graph: MindmapGraph, emoji: string, animate: boolean): MmNode[] {
   const pos = positionsFor(graph);
   const order = entranceOrder(graph);
@@ -74,13 +79,26 @@ function Canvas({ graph, subjectName, emoji, animate, layoutKey, onOpen, onMoved
   const [nodes, setNodes, onNodesChange] = useNodesState<MmNode>(buildNodes(graph, emoji, animate));
   const flow = useReactFlow<MmNode>();
   const firstLayout = useRef(layoutKey);
+  const phone = usePhone();
+  const measured = useNodesInitialized();
+
+  // Fit the whole map; on a phone, fit at 0.7 or more and then centre on the root, so the student pans to explore.
+  const fit = useCallback(() => {
+    if (!window.matchMedia("(max-width: 639px)").matches) { void flow.fitView(FIT); return; }
+    void flow.fitView(FIT_PHONE).then(() => {
+      const root = flow.getNodes().find((n) => n.data.depth === 0);
+      if (root) void flow.setCenter(root.position.x, root.position.y, { zoom: flow.getZoom() });
+    });
+  }, [flow]);
 
   // A new map (or a reset layout) replaces every node.
   useEffect(() => {
     setNodes(buildNodes(graph, emoji, animate && firstLayout.current === layoutKey));
-    requestAnimationFrame(() => void flow.fitView({ padding: "24px" }));
+    requestAnimationFrame(fit);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graph, layoutKey]);
+  // Once the nodes have their sizes (the first fit can run before they do).
+  useEffect(() => { if (measured) fit(); }, [measured, fit]);
 
   const parentOf = useMemo(() => new Map(graph.nodes.map((n) => [n.id, n.parentId])), [graph]);
   const edges: Edge[] = useMemo(() => {
@@ -114,7 +132,7 @@ function Canvas({ graph, subjectName, emoji, animate, layoutKey, onOpen, onMoved
     }
     if (e.key === "+" || e.key === "=") { e.preventDefault(); void flow.zoomIn(); }
     else if (e.key === "-" || e.key === "_") { e.preventDefault(); void flow.zoomOut(); }
-    else if (e.key === "0") { e.preventDefault(); void flow.fitView({ padding: "24px" }); }
+    else if (e.key === "0") { e.preventDefault(); fit(); }
   };
 
   return (
@@ -140,7 +158,7 @@ function Canvas({ graph, subjectName, emoji, animate, layoutKey, onOpen, onMoved
         minZoom={0.3}
         maxZoom={2}
         fitView
-        fitViewOptions={{ padding: "24px" }}
+        fitViewOptions={phone ? FIT_PHONE : FIT}
         preventScrolling
         onNodeClick={(_, n) => onOpen(n.id)}
         onNodeDragStop={() => report(flow.getNodes())}

@@ -3,7 +3,7 @@ import {
   buildQueue, countDue, dueBySubject, localDayBounds, localDayKey, newAllowanceLeft, NEW_CARDS_PER_DAY,
   pickNext, requeue, safeTimeZone, spreadByQuote, type CardSchedule,
 } from "./due";
-import { formatInterval } from "./format";
+import { formatInterval, nextDueAt, nextDueLine } from "./format";
 import { gradeCard, newSrs, previewIntervals, SAME_SESSION_MS } from "./scheduler";
 
 const NOW = new Date("2026-10-14T09:00:00Z");
@@ -188,4 +188,33 @@ describe("time zones: across a whole year (QA)", () => {
       }
     }
   }, 30_000);
+});
+
+describe("nextDueLine / nextDueAt (polish.md P2-2)", () => {
+  const tz = "Europe/London";
+  const now = new Date("2026-10-20T09:00:00Z"); // 10:00 in London (BST)
+  it("says today with the local time", () => {
+    expect(nextDueLine("2026-10-20T14:40:00Z", now, tz)).toBe("Next card due today at 15:40");
+  });
+  it("says tomorrow for the next calendar day, even early in the morning", () => {
+    expect(nextDueLine("2026-10-20T23:30:00Z", now, tz)).toBe("Next card due tomorrow");
+    expect(nextDueLine("2026-10-21T20:00:00Z", now, tz)).toBe("Next card due tomorrow");
+  });
+  it("counts calendar days after that", () => {
+    expect(nextDueLine("2026-10-28T08:00:00Z", now, tz)).toBe("Next card due in 8 days");
+  });
+  it("uses the student's time zone, not the server's", () => {
+    // 01:00 on the 21st in Tokyo, where it is already the evening of the 20th.
+    expect(nextDueLine("2026-10-20T16:00:00Z", now, "Asia/Tokyo")).toBe("Next card due tomorrow");
+  });
+  it("picks the earliest seen card, or tomorrow when new cards are waiting", () => {
+    const cards = [
+      { state: 2, dueAt: "2026-10-25T08:00:00Z" },
+      { state: 0, dueAt: "2026-10-20T08:00:00Z" }, // new: not scheduled yet
+      { state: 2, dueAt: "2026-10-23T08:00:00Z" },
+    ];
+    expect(nextDueAt(cards, false, "2026-10-20T23:00:00Z")).toBe("2026-10-23T08:00:00Z");
+    expect(nextDueAt(cards, true, "2026-10-20T23:00:00Z")).toBe("2026-10-20T23:00:00Z");
+    expect(nextDueAt([{ state: 0, dueAt: "2026-10-20T08:00:00Z" }], false, "2026-10-20T23:00:00Z")).toBeNull();
+  });
 });

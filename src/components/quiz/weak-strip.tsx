@@ -12,7 +12,7 @@ export function WeakStrip({ subjectId, count, names }: { subjectId: string; coun
   return (
     <div className="strip" data-testid="weak-strip">
       <span aria-hidden="true" className="text-xl">🎯</span>
-      <p className="min-w-0 flex-1 truncate">
+      <p className="relative min-w-0 flex-1 truncate">
         <span aria-hidden="true"><strong>{label}:</strong> {shown}{more ? ` +${more}` : ""}</span>
         <span className="sr-only">{label}: {names.join(", ")}</span>
       </p>

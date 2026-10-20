@@ -5,7 +5,7 @@ import StarterKit from "@tiptap/starter-kit";
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { splitSentences } from "@/lib/speech/sentences";
-import { SUBJECT_COLOURS, type SubjectColour } from "@/lib/subjects";
+import type { SubjectColour } from "@/lib/subjects";
 import { findLoose, findPassage } from "@/lib/text/find";
 import { deleteNote, saveNote } from "@/server/actions/notes";
 import { flatten, highlightKey, Highlights } from "./editor/highlights";
@@ -13,8 +13,11 @@ import { MakeFlashcardsDialog } from "./flashcards/make-dialog";
 import { SpeakerIcon } from "./read-aloud/read-aloud-button";
 import { ReadAloudBar } from "./read-aloud/read-aloud-bar";
 import { speech, useSpeechState, type Segment } from "./read-aloud/speech";
+import { useSound } from "./sound-provider";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
+import { SubjectChip } from "./subject-chip";
+import { subjectStyle } from "./ui/subject-style";
 
 type SaveState = "saved" | "dirty" | "saving" | "error";
 const DEBOUNCE_MS = 800;
@@ -28,6 +31,7 @@ export function NoteEditor(props: {
   passage?: PassageTarget | null;
 }) {
   const { note, subject, passage } = props;
+  const { play } = useSound();
   const [readOpen, setReadOpen] = useState(false);
   const [making, setMaking] = useState(false);
   const [everMade, setEverMade] = useState(false);
@@ -170,10 +174,10 @@ export function NoteEditor(props: {
   const label = { saved: "Saved ✓", dirty: "Editing…", saving: "Saving…", error: "Not saved. Retrying…" }[state];
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4" style={subjectStyle(subject.colour)}>
       <div className="flex flex-wrap items-center gap-3">
-        <Link href={`/subjects/${subject.id}`} className="inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline">← Back to {subject.name}</Link>
-        <span className="chip on-colour" style={{ background: SUBJECT_COLOURS[subject.colour] }}>{subject.emoji} {subject.name}</span>
+        <Link href={`/subjects/${subject.id}`} className="inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline [overflow-wrap:anywhere]" onClick={() => play("click")}>← {subject.name}</Link>
+        <SubjectChip name={subject.name} emoji={subject.emoji} colour={subject.colour} />
         <Button size="sm" className="order-last w-full sm:order-none sm:w-auto" disabled={preparing} onClick={() => void openMake()}>
           <span aria-hidden="true">🗂️</span> {preparing ? "Saving your note first…" : "Make flashcards"}
         </Button>

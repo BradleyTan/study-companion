@@ -21,7 +21,7 @@ export function DueBanner({ total, subjects, reviewedToday, day }: { total: numb
     return (
       <div className="flex items-center gap-2 rounded-lg border-2 border-ink bg-card px-3 py-1" role="status">
         <span className="font-bold">All caught up for today ✓</span>
-        <Button variant="ghost" size="sm" className="ml-auto" aria-label="Dismiss for today" onClick={() => { setDismissed(true); try { localStorage.setItem(key, day); } catch {} }}>✕</Button>
+        <Button variant="ghost" size="sm" className="icon-btn ml-auto" aria-label="Dismiss for today" onClick={() => { setDismissed(true); try { localStorage.setItem(key, day); } catch {} }}>✕</Button>
       </div>
     );
   }

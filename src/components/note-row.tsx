@@ -9,6 +9,7 @@ import { MakeQuizDialog } from "./quiz/make-quiz-dialog";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
 import { RowMenu } from "./ui/row-menu";
+import { useSound } from "./sound-provider";
 
 /** A note on the subject page, with "⋯" → Make flashcards / Make a quiz / Delete (subject.md, Steps 2–3). */
 export function NoteRow({ note, subjectId, subjectName }: { note: NoteSummary; subjectId: string; subjectName: string }) {
@@ -18,10 +19,11 @@ export function NoteRow({ note, subjectId, subjectName }: { note: NoteSummary; s
   const [everMade, setEverMade] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [pending, start] = useTransition();
+  const { play } = useSound();
   const title = note.title || "Untitled note";
   return (
     <li className="flex items-stretch gap-2">
-      <Link href={`/subjects/${subjectId}/notes/${note.id}`} className="sticker lift block min-w-0 flex-1 p-4">
+      <Link href={`/subjects/${subjectId}/notes/${note.id}`} className="sticker lift block min-w-0 flex-1 p-4" onClick={() => play("flip")}>
         <span className="block truncate text-lg font-bold">{title}</span>
         {note.preview && <span className="block truncate text-ink-soft">{note.preview}</span>}
         <span className="hint">Edited {timeAgo(note.updatedAt)}</span>

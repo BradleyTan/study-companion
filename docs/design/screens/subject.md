@@ -1,12 +1,14 @@
 # Screen: Subject page (`/subjects/[id]`)
 
-**Header:** subject colour band with emoji + name (Permanent Marker), "Edit" and "Delete" buttons. Breadcrumb "← All subjects".
+**Header:** subject colour band with emoji + name (Permanent Marker), "Edit" and "Delete" buttons. Breadcrumb "← All subjects". Polish pass: band `p-4` (`p-5` from 640 px), emoji 36 px (48 px from 640 px), title 30 px (36 px from 640 px) and it never splits a short word (`overflow-wrap: anywhere`, so only a single word wider than the row breaks). Below 640 px "Edit" and "Delete" become one "⋯" menu ("More for Biology": "Edit subject", "Delete subject" in danger style), which keeps the title wide and the red Delete away from the thumb. The whole page sets `--subject` to the subject colour.
+
+**"Start with your notes" sticker** (polish pass; only while the subject has **no notes and no files**, hidden as soon as there is one of either): between the header and the tools row, a sticker with tape. Title (Permanent Marker, 24 px) "Start with your notes"; body (`--ink-soft`) "Write a note or upload a lecture file. Then StudyNest can turn it into flashcards, a mindmap and quizzes."; actions "+ Write a note" (primary, creates a note) and "Upload a file" (plain; scrolls to Lecture files and focuses the file input, `click`); a hint line "1 Add notes · 2 Make flashcards · 3 Quiz yourself · 4 Start a focus round". While it shows, the four tool tiles' sub-lines read "Add a note first" (accessible name "Flashcards, add a note first"); tiles stay links, and their pages show the shared "nothing to work from" empty state (title, "Add a note or a lecture file first, then we can …", "+ Write a note" and "Upload a file"). The empty Notes box is dashed like the upload drop zone.
 
 **Study tools row** (Step 2, between the header and the sections). Figma "Subject" frame. Sticker tiles, 2.5 px ink outline, 4 px offset shadow, slight alternating rotation (-1°/1°, none under reduced motion), hover lift:
 - **Review** tile, only when cards are due: full width, `--highlight` fill, "Review · 12 due" in bold 20 px, sub-line "About 6 minutes" (due × 20 s, rounded up), whole tile is the link to `/subjects/[id]/review`.
 - **Flashcards** tile: card-stack icon, "Flashcards", sub-line "48 cards" (or "Make your first cards"), links to `/subjects/[id]/flashcards`.
 - **Mindmap** tile: branch icon, "Mindmap", sub-line "Updated 2 days ago" (or "Not made yet"), links to `/subjects/[id]/mindmap`.
-- **Quizzes** tile (Step 3): tick-sheet icon, "Quizzes", sub-line "Best 8/10 · 4 quizzes" (or "Test yourself"; with an unfinished attempt "Finish your quiz · 4 of 10"), links to `/subjects/[id]/quizzes` (quiz-builder.md).
+- **Quizzes** tile (Step 3): tick-sheet icon, "Quizzes", sub-line "Best 8/10 · 4 quizzes" (or "Test yourself"; with an unfinished attempt "Finish your quiz · 4 of 10"; a best of 0 reads "Tried once · have another go", never "Best 0/10"), links to `/subjects/[id]/quizzes` (quiz-builder.md).
 - **Ask your notes** tile (Step 3): speech-bubble icon, "Ask your notes", sub-line "18 questions left today" (or "Ask anything in your notes" before the first question), links to `/subjects/[id]/ask` (chat.md).
 - Layout (Step 3, replaces the Step 2 one-row layout): the Review tile, when shown, is its own full-width row on every width. The other four tiles: **phone (375 px)** a 2 × 2 grid (Flashcards | Mindmap / Quizzes | Ask your notes), equal columns, min 96 px tall, labels may wrap to two lines ("Ask your / notes"), never truncate; **tablet and laptop** one row of four equal columns.
 - Tiles are `<a>` elements with full accessible names ("Flashcards, 48 cards"; "Quizzes, best 8 out of 10, 4 quizzes"); `click` sound on activation. Loading: grey tile skeletons; counts that fail to load show the tile without its sub-line.
@@ -29,6 +31,8 @@
 - Ready: mint chip "Ready · 42 pages", `pop`.
 - No text: coral chip "No text found (scanned?)" with help text "Handwritten and scanned files will be supported later."
 - Rejected: inline error, `boop`: "Only PDF and PPTX files can be uploaded." / "That file is over 25 MB." / "That file looks damaged or isn't really a PDF."
+
+**File row layout** (polish pass): two lines so the name always has room. Line 1: type chip, file name (bold, truncates), size (hint). Line 2: status chip, then the actions pushed right.
 
 **Row actions:** "Open" (signed URL, new tab), "Make flashcards" (Step 2, only on Ready files; opens the Make flashcards dialog with this file chosen, see flashcards.md), "Make a quiz" (Step 3, only on Ready files; opens the Make a quiz dialog with this file chosen, see quiz-builder.md), "Delete" with inline confirm. On phone the actions collapse into a "⋯" menu button (44 px). On tablet/laptop, "Open" and "Make flashcards" stay visible and "Make a quiz" and "Delete" go into "⋯" so the row doesn't overflow.
 

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { openFileUrl } from "@/lib/open-file";
 import { getDownloadUrl } from "@/server/actions/sources";
 import { useSound } from "./sound-provider";
 import { Button } from "./ui/button";
@@ -7,10 +8,12 @@ import { Button } from "./ui/button";
 export type SourcePage = { page: number; blocks: { before: string; mark: string | null; after: string }[] };
 
 /** The extracted text of a lecture file; scrolls to and marks the cited passage. */
-export function SourceText({ sourceId, fileName, kind, pages, missing, quote, markedPage, canOpen }: {
+export function SourceText({ sourceId, fileName, kind, pageCount, pages, missing, quote, markedPage, canOpen }: {
   sourceId: string;
   fileName: string;
   kind: "pdf" | "pptx";
+  /** Pages (PDF) or slides (PPTX) in the file, for the "Lecture file · 3 pages" line; null while unknown. */
+  pageCount: number | null;
   pages: SourcePage[];
   missing: boolean;
   quote: string | null;
@@ -41,13 +44,16 @@ export function SourceText({ sourceId, fileName, kind, pages, missing, quote, ma
     if (!res.ok) { setError(res.error); play("boop"); return; }
     // PDFs open at the cited page where the browser's viewer supports it.
     const url = kind === "pdf" && markedPage ? `${res.url}#page=${markedPage}` : res.url;
-    window.open(url, "_blank", "noopener");
+    openFileUrl(url);
   });
 
   return (
     <article className="flex flex-col gap-4" aria-labelledby="source-title">
       <div className="flex flex-wrap items-center gap-3">
-        <h1 id="source-title" className="min-w-0 flex-1 break-words text-2xl font-bold">{fileName}</h1>
+        <div className="min-w-0 flex-1">
+          <h1 id="source-title" className="font-display text-3xl [overflow-wrap:anywhere] sm:text-4xl">{fileName}</h1>
+          <p className="hint">Lecture file{pageCount ? ` · ${pageCount} ${kind === "pdf" ? "page" : "slide"}${pageCount === 1 ? "" : "s"}` : ""}</p>
+        </div>
         <Button size="sm" disabled={!canOpen || pending} onClick={open}>Open the original file</Button>
       </div>
       {error && <p role="alert" className="error-text">{error}</p>}

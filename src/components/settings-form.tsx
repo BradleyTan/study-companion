@@ -50,9 +50,9 @@ export function SettingsForm({ profile }: { profile: Profile }) {
 
       <section aria-labelledby="theme-h" className="sticker flex flex-col gap-3 p-5">
         <h2 id="theme-h" className="text-xl font-bold">Theme</h2>
-        <div role="radiogroup" aria-labelledby="theme-h" className="flex flex-wrap gap-2">
+        <div role="radiogroup" aria-labelledby="theme-h" className="seg self-start">
           {(["system", "light", "dark"] as const).map((t) => (
-            <label key={t} className={`btn btn-sm cursor-pointer ${theme === t ? "btn-primary" : ""}`}>
+            <label key={t}>
               <input
                 type="radio" name="theme" value={t} checked={theme === t} className="sr-only"
                 onChange={() => { setTheme(t); applyTheme(t); play("click"); void persist({ theme: t }); }}
@@ -92,10 +92,10 @@ export function SettingsForm({ profile }: { profile: Profile }) {
         <h2 id="data-h" className="text-xl font-bold">Your data</h2>
         <p>Download your subjects, notes, the list of files you uploaded and the text we read from them, your flashcards, quizzes, chats, study sessions and timetable, as one JSON file. Your calendar link is never in it.</p>
         <a href="/api/export" className="btn" onClick={() => play("click")} download>Download everything</a>
-        <Link href="/privacy" className="underline underline-offset-4">Read how we store your notes</Link>
+        <Link href="/privacy" className="inline-flex min-h-11 items-center underline underline-offset-4" onClick={() => play("click")}>Read how we store your notes</Link>
       </section>
 
-      <section aria-labelledby="delete-h" className="sticker flex flex-col gap-3 border-[#d6453a] p-5">
+      <section aria-labelledby="delete-h" className="sticker flex flex-col gap-3 border-[var(--danger-line)] p-5">
         <h2 id="delete-h" className="text-xl font-bold">Delete account</h2>
         <p>This permanently deletes your account, notes and files. It can&apos;t be undone.</p>
         <p className="hint">Your calendar link stops working straight away too.</p>

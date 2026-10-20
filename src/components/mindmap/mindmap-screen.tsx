@@ -9,7 +9,9 @@ import type { SubjectColour } from "@/lib/subjects";
 import { makeMindmap, resetMindmapLayout, saveMindmapPositions, type MindmapResult } from "@/server/actions/mindmap";
 import type { MindmapView } from "@/server/mindmap";
 import type { MindmapSources } from "@/server/repo/types";
+import { NoSources } from "../no-sources";
 import { useSound } from "../sound-provider";
+import { SubjectChip } from "../subject-chip";
 import { useActionToast } from "../ui/action-toast";
 import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
@@ -247,10 +249,13 @@ export function MindmapScreen({ subject, initial, quota: initialQuota, options, 
     <div className="flex flex-col gap-4" style={subjectStyle(subject.colour)}>
       <p className="sr-only" role="status" aria-live="polite">{announce}</p>
       <header className="flex flex-col gap-3">
-        <Link href={`/subjects/${subject.id}`} className="self-start inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline">← {subject.name}</Link>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link href={`/subjects/${subject.id}`} className="inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline [overflow-wrap:anywhere]" onClick={() => play("click")}>← {subject.name}</Link>
+          <SubjectChip name={subject.name} emoji={subject.emoji} colour={subject.colour} />
+        </div>
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-0 flex-1">
-            <h1 className="font-display text-3xl">Mindmap</h1>
+            <h1 className="font-display text-3xl sm:text-4xl">Mindmap</h1>
             {view && (
               <p className="hint" data-testid="mindmap-meta">
                 {madeFromLine(view.madeFrom.notes, view.madeFrom.files)} · {timeAgo(view.createdAt)}
@@ -265,7 +270,6 @@ export function MindmapScreen({ subject, initial, quota: initialQuota, options, 
                 <button type="button" aria-pressed={mode === "outline"} onClick={() => chooseMode("outline")}>Outline</button>
               </div>
               <span className="ml-auto flex items-center gap-2 sm:ml-0">
-                <span className="hidden sm:inline-flex"><QuotaChip quota={quota} /></span>
                 <Button
                   size="sm" sound={null} className="min-h-11" disabled={generating}
                   aria-disabled={quota.left === 0 || undefined} aria-describedby={quota.left === 0 ? limitId : undefined}
@@ -273,6 +277,8 @@ export function MindmapScreen({ subject, initial, quota: initialQuota, options, 
                 >
                   <span aria-hidden="true">↻ </span><span className="sm:hidden">New map</span><span className="hidden sm:inline">Regenerate</span>
                 </Button>
+                {/* The quota chip sits straight after the button it limits (polish.md P2-4). */}
+                <span className="hidden sm:inline-flex"><QuotaChip quota={quota} /></span>
                 <RowMenu
                   label="More mindmap actions"
                   items={[
@@ -284,6 +290,8 @@ export function MindmapScreen({ subject, initial, quota: initialQuota, options, 
               {quota.left === 0 && <span id={limitId} className="sr-only">{limitText(quota)}</span>}
             </div>
           )}
+          {/* mindmap.md "375 px phone specifics": offer Outline prominently (polish.md P2-9). */}
+          {view && mode === "map" && <p className="hint w-full sm:hidden" data-testid="outline-tip">Tip: Outline is easier to read on a phone.</p>}
         </div>
       </header>
 
@@ -291,7 +299,7 @@ export function MindmapScreen({ subject, initial, quota: initialQuota, options, 
         <div role="alert" className="sticker-flat flex flex-wrap items-center gap-3 p-3" data-testid="mindmap-problem">
           <p className="min-w-0 flex-1 font-bold">{problemText}</p>
           {problem === "failed" && <Button size="sm" onClick={() => void generate(!!view)}>Try again</Button>}
-          {problem === "too_short" && <Link className="btn btn-sm" href={`/subjects/${subject.id}`} onClick={() => play("click")}>Back to {subject.name}</Link>}
+          {problem === "too_short" && <Link className="btn btn-sm [overflow-wrap:anywhere]" href={`/subjects/${subject.id}`} onClick={() => play("click")}>Back to {subject.name}</Link>}
           {problem === "too_long" && <Button size="sm" onClick={() => setChoosing(true)}>Choose sources</Button>}
         </div>
       )}
@@ -303,15 +311,11 @@ export function MindmapScreen({ subject, initial, quota: initialQuota, options, 
         </div>
       )}
 
-      {!view ? (
+      {!view && !generating && nothingToMap ? (
+        <NoSources subjectId={subject.id} title="Nothing to map yet" then="map it" testId="mindmap-no-sources" />
+      ) : !view ? (
         <div className="mindmap-frame flex items-center justify-center">
-          {generating ? generatingArt : nothingToMap ? (
-            <div className="flex flex-col items-center gap-3 p-6 text-center">
-              <p className="font-display text-2xl">Nothing to map yet</p>
-              <p>Add a note or a lecture file first, then we can map it.</p>
-              <Link className="btn" href={`/subjects/${subject.id}`} onClick={() => play("click")}>Back to {subject.name}</Link>
-            </div>
-          ) : (
+          {generating ? generatingArt : (
             <div className="flex flex-col items-center gap-4 p-6 text-center">
               <div className="mm-node mm-root border-dashed"><span role="img" aria-label={subject.name}>{subject.emoji}</span></div>
               <p className="font-display text-2xl">No mindmap yet</p>

@@ -1,6 +1,6 @@
 # Threat model
 
-Last updated: 2026-10-19 (Step 4 review). Owner: security-engineer.
+Last updated: 2026-10-20 (polish pass review). Owner: security-engineer.
 
 ## What we protect
 1. Students' notes, uploaded lecture files and extracted text (private, sometimes personal); from Step 2 their flashcards, review history and mindmaps; from Step 3 their quizzes, answers, weak topics, chat history and passage embeddings; from Step 4 their study rounds, timetable and private calendar link.
@@ -40,6 +40,8 @@ Step 4 adds the one route that reads a student's data without their session: `/a
 | T21 | Calendar feed link guessed, leaked or not revocable | 256-bit random token (base64url); shape checked before any lookup; looked up only by SHA-256 hash on a unique index; `calendar_links` is server-only (no policies, no privileges for students or anon) and not in the export; reset replaces the hash, turn-off deletes the row, account deletion cascades; `private, no-store`, `noindex`, `no-referrer`; the feed holds only slot titles, subject emoji, rooms and times; TEXT values escaped and folded, `TZID` only a real zone name (S4-4). Accepted: the token is in the URL path (provider and request logs) and kept in plaintext so the panel can show it again (S4-7); no rate limit on the route (S4-6). | Done (Step 4 review) |
 | T22 | CPU exhaustion through a hostile timetable file or feed | `.ics` read on the server only (never a URL), at most 1 MB, single-pass parser, 5,000 events, 100 zones, 400 EXDATE/RDATE per event, nesting limit 20; repeat expansion bounded by 200,000 rule steps and 8,000 worked-out dates per file (S4-1); 500 classes per import, 300 live slots per student (action and trigger). Feed VTIMEZONE blocks cached per zone, byte-counted folding (S4-5). | Done (Step 4 review) |
 | T23 | Links built from a spoofed Host header | `siteOrigin()` uses `NEXT_PUBLIC_SITE_URL` (or Vercel's preview URL) and refuses the Host header in production unless the app is the real in-memory demo (`isDemoMode()`, S4-2). | Done (Step 4 review) |
+| T24 | A file-open helper used as a script or redirect sink | `openFileUrl` opens only http(s) URLs, and its only callers pass the `getDownloadUrl` result (a 60 s signed attachment URL for the student's own path, or the demo's same-origin attachment route); the new tab's `opener` is cut (S5-1). | Done (polish review) |
+| T25 | Tester data kept after a user test | The test kit deletes the account with the tester at the end of the session; the dashboard fallback deletes the Storage folder before the user; observer notes, forms and issues hold initials only and are deleted after the write-up (S5-2, S5-5). | Done (polish review) |
 | T13 | Dependency vulnerabilities | `npm audit --omit=dev --audit-level=high` in CI. | Done |
 
 ## Step 1 security review (2026-10-11)
@@ -115,9 +117,20 @@ Reviewer: security-engineer. Verdict: no critical/high findings; cleared to merg
 | S4-8 Privacy page didn't say calendar apps keep their copy | Low | Fixed |
 | S4-9 A student can log made-up study rounds (own totals only) | Low | Accepted |
 
+## Polish pass security review (2026-10-20)
+Reviewer: security-engineer. Verdict: no critical/high findings; cleared to merge after fixes. Details in `docs/security/polish-review.md`.
+
+| Finding | Severity | Status |
+|---|---|---|
+| S5-1 `openFileUrl` followed any URL (no exploitable source today) | Low | Fixed: http(s) only, tested |
+| S5-2 Test kit deletion steps failed the 10-minute sign-in rule; dashboard fallback left Storage files | Medium | Fixed: delete with the tester; files first, then the user |
+| S5-3 Kit gave no contact address, which the privacy page promises | Low | Fixed |
+| S5-4 No Content-Security-Policy | Low | Partly fixed: `base-uri`, `object-src`, `frame-ancestors`; nonce `script-src` open |
+| S5-5 Kit had no rules for tester data in notes, forms and issues | Low | Fixed |
+
 ## Residual risks / follow-ups
 - Clean up upload rows left `pending` (browser closed mid-upload) with a scheduled job, once Supabase is connected (free `pg_cron`).
-- A Content-Security-Policy header is not set yet (Next inline scripts need nonces). Planned for the polish pass.
+- A baseline CSP is set (`base-uri`, `object-src`, `frame-ancestors`); `script-src` with per-request nonces is still open (S5-4).
 - Supabase Auth rate limits and email templates must be checked on the live project.
 - Apply `20261014000002_step2_security_review.sql` to the live project, then run the Supabase security advisor and the two-student checks again.
 - Prompt injection can't be fully prevented: a hostile lecture file can still make misleading cards for the student who uploaded it. Test against real Groq/Cloudflare replies in a preview deploy.

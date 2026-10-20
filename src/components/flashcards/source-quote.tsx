@@ -19,7 +19,7 @@ export function SourceQuote({ quote, source, newTab = false, compact = false }: 
         </blockquote>
       )}
       {quote && long && !compact && (
-        <button type="button" className="w-fit text-sm font-bold underline underline-offset-2" aria-expanded={open} aria-controls={id} onClick={() => { play("click"); setOpen(!open); }}>
+        <button type="button" className="inline-flex min-h-11 w-fit items-center text-sm font-bold underline underline-offset-2" aria-expanded={open} aria-controls={id} onClick={() => { play("click"); setOpen(!open); }}>
           {open ? "Show less" : "Show more"}
         </button>
       )}
@@ -29,7 +29,7 @@ export function SourceQuote({ quote, source, newTab = false, compact = false }: 
         ) : (
           <span className="text-sm">
             From{" "}
-            <Link href={source.href} className="font-bold underline underline-offset-2" {...(newTab ? { target: "_blank", rel: "noopener" } : {})} onClick={() => play("click")}>
+            <Link href={source.href} className="inline-flex min-h-11 items-center font-bold underline underline-offset-2" {...(newTab ? { target: "_blank", rel: "noopener" } : {})} onClick={() => play("click")}>
               {source.title}
             </Link>
             {source.kind === "note" ? " (note)" : source.page ? `, page ${source.page}` : ""}

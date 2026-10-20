@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Privacy" };
 export default function PrivacyPage() {
   return (
     <main id="main" className="mx-auto max-w-3xl px-4 py-10">
-      <Link href="/" className="font-bold underline-offset-4 hover:underline">← StudyNest</Link>
+      <Link href="/" className="inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline">← StudyNest</Link>
       <article className="sticker prose-page mt-4 p-6 sm:p-8">
         <h1 className="font-display text-4xl">How we look after your notes</h1>
         <p className="hint">Last updated 19 October 2026</p>
@@ -75,7 +75,7 @@ export default function PrivacyPage() {
 
         <h2>Download or delete everything</h2>
         <p>
-          In <Link href="/settings">Settings</Link> you can download all your data as a file at any time, or delete your account.
+          In <Link href="/settings" className="inline-flex min-h-11 items-center">Settings</Link> you can download all your data as a file at any time, or delete your account.
           Deleting removes your account, notes and files straight away. Backups that may still hold them are erased within 30 days.
         </p>
 

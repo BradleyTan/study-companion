@@ -16,13 +16,13 @@ async function subjectWithNote(page: Page, subject: string) {
   await startDemo(page);
   await createSubject(page, subject);
   await page.getByRole("link", { name: new RegExp(subject) }).click();
-  await page.getByRole("button", { name: "+ Write a note" }).click();
+  await page.getByRole("button", { name: "+ Write a note" }).first().click();
   await expect(page).toHaveURL(/\/notes\//);
   await page.getByLabel("Title").fill(TITLE);
   await page.getByRole("textbox", { name: "Note text" }).click();
   await page.keyboard.insertText(NOTE);
   await expect(page.getByTestId("save-state")).toHaveText("Saved ✓", { timeout: 10_000 });
-  await page.getByRole("link", { name: `← Back to ${subject}` }).click();
+  await page.getByRole("link", { name: `← ${subject}`, exact: true }).click();
 }
 
 async function openChat(page: Page) {
@@ -90,6 +90,10 @@ test("asks a question, opens a citation, gets an honest not-covered reply, clear
   await page.reload();
   await expect(page.getByRole("article", { name: "You asked" })).toHaveCount(2);
   await expect(page.getByTestId("day-chip").first()).toHaveText("Today");
+  // Polish P1-5: a centred pill, not the timetable's 48 px day button (class clash).
+  const day = (await page.getByTestId("day-chip").first().boundingBox())!;
+  expect(day.height).toBeLessThan(40);
+  expect(day.width).toBeGreaterThan(day.height);
 
   // Clear chat (asks first; notes stay).
   await page.getByRole("button", { name: "Chat options" }).click();
@@ -148,17 +152,20 @@ test("the daily limit: the chip shows from 3 left, then the composer becomes the
   await expect(page.getByRole("article", { name: "You asked" })).toHaveCount(20);
 });
 
-test("no notes yet: the composer is disabled with the reason", async ({ page }) => {
+test("no notes yet: the shared empty state shows and the composer is hidden (polish P1-1)", async ({ page }) => {
   await startDemo(page);
   await createSubject(page, "History");
   await page.getByRole("link", { name: /History/ }).click();
-  await openChat(page);
-  await expect(page.getByTestId("chat-no-sources")).toContainText("Add a note or a lecture file first, then ask away.");
-  const box = page.getByRole("textbox", { name: "Ask a question about History" });
-  await expect(box).toBeDisabled();
-  await expect(box).toHaveAccessibleDescription(/Add a note or a lecture file first, then ask away\./);
-  await page.getByTestId("chat-no-sources").getByRole("link", { name: "Back to History" }).click();
-  await expect(page).toHaveURL(/\/subjects\/[0-9a-f-]+$/);
+  // No notes or files: the tile says so (polish P1-1) and still opens the page.
+  await page.getByRole("link", { name: "Ask your notes, add a note first" }).click();
+  await expect(page).toHaveURL(/\/ask$/);
+  const empty = page.getByTestId("chat-no-sources");
+  await expect(empty.getByRole("heading", { name: "Nothing to ask yet" })).toBeVisible();
+  await expect(empty).toContainText("Add a note or a lecture file first, then we can answer from it.");
+  await expect(page.getByRole("textbox", { name: "Ask a question about History" })).toHaveCount(0);
+  await expect(page.getByTestId("composer")).toHaveCount(0);
+  await empty.getByRole("link", { name: "Upload a file" }).click();
+  await expect(page).toHaveURL(/\/subjects\/[0-9a-f-]+#files-h$/);
 });
 
 test("keyboard: / focuses the composer, Enter sends, Shift+Enter adds a line", async ({ page, isMobile }) => {

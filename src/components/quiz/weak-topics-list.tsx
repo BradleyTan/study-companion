@@ -92,10 +92,10 @@ export function WeakTopicsList({ subject, open: initialOpen, gotIt: initialGot, 
   const header = (
     <header className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-3">
-        <Link href={`/subjects/${subject.id}`} className="inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline" onClick={() => play("click")}>← {subject.name}</Link>
+        <Link href={`/subjects/${subject.id}`} className="inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline [overflow-wrap:anywhere]" onClick={() => play("click")}>← {subject.name}</Link>
         <SubjectChip name={subject.name} emoji={subject.emoji} colour={subject.colour} />
       </div>
-      <h1 className="font-display text-4xl">Weak topics</h1>
+      <h1 className="font-display text-3xl sm:text-4xl">Weak topics</h1>
       <p className="text-ink-soft">Things to look at again. Answer each one right twice and it&apos;s cleared.</p>
     </header>
   );
@@ -104,17 +104,19 @@ export function WeakTopicsList({ subject, open: initialOpen, gotIt: initialGot, 
   const showGot = showGotPick ?? empty;
   return (
     <div className="flex flex-col gap-6" style={subjectStyle(subject.colour)}>
-      {header}
+      {/* Header and actions share the list's left edge (polish.md P2-4). */}
+      <div className="mx-auto flex w-full max-w-[760px] flex-col gap-6 min-[900px]:max-w-[1100px]">
+        {header}
+        {!empty && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button ref={practiseAllRef} variant="primary" className="flex-1 sm:flex-none" onClick={() => setMake({ type: "weak" })} aria-describedby="weak-quota">
+              Practise all · {open.length} {open.length === 1 ? "topic" : "topics"}
+            </Button>
+            <QuotaChip quota={quota} id="weak-quota" />
+          </div>
+        )}
+      </div>
       {allClearParty && !calm && <Confetti colours={[SUBJECT_COLOURS[subject.colour], "var(--highlight)"]} />}
-
-      {!empty && (
-        <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center">
-          <Button ref={practiseAllRef} variant="primary" className="w-full sm:w-auto" onClick={() => setMake({ type: "weak" })} aria-describedby="weak-quota">
-            Practise all · {open.length} {open.length === 1 ? "topic" : "topics"}
-          </Button>
-          <QuotaChip quota={quota} id="weak-quota" />
-        </div>
-      )}
 
       {empty && (
         <div className="sticker relative mx-auto mt-2 flex max-w-lg flex-col items-center gap-3 p-8 text-center">
@@ -209,7 +211,7 @@ function TopicNote({ topic: t, rotate, onPractise, onGotIt }: { topic: TopicView
           {sources.map((s) => (
             <li key={s.key}>
               {s.kind === "deleted" ? <span className="chip">Source deleted</span> : (
-                <span>From <Link href={s.href} className="font-bold underline underline-offset-2" onClick={() => play("click")}>{s.title}</Link>{s.kind === "file" && s.page ? `, page ${s.page}` : ""}</span>
+                <span className="block py-1 [overflow-wrap:anywhere]">From <Link href={s.href} className="py-2.5 font-bold underline underline-offset-2" onClick={() => play("click")}>{s.title}</Link>{s.kind === "file" && s.page ? `, page ${s.page}` : ""}</span>
               )}
             </li>
           ))}
