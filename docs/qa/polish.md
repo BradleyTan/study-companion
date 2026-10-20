@@ -106,7 +106,7 @@ Feature: "+ Add weak topic" on the Weak topics page (spec: `docs/design/polish.m
 
 ### Open items (not blocking)
 7. **Reopened topic says "last today" (Low, copy; designer):** reopening a cleared topic sets `lastMissedAt` to now so it sorts first, so a topic with real misses reads "Missed 2 times · last today" though nothing was missed today. Suggest "Missed 2 times · back on your list today" or keep the old date and sort by an "added at". Not specified in the spec.
-8. **Practise all with many hand-added topics:** one keyword search per topic without passages (up to 500 in one request). Fine at student scale; worth a cap if Practise all ever feels slow.
+8. **Practise all with many hand-added topics:** one keyword search per topic without passages. Already capped by the security fix S5-7 (`c797638`, max 60 topics per Practise), which was in the tree for all the runs below. Closed.
 
 ### Checks
 - `npm test`: 37 files, 586 tests passed. `tsc --noEmit`: clean. `npm run lint`: clean.
@@ -114,4 +114,4 @@ Feature: "+ Add weak topic" on the Weak topics page (spec: `docs/design/polish.m
 - New spec `e2e/polish-add-topic.spec.ts` (3 tests × 2 projects) also passed 3 repeats each.
 
 ### Sign-off
-**PASS.** "+ Add weak topic" matches the spec, with bugs 5 and 6 fixed and tested. Items 7 and 8 are for the designer and later.
+**PASS.** "+ Add weak topic" matches the spec, with bugs 5 and 6 fixed and tested. Item 7 is for the designer. The security fixes S5-6 and S5-7 (`c797638`) were in the tree for every run here.
