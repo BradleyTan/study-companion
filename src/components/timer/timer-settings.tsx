@@ -67,7 +67,7 @@ export function TimerSettings() {
             <>
               <p className="hint">Notifications are blocked in your browser. The chime and the tab title still tell you when time&apos;s up.</p>
               <details className="hint">
-                <summary className="cursor-pointer underline underline-offset-4">How to unblock</summary>
+                <summary className="inline-flex min-h-11 cursor-pointer items-center underline underline-offset-4" onClick={() => play("click")}>How to unblock</summary>
                 <p className="mt-1">Click the lock or settings icon next to the web address and allow notifications.</p>
               </details>
             </>

@@ -18,6 +18,7 @@
   --focus: #3d6bff;
   --on-colour: #1b1b2f; /* text on highlight/success/danger/subject fills, both themes */
   --rule: #dfe6f3;
+  --danger-line: #c23a30; /* outline of a danger card / invalid input; never text fill */
   /* Step 2 */
   --subject: #8fb8ff; /* set inline per page/card from the subject colour */
   --grade-again: var(--danger);
@@ -31,12 +32,14 @@
   :root:not([data-theme="light"]) {
     --paper: #17172a; --grid: #25253d; --card: #222238; --ink: #f3efe0; --ink-soft: #c3bfd6;
     --shadow: #05050c; --success: #3fbf87; --danger: #ff8a7a; --focus: #8fb8ff; --rule: #2e2e48;
+    --danger-line: #ff8a7a;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --paper: #17172a; --grid: #25253d; --card: #222238; --ink: #f3efe0; --ink-soft: #c3bfd6;
   --shadow: #05050c; --success: #3fbf87; --danger: #ff8a7a; --focus: #8fb8ff; --rule: #2e2e48;
+  --danger-line: #ff8a7a;
   color-scheme: dark;
 }
 
@@ -110,6 +113,8 @@ h1, h2, h3 { text-wrap: balance; }
 /* Touch screens: every button is a 44 px target (design-system.md), small ones included. */
 @media (pointer: coarse) { .btn-sm { min-height: 44px; } }
 .icon-btn { min-width: 44px; padding: 0.25rem; }
+/* Label-buttons wrapping an sr-only input (radio, checkbox) show the ring when it has keyboard focus. */
+.btn:has(> input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 3px; }
 .icon-btn[aria-pressed="true"] { background: var(--highlight); color: var(--on-colour); }
 
 /* ---- form controls ---- */
@@ -120,8 +125,8 @@ h1, h2, h3 { text-wrap: balance; }
   background: var(--card); color: var(--ink);
   border: 2.5px solid var(--ink); border-radius: 8px;
 }
-.input[aria-invalid="true"] { border-color: #d6453a; box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 60%, transparent); }
-.error-text { color: var(--ink); background: var(--danger); color: var(--on-colour); padding: 0.25rem 0.5rem; border-radius: 6px; font-size: 0.9rem; font-weight: 700; }
+.input[aria-invalid="true"] { border-color: var(--danger-line); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 60%, transparent); }
+.error-text { background: var(--danger); color: var(--on-colour); padding: 0.25rem 0.5rem; border-radius: 6px; font-size: 0.9rem; font-weight: 700; }
 .hint { color: var(--ink-soft); font-size: 0.9rem; }
 
 /* ---- chips ---- */
@@ -262,7 +267,7 @@ dialog.side-panel[open]:not(:modal) { position: fixed; inset: 0 0 0 auto; z-inde
 .option { position: relative; display: flex; align-items: center; gap: 0.75rem; width: 100%; min-height: 56px; padding: 0.6rem 0.9rem;
   background: var(--card); color: var(--ink); border: 2.5px solid var(--ink); border-radius: 8px; box-shadow: 3px 3px 0 var(--shadow);
   font-weight: 700; text-align: left; cursor: pointer; transition: box-shadow 120ms ease, background-color 120ms ease; }
-.option:has(input:checked) { background: var(--highlight); color: var(--on-colour); box-shadow: 1px 1px 0 var(--shadow); }
+.option:not([data-state]):has(input:checked) { background: var(--highlight); color: var(--on-colour); box-shadow: 1px 1px 0 var(--shadow); }
 .option:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 3px; }
 .option[data-state="right"] { background: var(--success); color: var(--on-colour); box-shadow: 1px 1px 0 var(--shadow); }
 .option[data-state="wrong"] { background: var(--danger); color: var(--on-colour); box-shadow: 1px 1px 0 var(--shadow); }
@@ -353,7 +358,7 @@ dialog.cite-popover { position: fixed; margin: 0; padding: 0; width: min(360px, 
 .suggestions { display: flex; gap: 0.5rem; overflow-x: auto; padding: 0.25rem 0.25rem 0.75rem; scrollbar-width: thin; scroll-snap-type: x proximity; }
 .suggestions > * { flex: none; scroll-snap-align: start; }
 @media (min-width: 640px) { .suggestions { flex-wrap: wrap; justify-content: center; overflow-x: visible; } }
-.day-chip { align-self: center; }
+.chat-day { align-self: center; }
 }
 
 
@@ -442,7 +447,7 @@ dialog.form-sheet[open] { animation: slide-in-up 250ms ease-out; }
 .tt-now { position: absolute; left: 0; right: 0; height: 2px; margin-top: -1px; background: var(--ink); z-index: 5; pointer-events: none; }
 .tt-now-pill { position: absolute; left: 2px; top: -9px; padding: 0 5px; font-size: 11px; font-weight: 700; line-height: 16px;
   background: var(--highlight); color: var(--on-colour); border: 1.5px solid var(--ink); border-radius: 999px; }
-.tt-empty { position: absolute; inset: 46px 8px 8px; z-index: 7; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.tt-empty { position: absolute; inset: 46px 8px 8px 48px; z-index: 7; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 .tt-empty > * { pointer-events: auto; }
 @keyframes tt-slide-next { from { transform: translateX(24px); opacity: 0; } }
 @keyframes tt-slide-prev { from { transform: translateX(-24px); opacity: 0; } }
@@ -452,6 +457,8 @@ dialog.form-sheet[open] { animation: slide-in-up 250ms ease-out; }
 .tt-anim-day-prev { animation: tt-slide-prev 150ms ease-out; }
 
 @media (max-width: 639px) { .tt-hour-label { font-size: 12px; right: 3px; } }
+/* The empty-week sticker starts after the hour column (40 px phone, 48 px from 640 px) so the hours stay visible. */
+@media (min-width: 640px) { .tt-empty { left: 56px; } }
 
 /* header: current page */
 .nav-link[aria-current="page"]:not(.icon-btn) { text-decoration: underline; text-decoration-color: var(--highlight); text-decoration-thickness: 5px; text-underline-offset: 7px; }

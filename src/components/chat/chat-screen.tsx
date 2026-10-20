@@ -272,7 +272,7 @@ export function ChatScreen({ data, tz }: { data: ChatPageData; tz: string }) {
             </div>
           )}
           {messages.map((m, i) => {
-            const sep = i === 0 || days[i] !== days[i - 1] ? <p className="chip day-chip" data-testid="day-chip">{dayLabel(m.createdAt, tz)}</p> : null;
+            const sep = i === 0 || days[i] !== days[i - 1] ? <p className="chip chat-day" data-testid="day-chip">{dayLabel(m.createdAt, tz)}</p> : null;
             return (
               <div key={m.id} className="contents">
                 {sep}

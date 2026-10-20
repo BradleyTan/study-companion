@@ -154,7 +154,7 @@ function AnswerRow({ row, onEdited, onRemove }: { row: ResultRow; onEdited: () =
           </p>
           {row.edited && <span className="chip w-fit">Edited</span>}
           <details className="text-sm">
-            <summary className="min-h-11 w-fit cursor-pointer content-center font-bold" onClick={() => play("click")}>Why?</summary>
+            <summary className="inline-flex min-h-11 w-fit cursor-pointer items-center font-bold" onClick={() => play("click")}>Why?</summary>
             <div className="flex flex-col gap-2 pt-1">
               {row.explanation && <p>{row.explanation}</p>}
               <SourceQuote quote={row.quote} source={row.source} newTab />
