@@ -187,8 +187,23 @@ test("quiz: a wrong pick turns coral, the right one mint; weak topics don't make
     await page.getByTestId("question").getByRole("button", { name: "I don't know" }).click();
   }
   await expect(page.getByTestId("score")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Start a focus round" })).toBeVisible();
   await expect(page.getByRole("link", { name: "← Quizzes" })).toBeVisible();
+  // "Start a focus round" starts one; with a round running it only opens the timer, and says so (QA).
+  await page.getByRole("button", { name: "Start a focus round" }).click();
+  const timerPanel = page.getByRole("dialog", { name: "Study timer" });
+  await expect(timerPanel).toBeVisible();
+  await expect(page.getByTestId("timer-chip")).toHaveAccessibleName(/^Study timer: focus, 2[45] minutes left, Biology$/);
+  await page.keyboard.press("Escape");
+  await expect(timerPanel).toBeHidden();
+  await expect(page.getByRole("button", { name: "Start a focus round" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Open the timer" }).click();
+  await expect(timerPanel).toBeVisible();
+  await expect(timerPanel.getByRole("button", { name: "Pause" })).toBeVisible();
+  await timerPanel.getByRole("button", { name: "Stop" }).click();
+  await timerPanel.getByRole("button", { name: "End round" }).click();
+  await expect(page.getByTestId("timer-chip")).toHaveAccessibleName("Study timer, not running");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Start a focus round" })).toBeVisible();
 
   // The subject page with weak topics, at 375 px: no sideways scroll (P1-2).
   await page.getByRole("link", { name: "← Quizzes" }).click();

@@ -38,12 +38,18 @@ export function QuizResults({ subject, results, celebrate, calm, onRetake, onCha
   const timer = useTimer();
   const toast = useActionToast();
   const uid = useId();
-  // Same as the study strip's "Start focus" for this subject; a round already running just opens the timer.
+  // Same as the study strip's "Start focus" for this subject. A round (or break) already running is
+  // left alone: the button then says "Open the timer" and only opens it, so the label never promises a restart.
+  const running = isActive(timer.state);
   const startFocus = () => {
-    if (!isActive(timer.state)) timer.startPhase("focus", { subjectId: subject.id });
+    if (!running) timer.startPhase("focus", { subjectId: subject.id });
     timer.openPanel();
   };
-  const focusButton = <Button className="w-full sm:w-auto" disabled={!timer.hydrated} onClick={startFocus}><span aria-hidden="true">🍅</span> Start a focus round</Button>;
+  const focusButton = (
+    <Button className="w-full sm:w-auto" disabled={!timer.hydrated} onClick={startFocus}>
+      <span aria-hidden="true">🍅</span> {running ? "Open the timer" : "Start a focus round"}
+    </Button>
+  );
   const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => { headingRef.current?.focus(); }, []);
 
