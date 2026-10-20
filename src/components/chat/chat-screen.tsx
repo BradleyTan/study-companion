@@ -9,6 +9,7 @@ import { askQuestion, clearChat, loadOlderChat, sendChatFeedback } from "@/serve
 import type { ChatPageData, CitationView, RetrievalMode } from "@/server/chat";
 import { speech } from "../read-aloud/speech";
 import { useSound } from "../sound-provider";
+import { NoSources } from "../no-sources";
 import { SubjectChip } from "../subject-chip";
 import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
@@ -228,11 +229,10 @@ export function ChatScreen({ data, tz }: { data: ChatPageData; tz: string }) {
     <div className="-mb-24 flex min-h-[calc(100dvh-140px)] flex-col" style={subjectStyle(subject.colour)}>
       <header className="flex flex-col gap-1 pb-4">
         <div className="flex items-center gap-2">
-          <Link href={`/subjects/${subject.id}`} className="inline-flex min-h-11 min-w-11 items-center font-bold underline-offset-4 hover:underline" aria-label={`Back to ${subject.name}`} onClick={() => play("click")}>
-            ←<span className="hidden sm:inline">&nbsp;{subject.name}</span>
+          <Link href={`/subjects/${subject.id}`} className="inline-flex min-h-11 min-w-11 max-w-[45%] items-center font-bold underline-offset-4 hover:underline sm:max-w-none" onClick={() => play("click")}>
+            <span className="truncate">← {subject.name}</span>
           </Link>
           <span className="hidden sm:inline-flex"><SubjectChip name={subject.name} emoji={subject.emoji} colour={subject.colour} /></span>
-          <span className="sm:hidden" aria-hidden="true">{subject.emoji}</span>
           <h1 className="font-display min-w-0 flex-1 text-xl sm:hidden">Ask your notes</h1>
           <span className="hidden flex-1 sm:block" />
           {messages.length > 0 && <RowMenu label="Chat options" items={[{ label: "Clear chat", onSelect: () => setConfirmClear(true), danger: true }]} />}
@@ -265,11 +265,7 @@ export function ChatScreen({ data, tz }: { data: ChatPageData; tz: string }) {
             </div>
           )}
           {empty && noSources && (
-            <div className="sticker relative mx-auto my-6 flex w-full max-w-lg flex-col items-center gap-3 p-6 text-center" data-testid="chat-no-sources">
-              <span className="tape" aria-hidden="true" />
-              <p className="font-display text-2xl">Add a note or a lecture file first, then ask away.</p>
-              <Link href={`/subjects/${subject.id}`} className="btn btn-primary" onClick={() => play("click")}>Back to {subject.name}</Link>
-            </div>
+            <NoSources subjectId={subject.id} title="Nothing to ask yet" then="answer from it" testId="chat-no-sources" />
           )}
           {messages.map((m, i) => {
             const sep = i === 0 || days[i] !== days[i - 1] ? <p className="chip chat-day" data-testid="day-chip">{dayLabel(m.createdAt, tz)}</p> : null;
@@ -290,7 +286,8 @@ export function ChatScreen({ data, tz }: { data: ChatPageData; tz: string }) {
           {sending && <Typing still={focusMode} />}
         </div>
 
-        <div className="composer mt-4">
+        {/* No notes or files and no chat yet: the empty state says it all, so no disabled composer under it. */}
+        {!(empty && noSources) && <div className="composer mt-4">
           <div className="mx-auto flex w-full max-w-[760px] flex-col gap-2">
             {newChip && (
               <button type="button" className="chip chip-due self-center min-h-11 px-4" onClick={() => { play("click"); setNewChip(false); window.scrollTo({ top: document.documentElement.scrollHeight, behavior: reducedMotion() ? "auto" : "smooth" }); }}>
@@ -360,7 +357,7 @@ export function ChatScreen({ data, tz }: { data: ChatPageData; tz: string }) {
               {mode === "keywords" && !noSources && <p className="hint w-full text-sm" data-testid="keyword-hint">Searching your notes by keywords today, so answers may miss a few things.</p>}
             </div>
           </div>
-        </div>
+        </div>}
       </div>
 
       <p className="sr-only" role="status" aria-live="polite" data-testid="chat-live">{live}</p>

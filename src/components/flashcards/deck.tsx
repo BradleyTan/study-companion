@@ -2,8 +2,10 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Quota } from "@/lib/limits/ai";
+import { nextDueAt, nextDueLine } from "@/lib/srs/format";
 import { createCard, deleteCard, restoreCard, updateCard } from "@/server/actions/flashcards";
 import type { DeckCard, SubjectLite } from "@/server/cards";
+import { NoSources } from "../no-sources";
 import { ReadAloudButton } from "../read-aloud/read-aloud-button";
 import { speech } from "../read-aloud/speech";
 import { useSound } from "../sound-provider";
@@ -21,13 +23,15 @@ const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 const sourceKey = (c: DeckCard) => (c.source.kind === "note" || c.source.kind === "file" ? c.source.href.split("?")[0] : null);
 const short = (s: string) => (s.length > 40 ? `${s.slice(0, 39)}…` : s);
 
-export function Deck({ subject, cards: initial, allowanceLeft, quota: initialQuota, hasSources, makePreset }: {
+export function Deck({ subject, cards: initial, allowanceLeft, quota: initialQuota, hasSources, makePreset, day }: {
   subject: SubjectLite;
   cards: DeckCard[];
   allowanceLeft: number;
   quota: Quota;
   hasSources: boolean;
   makePreset?: MakePreset | null;
+  /** The student's time zone and the end of their day, for "Next card due …". */
+  day: { tz: string; end: string };
 }) {
   const [cards, setCards] = useState(initial);
   const [quota, setQuota] = useState(initialQuota);
@@ -93,39 +97,46 @@ export function Deck({ subject, cards: initial, allowanceLeft, quota: initialQuo
     });
   }
 
-  const reviewNow = counts.due > 0 ? (
-    <Link href={`/subjects/${subject.id}/review`} className="btn btn-primary w-full sm:w-auto" onClick={() => play("click")}>Review now · {counts.due} due</Link>
-  ) : (
-    <div className="flex w-full flex-col gap-1 sm:w-auto">
-      <button type="button" className="btn w-full sm:w-auto" disabled aria-describedby="nothing-due-hint">Nothing due. Practise later</button>
-      {cards.length > 0 && <span id="nothing-due-hint" className="hint">Next cards due tomorrow</span>}
+  // Nothing due: a status chip and when the next card comes due, not a disabled button (polish.md P2-2, P2-3).
+  const nextDue = counts.due === 0 ? nextDueAt(cards.map((c) => ({ state: c.srs.state, dueAt: c.srs.dueAt })), counts.fresh > 0, day.end) : null;
+  const caughtUp = counts.due === 0 && cards.length > 0 && (
+    <div className="flex flex-wrap items-center gap-2" data-testid="caught-up">
+      <p className="chip chip-ready">All caught up ✓</p>
+      {nextDue && <p className="hint" data-testid="next-due">{nextDueLine(nextDue, new Date(), day.tz)}</p>}
     </div>
   );
 
   return (
     <div className="flex flex-col gap-6" style={subjectStyle(subject.colour)}>
-      <header className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-3">
-          <Link href={`/subjects/${subject.id}`} className="inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline">← {subject.name}</Link>
-          <SubjectChip name={subject.name} emoji={subject.emoji} colour={subject.colour} />
-        </div>
-        <h1 className="font-display text-4xl">Flashcards</h1>
-        <p className="text-ink-soft" data-testid="deck-summary">{plural(counts.total, "card")} · {counts.due} due today · {counts.fresh} new</p>
-      </header>
-
-      {(cards.length > 0 || adding) && (
-        <div className="flex flex-col flex-wrap items-stretch gap-3 sm:flex-row sm:items-start">
-          {reviewNow}
-          <div className="flex flex-wrap items-center gap-2">
-            <Button className="w-full sm:w-auto" onClick={() => setMakeOpen(true)} aria-describedby="deck-quota">Make flashcards</Button>
-            <QuotaChip quota={quota} id="deck-quota" />
+      {/* Header and actions share the card list's left edge (polish.md P2-4). */}
+      <div className="mx-auto flex w-full max-w-[880px] flex-col gap-6">
+        <header className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-3">
+            <Link href={`/subjects/${subject.id}`} className="inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline" onClick={() => play("click")}>← {subject.name}</Link>
+            <SubjectChip name={subject.name} emoji={subject.emoji} colour={subject.colour} />
           </div>
-          <Button ref={addRef} className="w-full sm:w-auto" onClick={() => setAdding(true)} disabled={adding}>Add a card</Button>
-        </div>
-      )}
+          <h1 className="font-display text-3xl sm:text-4xl">Flashcards</h1>
+          <p className="text-ink-soft" data-testid="deck-summary">{plural(counts.total, "card")} · {counts.due} due today · {counts.fresh} new</p>
+          {caughtUp}
+        </header>
+
+        {(cards.length > 0 || adding) && (
+          // Review now (only when due) → Make flashcards + its quota chip → Add a card (polish.md P2-3, P2-4).
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center" data-testid="deck-actions">
+            {counts.due > 0 && (
+              <Link href={`/subjects/${subject.id}/review`} className="btn btn-primary w-full sm:w-auto" onClick={() => play("click")}>Review now · {counts.due} due</Link>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant={counts.due > 0 ? "plain" : "primary"} className="flex-1 sm:flex-none" onClick={() => setMakeOpen(true)} aria-describedby="deck-quota">Make flashcards</Button>
+              <QuotaChip quota={quota} id="deck-quota" />
+            </div>
+            <Button ref={addRef} className="w-full sm:w-auto" onClick={() => setAdding(true)} disabled={adding}>Add a card</Button>
+          </div>
+        )}
+      </div>
 
       {cards.length > 10 && (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="mx-auto flex w-full max-w-[880px] flex-wrap items-center gap-2">
           <label htmlFor="deck-filter" className="label">Show:</label>
           <select id="deck-filter" className="input w-auto" value={filter.startsWith("src:") ? "src" : filter}
             onChange={(e) => { play("click"); setFilterSaved(e.target.value === "src" ? `src:${sources[0]?.[0] ?? ""}` : e.target.value); }}>
@@ -165,30 +176,23 @@ export function Deck({ subject, cards: initial, allowanceLeft, quota: initialQuo
         </div>
       )}
 
-      {cards.length === 0 && !adding ? (
+      {cards.length === 0 && !adding && !hasSources ? (
+        <NoSources
+          subjectId={subject.id} title="No flashcards yet" then="make cards from it" testId="deck-no-sources"
+          extra={<Button ref={addRef} onClick={() => setAdding(true)}>Add a card</Button>}
+        />
+      ) : cards.length === 0 && !adding ? (
         <div className="sticker relative mx-auto mt-4 flex max-w-lg flex-col items-center gap-3 p-8 text-center">
           <span className="tape" aria-hidden="true" />
           <p className="font-display text-3xl">No flashcards yet</p>
-          {hasSources ? (
-            <>
-              <p className="text-ink-soft">Make some from your notes in one tap, or write your own.</p>
-              <div className="flex flex-wrap justify-center gap-2">
-                <Button variant="primary" onClick={() => setMakeOpen(true)}>Make flashcards</Button>
-                <Button ref={addRef} onClick={() => setAdding(true)}>Add a card</Button>
-              </div>
-            </>
-          ) : (
-            <>
-              <p className="text-ink-soft">Add a note or a lecture file first, then make cards from it.</p>
-              <div className="flex flex-wrap justify-center gap-2">
-                <Link href={`/subjects/${subject.id}`} className="btn btn-primary">Back to {subject.name}</Link>
-                <Button ref={addRef} onClick={() => setAdding(true)}>Add a card</Button>
-              </div>
-            </>
-          )}
+          <p className="text-ink-soft">Make some from your notes in one tap, or write your own.</p>
+          <div className="flex flex-wrap justify-center gap-2">
+            <Button variant="primary" onClick={() => setMakeOpen(true)}>Make flashcards</Button>
+            <Button ref={addRef} onClick={() => setAdding(true)}>Add a card</Button>
+          </div>
         </div>
       ) : visible.length === 0 && cards.length > 0 ? (
-        <div className="sticker-flat flex flex-col items-start gap-2 p-5">
+        <div className="sticker-flat mx-auto flex w-full max-w-[880px] flex-col items-start gap-2 p-5">
           <p>No cards match this filter.</p>
           <Button onClick={() => setFilterSaved("all")}>Show all cards</Button>
         </div>

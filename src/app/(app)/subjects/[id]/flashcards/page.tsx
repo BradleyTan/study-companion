@@ -30,6 +30,7 @@ export default async function FlashcardsPage({ params }: PageProps<"/subjects/[i
       allowanceLeft={ctx.allowanceLeft}
       quota={quota}
       hasSources={hasSources}
+      day={{ tz: ctx.tz, end: ctx.dayEnd.toISOString() }}
     />
   );
 }

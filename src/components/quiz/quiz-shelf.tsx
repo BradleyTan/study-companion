@@ -3,11 +3,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { Quota } from "@/lib/limits/ai";
+import { bestScoreCopy } from "@/lib/quiz/copy";
 import { isGoodScore } from "@/lib/quiz/order";
 import { timeAgo } from "@/lib/time";
 import { deleteQuiz, restoreQuiz, startAttempt } from "@/server/actions/quiz";
 import type { SubjectLite } from "@/server/cards";
 import type { ShelfQuiz, WeakSummary } from "@/server/quiz";
+import { NoSources } from "../no-sources";
 import { useSound } from "../sound-provider";
 import { SubjectChip } from "../subject-chip";
 import { useActionToast } from "../ui/action-toast";
@@ -45,7 +47,7 @@ export function QuizShelf({ subject, quizzes, weak, quota: initialQuota, hasSour
 
   const list = quizzes.filter((q) => !hidden.has(q.id));
   const best = list.reduce<{ score: number; total: number } | null>((b, q) => (q.best && (!b || q.best.score / q.best.total > b.score / b.total) ? q.best : b), null);
-  const summary = [`${list.length} ${list.length === 1 ? "quiz" : "quizzes"}`, best ? `best ${best.score}/${best.total}` : null, weak.count ? plural(weak.count, "weak topic") : null].filter(Boolean).join(" · ");
+  const summary = [`${list.length} ${list.length === 1 ? "quiz" : "quizzes"}`, best && best.score > 0 ? `best ${best.score}/${best.total}` : null, weak.count ? plural(weak.count, "weak topic") : null].filter(Boolean).join(" · ");
   const resume = list.find((q) => q.unfinished && q.unfinished.answered > 0);
 
   async function remove(q: ShelfQuiz) {
@@ -67,32 +69,36 @@ export function QuizShelf({ subject, quizzes, weak, quota: initialQuota, hasSour
     router.push(`/subjects/${subject.id}/quizzes/${q.id}?attempt=${r.view.attemptId}`);
   }
 
+  // The quota chip sits straight after the button it limits (polish.md P2-4).
   const makeButton = (
-    <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center">
-      <Button variant="primary" className="w-full sm:w-auto" onClick={() => setMake("plain")} aria-describedby="quiz-quota">Make a quiz</Button>
+    <div className="flex flex-wrap items-center gap-2">
+      <Button variant="primary" className="flex-1 sm:flex-none" onClick={() => setMake("plain")} aria-describedby="quiz-quota">Make a quiz</Button>
       <QuotaChip quota={quota} id="quiz-quota" />
     </div>
   );
 
   return (
     <div className="flex flex-col gap-6" style={subjectStyle(subject.colour)}>
-      <header className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-3">
-          <Link href={`/subjects/${subject.id}`} className="inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline" onClick={() => play("click")}>← {subject.name}</Link>
-          <SubjectChip name={subject.name} emoji={subject.emoji} colour={subject.colour} />
-        </div>
-        <h1 className="font-display text-4xl">Quizzes</h1>
-        {list.length > 0 && <p className="text-ink-soft" data-testid="quiz-summary">{summary}</p>}
-      </header>
+      {/* Header and actions share the list's left edge (polish.md P2-4). */}
+      <div className="mx-auto flex w-full max-w-[880px] flex-col gap-6">
+        <header className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-3">
+            <Link href={`/subjects/${subject.id}`} className="inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline" onClick={() => play("click")}>← {subject.name}</Link>
+            <SubjectChip name={subject.name} emoji={subject.emoji} colour={subject.colour} />
+          </div>
+          <h1 className="font-display text-3xl sm:text-4xl">Quizzes</h1>
+          {list.length > 0 && <p className="text-ink-soft" data-testid="quiz-summary">{summary}</p>}
+        </header>
 
-      {list.length > 0 && (
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-          {makeButton}
-          {weak.count > 0 && (
-            <Button className="w-full sm:w-auto" onClick={() => setMake({ type: "weak" })}>Practise weak topics · {weak.count}</Button>
-          )}
-        </div>
-      )}
+        {list.length > 0 && (
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+            {makeButton}
+            {weak.count > 0 && (
+              <Button className="w-full sm:w-auto" onClick={() => setMake({ type: "weak" })}>Practise weak topics · {weak.count}</Button>
+            )}
+          </div>
+        )}
+      </div>
 
       {resume?.unfinished && (
         <div className="sticker relative mx-auto flex w-full max-w-[880px] flex-col gap-3 p-4 sm:flex-row sm:items-center" data-testid="resume">
@@ -113,21 +119,14 @@ export function QuizShelf({ subject, quizzes, weak, quota: initialQuota, hasSour
         </div>
       )}
 
-      {list.length === 0 ? (
+      {list.length === 0 && !hasSources ? (
+        <NoSources subjectId={subject.id} title="No quizzes yet" then="quiz you on it" testId="quiz-no-sources" />
+      ) : list.length === 0 ? (
         <div className="sticker relative mx-auto mt-4 flex max-w-lg flex-col items-center gap-3 p-8 text-center">
           <span className="tape" aria-hidden="true" />
-          {hasSources ? (
-            <>
-              <p className="font-display text-3xl">No quizzes yet</p>
-              <p className="text-ink-soft">Test yourself on your notes. Wrong answers just show what to look at next.</p>
-              {makeButton}
-            </>
-          ) : (
-            <>
-              <p className="text-ink-soft">Add a note or a lecture file first, then we can quiz you on it.</p>
-              <Link href={`/subjects/${subject.id}`} className="btn btn-primary" onClick={() => play("click")}>Back to {subject.name}</Link>
-            </>
-          )}
+          <p className="font-display text-3xl">No quizzes yet</p>
+          <p className="text-ink-soft">Test yourself on your notes. Wrong answers just show what to look at next.</p>
+          {makeButton}
         </div>
       ) : (
         <ol ref={listRef} className="mx-auto flex w-full max-w-[880px] flex-col gap-6" aria-label="Quizzes">
@@ -167,11 +166,14 @@ function QuizSticker({ subjectId, quiz, glow, onDelete }: { subjectId: string; q
         <p className="text-sm text-ink-soft">{plural(quiz.questionCount, "question")} · made {timeAgo(quiz.createdAt)}</p>
       </div>
       <div className="flex flex-wrap gap-2">
-        {quiz.best ? (
+        {quiz.best && quiz.best.score === 0 ? (
+          // Never "Best 0/9" (polish.md P2-12); the one chip carries the tries too.
+          <span className="chip">{bestScoreCopy(quiz.best, quiz.tries).text}</span>
+        ) : quiz.best ? (
           <>
             <span className={`chip ${isGoodScore(quiz.best.score, quiz.best.total) ? "chip-good" : ""}`}>
-              <span aria-hidden="true">Best {quiz.best.score}/{quiz.best.total}</span>
-              <span className="sr-only">Best score {quiz.best.score} out of {quiz.best.total}</span>
+              <span aria-hidden="true">{bestScoreCopy(quiz.best, quiz.tries).text}</span>
+              <span className="sr-only">{bestScoreCopy(quiz.best, quiz.tries).label}</span>
             </span>
             <span className="chip">Tried {quiz.tries === 1 ? "once" : `${quiz.tries} times`}</span>
           </>
