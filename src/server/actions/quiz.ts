@@ -18,6 +18,7 @@ import { appBudget, quotaFor, studentDay } from "../ai";
 import { feedbackOf, playView, resultsView, settleAttempt, sourcesOf, type Feedback, type PlayView, type ResultsView } from "../quiz";
 import type { ChunkRow, NewQuestion, Question, QuizAnswer, QuizAttempt, Repo } from "../repo/types";
 import { getRepo } from "../session";
+import { keywordPassages } from "../chat";
 import { sourceChunks, sourceOptions, type SourceOptions } from "../source-select";
 import { firstIssue, type ActionResult } from "./result";
 
@@ -56,14 +57,14 @@ export type QuizMadeFrom = { kind: "note" | "file" | "all" | "weak"; name: strin
 export type MakeQuizResult =
   | { status: "made"; quizId: string; title: string; count: number; requested: number; cached: boolean; from: QuizMadeFrom; quota: Quota }
   | { status: "already"; quizId: string; quota: Quota }
-  | { status: "too_short" | "limit" | "allowance" | "failed" | "not_configured" | "weak_gone"; quota: Quota };
+  | { status: "too_short" | "limit" | "allowance" | "failed" | "not_configured" | "weak_gone" | "weak_no_notes"; quota: Quota };
 
 type Picked = { chunks: ChunkRow[]; from: QuizMadeFrom; sourceIds: string[]; pageFrom: number | null; pageTo: number | null; focus: string[] };
 
 const rangeLabel = (unit: "page" | "slide", from: number, to: number) => (from === to ? `${unit} ${from}` : `${unit}s ${from}–${to}`);
 
 /** The passages a quiz is made from, per source type. */
-async function pickPassages(repo: Repo, subjectId: string, subjectName: string, source: ReturnType<typeof makeQuizInput.parse>["source"], kind: QuizKind): Promise<Picked | { error: string } | "weak_gone" | null> {
+async function pickPassages(repo: Repo, subjectId: string, subjectName: string, source: ReturnType<typeof makeQuizInput.parse>["source"], kind: QuizKind): Promise<Picked | { error: string } | "weak_gone" | "weak_no_notes" | null> {
   const kindLabel = KIND_LABEL[kind];
   if (source.type === "all") {
     // Everything: every note and ready file, sampled evenly (same spread as the mindmap's "All sources").
@@ -79,10 +80,25 @@ async function pickPassages(repo: Repo, subjectId: string, subjectName: string, 
     const topics = (await repo.listWeakTopics(subjectId)).filter((t) => !t.clearedAt && keys.has(t.topicKey));
     if (!topics.length) return "weak_gone";
     const ids = [...new Set(topics.flatMap((t) => t.chunkIds))];
-    const chunks = ids.length ? (await repo.getChunks(ids)).filter((c) => c.subjectId === subjectId) : [];
-    if (!chunks.length) return "weak_gone";
+    const own = ids.length ? (await repo.getChunks(ids)).filter((c) => c.subjectId === subjectId) : [];
+    const byId = new Map(own.map((c) => [c.id, c]));
+    // A topic added by hand has no passages yet (and a missed one may have lost them): look for
+    // passages that mention it by name, the way Ask your notes does. No AI and no quota here.
+    const bare = topics.filter((t) => !t.chunkIds.some((c) => byId.has(c)));
+    const focus = topics.filter((t) => !bare.includes(t)).map((t) => t.topic);
+    if (bare.length) {
+      const files = await repo.listSources(subjectId);
+      const ready = new Set(files.filter((f) => f.extractStatus === "ready").map((f) => f.id));
+      for (const t of bare) {
+        const found = await keywordPassages(repo, subjectId, t.topic, ready);
+        if (found.length) focus.push(t.topic);
+        for (const c of found) byId.set(c.id, c);
+      }
+    }
+    const chunks = [...byId.values()];
+    if (!chunks.length) return topics.some((t) => t.chunkIds.length) ? "weak_gone" : "weak_no_notes";
     chunks.sort((a, b) => (a.noteId ?? a.sourceId ?? "").localeCompare(b.noteId ?? b.sourceId ?? "") || a.ordinal - b.ordinal);
-    return { chunks, from: { kind: "weak", name: "your weak topics", range: null, kindLabel }, sourceIds: [], pageFrom: null, pageTo: null, focus: topics.map((t) => t.topic) };
+    return { chunks, from: { kind: "weak", name: "your weak topics", range: null, kindLabel }, sourceIds: [], pageFrom: null, pageTo: null, focus };
   }
   const found = await sourceChunks(repo, subjectId, source, QUIZ_MAX_CHARS);
   if (!found || "error" in found) return found;
@@ -145,11 +161,11 @@ export async function makeQuiz(raw: unknown): Promise<ActionResult<{ result: Mak
   const subject = await repo.getSubject(subjectId);
   if (!subject) return { ok: false, error: "Subject not found." };
   const quota = () => quotaFor(repo, "quiz");
-  const result = async (r: { status: "too_short" | "limit" | "allowance" | "failed" | "not_configured" | "weak_gone" }) => ({ ok: true as const, result: { ...r, quota: await quota() } });
+  const result = async (r: { status: "too_short" | "limit" | "allowance" | "failed" | "not_configured" | "weak_gone" | "weak_no_notes" }) => ({ ok: true as const, result: { ...r, quota: await quota() } });
 
   const picked = await pickPassages(repo, subjectId, subject.name, source, kind);
   if (!picked) return { ok: false, error: "That note or file isn't available any more." };
-  if (picked === "weak_gone") return result({ status: "weak_gone" });
+  if (picked === "weak_gone" || picked === "weak_no_notes") return result({ status: picked });
   if ("error" in picked) return { ok: false, error: picked.error };
   const totalChars = picked.chunks.reduce((n, c) => n + c.text.length, 0);
   if (totalChars < MIN_SOURCE_CHARS) return result({ status: "too_short" });

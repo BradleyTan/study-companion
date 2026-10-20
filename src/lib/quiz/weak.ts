@@ -11,6 +11,24 @@ export function topicKey(topic: string): string {
 }
 
 export const TOPIC_MAX = 40;
+/** The database stops at 500 weak topics per subject (trigger); the server checks first. */
+export const WEAK_TOPICS_MAX = 500;
+
+/** A typed topic name: control characters become spaces, runs of spaces collapse, ends trimmed. */
+export function cleanTopic(raw: string): string {
+  return raw.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * "+ Add weak topic": the row to save for a topic the student adds by hand. A new topic has no
+ * misses and no passages yet, and sorts first (lastMissedAt = now). An open one is left alone
+ * ("already"); a cleared one comes back with its streak reset, keeping its history.
+ */
+export function addManual(cur: WeakState | null, topic: string, now: string): { status: "added" | "reopened"; next: WeakState } | { status: "already" } {
+  if (!cur) return { status: "added", next: { topic, missCount: 0, rightStreak: 0, lastMissedAt: now, clearedAt: null, chunkIds: [], recent: [] } };
+  if (!cur.clearedAt) return { status: "already" };
+  return { status: "reopened", next: { ...cur, rightStreak: 0, lastMissedAt: now, clearedAt: null } };
+}
 /** Most recent passages remembered per topic (practice quizzes pull these). */
 export const TOPIC_CHUNKS_MAX = 10;
 /** Dots in the "Recent tries" row. */
@@ -76,7 +94,8 @@ export function applyRight(cur: WeakState | null, now: string): WeakState | null
  */
 export function undoMiss(cur: WeakState, prev: WeakPrev): WeakState | null {
   const missCount = Math.max(0, cur.missCount - 1);
-  if (missCount === 0) return null;
+  // A topic the student added by hand existed before its first miss: it stays, with no misses.
+  if (missCount === 0 && !prev.existed) return null;
   const at = cur.recent.lastIndexOf(false);
   const recent = at >= 0 ? cur.recent.map((v, i) => (i === at ? true : v)) : cur.recent;
   // Right answers or "Mark as got it" since that miss: they stand. Restoring the state from

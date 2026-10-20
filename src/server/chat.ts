@@ -56,6 +56,15 @@ export async function retrieve(repo: Repo, subjectId: string, query: string, rea
   return { mode: "embeddings", passages, closest: passages.length ? [] : uniq([...byVector.closest, ...rest.closest]).slice(0, 2) };
 }
 
+/**
+ * Passages that mention a short phrase (a weak topic the student added by hand), by the same
+ * keyword rules as Ask your notes. Empty when nothing in the notes covers it well enough.
+ */
+export async function keywordPassages(repo: Repo, subjectId: string, phrase: string, readyFiles: Set<string>): Promise<ChunkRow[]> {
+  const found = usable(await repo.searchChunks(subjectId, phrase, KEYWORD_CANDIDATES), readyFiles);
+  return decide(rankByKeywords(phrase, found), KEYWORD_MIN, KEYWORD_LOOSE).passages;
+}
+
 /** Retrieval mode before anything is asked (for the hint on arrival). */
 export async function retrievalMode(repo: Repo, subjectId: string): Promise<RetrievalMode> {
   if (!embedConfigured()) return "keywords";
