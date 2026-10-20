@@ -1,6 +1,6 @@
 # StudyNest student test kit
 
-A short kit for testing Phase 1 with one or more university students. It takes about 35 minutes per tester: 5 minutes to set up, 20 minutes on tasks, 10 minutes for the feedback form and a chat.
+A short kit for testing Phase 1 with one or more university students. Plan about 45 minutes per tester: 5 minutes to set up, 20 to 30 minutes on tasks (the 20-minute script below usually runs over on tasks 3 and 4, and that's fine), 10 minutes for the feedback form and a chat.
 
 Live site: **https://study-companion-steel-kappa.vercel.app**
 
@@ -13,7 +13,7 @@ Live site: **https://study-companion-steel-kappa.vercel.app**
 - [ ] **Do a quick run yourself.** Make one flashcard set, start one quiz and ask the chat one question. That shows the AI is answering, and these goes count only against your own daily limit.
 - [ ] **Check that the magic-link email arrives** at an address that isn't yours, and see whether it lands in spam.
 - [ ] **Prepare a sample file** in case the tester forgets theirs: a real lecture PDF or PPTX (25 MB at most) with plenty of text, not just slides of pictures. Keep it on your laptop and phone.
-- [ ] **Ask the tester to bring** one of their own lecture files (PDF or PPTX) and, if they can, their university timetable exported as an `.ics` file (most uni timetable systems have an "Export" or "Subscribe" option).
+- [ ] **Ask the tester to bring** one of their own lecture files (PDF or PPTX) and, if they can, their university timetable exported as an `.ics` file (1 MB at most). The app imports a downloaded file only, never a link: if their uni system only offers a "Subscribe" link, they open that link in a browser first to download the `.ics` file.
 
 **Limits to know** (from `src/lib/limits/ai.ts` and `docs/PLAN.md`; each student, each day)
 
@@ -25,9 +25,11 @@ Live site: **https://study-companion-steel-kappa.vercel.app**
 | Chat questions | 20 |
 | File uploads | 20 files in 24 h, 25 MB each, 100 MB in total |
 
+Making cards, a mindmap or a quiz again from exactly the same text, and retaking a quiz, don't use a go. A failed generation gives the go back. With 3 quizzes a day, a tester who makes a quiz and then uses "Practise what I missed" or "Practise weak topics" has used 2 of them.
+
 - The AI allowance (Groq free plan) is **shared by the whole app**. Test **one person at a time** and don't test on a day you've already used the AI heavily.
 - Everything is on free plans with no card attached. A test costs nothing.
-- Sign-in emails go out through your Gmail at **about 30 an hour**. A group session of more than a few people could hit that.
+- Sign-in emails go out through your Gmail at **about 30 an hour** (Supabase's email rate limit). A group session of more than a few people could hit that. One address can ask for a new link only once a minute; sooner, the app says "We couldn't send the link. Try again in a minute."
 
 **Consent and privacy** (read this to the tester or send it in advance)
 > "This is a test of the app, not of you. There are no wrong answers. If something is confusing, that's the app's fault and exactly what I need to know. I'll watch your screen and take notes, but I won't record unless you say yes. The app stores what you upload (your notes and lecture files) and sends text from them to a free AI service to make cards, quizzes and answers. The privacy page in the app explains this. You can stop at any time, and I'll delete your account and everything in it afterwards unless you want to keep using it."
@@ -37,7 +39,7 @@ Live site: **https://study-companion-steel-kappa.vercel.app**
 
 **Deleting the tester's data afterwards**
 - The tester (or you on their device) goes to **Settings → Delete account**, types `DELETE` and presses **Delete my account**. This deletes their account, notes and files, and turns off their calendar link straight away. It can't be undone.
-- If they want to keep a copy first: **Settings → Your data → Download everything** (a JSON file of their subjects, notes, file list, extracted text, timetable and study sessions).
+- If they want to keep a copy first: **Settings → Your data → Download everything** (one JSON file with their subjects, notes, the list of uploaded files and the text read from them, flashcards, quizzes, chats, study sessions and timetable). The uploaded files themselves are not in it: they can download each one with **Open** on the file row first.
 - If they added the private calendar link to Google, Apple or Outlook, tell them to remove that calendar from their calendar app too. The link stops working, but the calendar app may keep showing old events until they remove it.
 
 ---
@@ -47,14 +49,14 @@ Live site: **https://study-companion-steel-kappa.vercel.app**
 No invite step. The tester signs up with their own email.
 
 1. Send them the link: **https://study-companion-steel-kappa.vercel.app** (phone or laptop both work; a laptop makes uploading files easier).
-2. They type their **own email address** and press the button to get a sign-in link.
-3. They open the email **on the same device** and tap the link. **If it hasn't come after a minute, check the spam or promotions folder.**
+2. They tap **Start studying**, type their **own email address** and press **Email me a sign-in link**. The app says "Check your inbox".
+3. They open the email **on the same device and in the same browser** they asked from, and tap the link. **If it hasn't come after a minute, check the spam or promotions folder.**
 4. They land in the app, signed in. That's it.
 
 Notes
 - Google sign-in is hidden until it's turned on, so email is the only way in for now.
-- Phone: the sign-in link opens in the phone's default browser. If their mail app opens it inside its own browser, they can choose "Open in Safari/Chrome" to stay signed in.
-- If the link has expired or been used already, they just ask for a new one.
+- The link only works in the browser the tester asked for it in (it is matched to that browser). Asking on a laptop and tapping the link on a phone, or the mail app opening it in its own built-in browser, ends on "That sign-in link has expired or was already used". On a phone: long-press the link and open it in Safari or Chrome, whichever they asked from. If it already failed, ask for a new link from the browser they'll use.
+- If the link has expired (after an hour) or been used already, they just ask for a new one.
 - Optional: on a phone they can use "Add to Home Screen" so the app opens like a normal app.
 
 ---
@@ -74,7 +76,7 @@ For each task, mark: **✓** done alone, **~** done with a hint, **✗** not don
 | # | Time | Task (read this to the tester) | What to watch for and note |
 |---|---|---|---|
 | 1 | 2 min | "Set up a subject for one of your courses this term." | Do they find how to add one? Do they choose a colour and emoji? Do they react to the look and sounds? |
-| 2 | 3 min | "Add your lecture file to that subject, and write a short note of your own." | Do they find the upload? Do they understand the "reading your file" status and wait for it? Any error? Does the note save without them worrying about it? |
+| 2 | 3 min | "Add your lecture file to that subject, and write a short note of your own." | Do they find the upload? Do they understand the "Reading text…" status and wait for "Ready · N pages"? Any error? Does the note save without them worrying about it? |
 | 3 | 4 min | "Make flashcards from your lecture file and study a few of them." | Do they find how to generate cards? Is the wait OK? Do they trust the cards (do they check the source passage)? Do they understand the review buttons (how well they knew it)? Do they try editing a card? Do they find read-aloud or the mindmap by themselves? |
 | 4 | 4 min | "Test yourself with a short quiz on the same material. Then find out which topics you need to work on." | Do they pick a quiz type easily? How do they react to a wrong answer (tone of the feedback, the "boop")? Do they find the weak topics list afterwards? Do they understand what "Practise" will do? |
 | 5 | 3 min | "Ask the app a question about your lecture that you'd normally have to search the slides for." | Is the answer useful? Do they click a source to check it? What happens when they ask something that isn't in their notes? |
