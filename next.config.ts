@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
-const securityHeaders = [
+export const securityHeaders = [
+  // Baseline CSP without script-src (that needs per-request nonces for Next's inline scripts; see
+  // docs/security/polish-review.md S5-4): no <base> hijack, no plugins, no framing.
+  { key: "Content-Security-Policy", value: "base-uri 'self'; object-src 'none'; frame-ancestors 'none'" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
