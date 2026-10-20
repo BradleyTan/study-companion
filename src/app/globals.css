@@ -356,6 +356,141 @@ dialog.cite-popover { position: fixed; margin: 0; padding: 0; width: min(360px, 
 .day-chip { align-self: center; }
 }
 
+
+/* ---- Step 4 part 1: study timer (timer.md) ---- */
+@layer components {
+.timer-chip { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; min-height: 44px; min-width: 6.25rem; padding: 0.25rem 0.75rem;
+  font-weight: 700; color: var(--ink); background: var(--card); border: 2.5px solid var(--ink); border-radius: 999px; box-shadow: 2px 2px 0 var(--shadow);
+  cursor: pointer; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.timer-chip-focus { color: var(--on-colour); }
+.timer-chip-break { background: var(--success); color: var(--on-colour); }
+.timer-chip-paused { background: var(--card); color: var(--ink); border-style: dashed; }
+.timer-chip-ended { background: var(--highlight); color: var(--on-colour); }
+@media (max-width: 639px) { .timer-chip { min-width: 5.25rem; padding-inline: 0.6rem; } }
+
+/* ring digits: the one size outside the type scale (design-system.md "Step 4 additions") */
+.timer-digits { font-size: 48px; line-height: 1.05; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
+.timer-digits-lg { font-size: 56px; }
+.round-dot { width: 10px; height: 10px; border-radius: 999px; border: 2px solid var(--ink); background: transparent; }
+.round-dot-done { background: var(--ink); }
+.ring-move { transition: stroke-dasharray 1000ms linear, stroke-dashoffset 1000ms linear, transform 1000ms linear; }
+@keyframes ring-bump { 50% { transform: scale(1.04); } }
+.ring-bump { animation: ring-bump 350ms cubic-bezier(.3, 1.8, .5, 1); transform-origin: center; }
+.tomato-new { display: inline-block; animation: pop 350ms cubic-bezier(.3, 1.8, .5, 1) both; }
+
+dialog.side-panel.timer-side { width: 400px; overflow: hidden; }
+dialog.bottom-sheet.timer-sheet { height: auto; max-height: 90dvh; }
+@keyframes slide-in-right { from { transform: translateX(32px); opacity: 0; } }
+@keyframes slide-in-up { from { transform: translateY(32px); opacity: 0; } }
+dialog.timer-side[open] { animation: slide-in-right 250ms ease-out; }
+dialog.timer-sheet[open] { animation: slide-in-up 250ms ease-out; }
+
+.study-strip { flex-wrap: wrap; }
+@media (max-width: 639px) { .study-strip { flex-direction: column; align-items: stretch; } .study-strip .btn { width: 100%; } }
+}
+
+/* ---- Step 4 part 2: timetable and calendar link (timetable.md) ---- */
+@layer components {
+/* responsive dialog: centred sheet from 640 px, bottom sheet on phones */
+dialog.form-sheet { margin: auto 0 0; padding: 0; width: 100%; max-width: 100%; height: auto; max-height: 90dvh; overflow: auto;
+  border: 3px solid var(--ink); border-bottom: 0; border-radius: 14px 14px 0 0; background: var(--card); color: var(--ink); }
+dialog.form-sheet::backdrop { background: rgb(27 27 47 / 0.35); }
+dialog.sheet.sheet-wide { max-width: min(760px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; }
+dialog.side-panel.link-side { width: 420px; overflow: auto; }
+dialog.link-side[open] { animation: slide-in-right 250ms ease-out; }
+dialog.form-sheet[open] { animation: slide-in-up 250ms ease-out; }
+
+/* week grid: graph paper, 15-minute lines faint, hour lines --rule */
+.tt-frame { position: relative; background: var(--paper); border: 2.5px solid var(--ink); border-radius: 8px; box-shadow: 4px 4px 0 var(--shadow); overflow: hidden; }
+.tt-scroll { overflow-x: hidden; overflow-y: auto; max-height: max(360px, min(calc(15 * var(--hour) + 46px), calc(100dvh - 230px))); overscroll-behavior: contain; }
+.tt-grid { display: grid; grid-template-columns: var(--hourcol) var(--cols); min-width: 0; }
+.tt-corner, .tt-dayhead { position: sticky; top: 0; z-index: 6; height: 44px; background: var(--paper); border-bottom: 2px solid var(--ink); }
+.tt-dayhead { display: flex; align-items: center; justify-content: center; gap: 0.25rem; font-weight: 700; font-size: 15px; border-left: 1.5px solid var(--rule); white-space: nowrap; }
+.tt-dayhead-today > span { background: var(--highlight); color: var(--on-colour); border: 2px solid var(--ink); border-radius: 6px; padding: 0 0.4rem; box-shadow: 2px 2px 0 var(--shadow); }
+.tt-hours { position: relative; height: calc(24 * var(--hour)); }
+.tt-hour-label { position: absolute; right: 6px; font-size: 14px; line-height: 1; color: var(--ink-soft); transform: translateY(-50%); font-variant-numeric: tabular-nums; }
+.tt-day { position: relative; min-width: 0; }
+.tt-day-body { position: relative; height: calc(24 * var(--hour)); border-left: 1.5px solid var(--rule);
+  background-image: linear-gradient(var(--rule) 1.5px, transparent 1.5px), linear-gradient(var(--grid) 1px, transparent 1px);
+  background-size: 100% var(--hour), 100% calc(var(--hour) / 4); }
+.tt-layer { position: absolute; inset: 0; z-index: 1; touch-action: pan-y; }
+@media (pointer: fine) { .tt-layer { cursor: crosshair; } }
+.tt-list { position: absolute; inset: 0; margin: 0; padding: 0; list-style: none; pointer-events: none; z-index: 2; }
+.tt-list > li { pointer-events: none; }
+
+/* slot stickers: class = subject fill; study = dashed + subject band; other = plain card */
+.tt-slot { position: absolute; z-index: 2; display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 0; overflow: hidden;
+  padding: 1px 6px; text-align: left; font-size: 14px; line-height: 1.25; color: var(--ink); background: var(--card);
+  border: 2.5px solid var(--ink); border-radius: 8px; box-shadow: 2px 2px 0 var(--shadow); pointer-events: auto; cursor: pointer;
+  transition: top 120ms ease-out, height 120ms ease-out, left 120ms ease-out; }
+.tt-slot:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; z-index: 5; }
+.tt-slot-class { background: var(--subject); color: var(--on-colour); }
+.tt-slot-study { border-style: dashed; box-shadow: inset 6px 0 0 var(--subject), 2px 2px 0 var(--shadow); padding-left: 11px; }
+.tt-slot-nosubject.tt-slot-class { background: var(--card); color: var(--ink); }
+.tt-slot-short::before { content: ""; position: absolute; inset: -8px 0; }
+.tt-slot-moving { opacity: 0.35; }
+.tt-slot-leaving { animation: tt-shrink 200ms ease-in forwards; }
+@keyframes tt-shrink { to { transform: scale(0.6); opacity: 0; } }
+.tt-line { display: flex; align-items: center; gap: 0.25rem; min-width: 0; white-space: nowrap; }
+.tt-line > .tt-text { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tt-chip { font-size: 11px; font-weight: 700; border: 1.5px solid currentColor; border-radius: 999px; padding: 0 0.35rem; white-space: nowrap; }
+.tt-resize { position: absolute; left: 0; right: 0; bottom: -2px; height: 10px; cursor: ns-resize; }
+.tt-ghost { position: absolute; left: 3px; right: 3px; z-index: 4; padding: 2px 6px; pointer-events: none; overflow: hidden;
+  background: color-mix(in srgb, var(--highlight) 40%, var(--card)); color: var(--ink); border: 2.5px dashed var(--ink); border-radius: 8px;
+  font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tt-tap { position: absolute; left: 0; right: 0; z-index: 1; pointer-events: none; background: color-mix(in srgb, var(--highlight) 45%, transparent); }
+.tt-now { position: absolute; left: 0; right: 0; height: 2px; margin-top: -1px; background: var(--ink); z-index: 5; pointer-events: none; }
+.tt-now-pill { position: absolute; left: 2px; top: -9px; padding: 0 5px; font-size: 11px; font-weight: 700; line-height: 16px;
+  background: var(--highlight); color: var(--on-colour); border: 1.5px solid var(--ink); border-radius: 999px; }
+.tt-empty { position: absolute; inset: 46px 8px 8px; z-index: 7; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.tt-empty > * { pointer-events: auto; }
+@keyframes tt-slide-next { from { transform: translateX(24px); opacity: 0; } }
+@keyframes tt-slide-prev { from { transform: translateX(-24px); opacity: 0; } }
+.tt-anim-next { animation: tt-slide-next 200ms ease-out; }
+.tt-anim-prev { animation: tt-slide-prev 200ms ease-out; }
+.tt-anim-day-next { animation: tt-slide-next 150ms ease-out; }
+.tt-anim-day-prev { animation: tt-slide-prev 150ms ease-out; }
+
+@media (max-width: 639px) { .tt-hour-label { font-size: 12px; right: 3px; } }
+
+/* header: current page */
+.nav-link[aria-current="page"]:not(.icon-btn) { text-decoration: underline; text-decoration-color: var(--highlight); text-decoration-thickness: 5px; text-underline-offset: 7px; }
+.nav-link.icon-btn[aria-current="page"] { background: var(--highlight); color: var(--on-colour); }
+
+/* phone day strip (radio group) */
+.day-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.day-chip { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 48px; padding: 2px 0;
+  font-size: 13px; font-weight: 700; line-height: 1.15; background: var(--card); color: var(--ink); border: 2px solid var(--ink); border-radius: 8px; cursor: pointer; }
+.day-chip-today { background: var(--highlight); color: var(--on-colour); }
+.day-chip:has(input:checked) { box-shadow: 0 0 0 3px var(--ink); }
+.day-chip:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 3px; }
+.day-dot { position: absolute; bottom: 3px; width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+
+/* import preview: mini week (laptop/tablet) */
+.mini-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+.mini-day { position: relative; height: 140px; background: var(--paper); border: 1.5px solid var(--rule); border-radius: 4px; }
+.mini-slot { position: absolute; left: 2px; right: 2px; min-height: 4px; background: var(--subject); border: 1.5px solid var(--ink); border-radius: 3px; }
+
+/* calendar link panel */
+.tabs { display: flex; gap: 0; border-bottom: 2.5px solid var(--ink); }
+.tab { min-height: 44px; padding: 0.4rem 0.9rem; font-weight: 700; color: var(--ink); background: transparent; border: 2.5px solid transparent; border-bottom: 0;
+  border-radius: 8px 8px 0 0; margin-bottom: -2.5px; cursor: pointer; }
+.tab[aria-selected="true"] { background: var(--card); border-color: var(--ink); }
+.steps { list-style: decimal; padding-left: 1.4rem; font-size: 16px; }
+.steps > li + li { margin-top: 0.35rem; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; }
+.offline-banner { background: var(--highlight); color: var(--on-colour); border: 2px solid var(--ink); border-radius: 8px; padding: 0.4rem 0.75rem; font-weight: 700; }
+}
+
+/* Focus mode (timer.md, design-system.md "Focus mode"): while a focus round runs or is paused,
+   decorative motion follows the reduced-motion rules. State changes (colour, text) still show,
+   and the timer ring keeps moving. */
+:root[data-focus-mode] .tile, :root[data-focus-mode] .topic-note, :root[data-focus-mode] .quiz-sheet, :root[data-focus-mode] .mm-node.mm-root { rotate: 0deg; }
+:root[data-focus-mode] [style*="--r"] { rotate: 0deg !important; }
+:root[data-focus-mode] .lift:hover { transform: none; }
+:root[data-focus-mode] *:not(.ring-move), :root[data-focus-mode] *::before, :root[data-focus-mode] *::after { animation: none !important; }
+:root[data-focus-mode] *:not(.ring-move) { transition: none !important; }
+
 @media (prefers-reduced-motion: reduce) {
   .typing-dots { display: none; }
   .typing-text { display: inline; }

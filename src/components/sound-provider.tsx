@@ -2,7 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { updateSettings } from "@/server/actions/settings";
 import { speech } from "./read-aloud/speech";
-import { playSound, type SoundName } from "@/lib/sound/engine";
+import { allowed, playSound, type SoundName } from "@/lib/sound/engine";
 
 type SoundPrefs = { soundOn: boolean; volume: number };
 type Ctx = SoundPrefs & {
@@ -11,7 +11,7 @@ type Ctx = SoundPrefs & {
   /** Speech wins (sounds.md): while read-aloud speaks, other UI sounds are skipped. */
   setSpeaking: (on: boolean) => void;
   setPrefs: (p: Partial<SoundPrefs>) => void;
-  /** Focus mode (Pomodoro, Step 4): only the timer chime plays. */
+  /** Focus mode (study timer, Step 4): only the timer chime plays. Set by the TimerProvider. */
   focusMode: boolean;
   setFocusMode: (on: boolean) => void;
 };
@@ -48,9 +48,7 @@ export function SoundProvider({ children }: { children: ReactNode }) {
 
   const play = useCallback(
     (name: SoundName, opts?: { duringSpeech?: boolean }) => {
-      if (!prefs.soundOn) return;
-      if (focusMode && name !== "chime") return;
-      if (speaking.current && !(opts?.duringSpeech && name === "click")) return;
+      if (!allowed(name, { soundOn: prefs.soundOn, focusMode, speaking: speaking.current, duringSpeech: opts?.duringSpeech })) return;
       playSound(name, prefs.volume);
     },
     [prefs, focusMode],

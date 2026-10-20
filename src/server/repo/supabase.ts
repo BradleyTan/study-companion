@@ -7,9 +7,13 @@ import type { WeakPrev } from "@/lib/quiz/weak";
 import type { Rating, SrsState, SrsStateNum } from "@/lib/srs/scheduler";
 import type { SubjectColour } from "@/lib/subjects";
 import type {
-  CardReview, ChatCitation, ChatFeedback, ChatRow, ChunkRow, ExportBundle, Flashcard, Mindmap, MindmapSources, Note, NoteSummary, Profile, Question, QuestionPatch, Quiz, QuizAnswer, QuizAttempt, Repo,
-  Source, Subject, WeakTopic,
+  CalendarFeedData, CalendarLink, CardReview, ChatCitation, ChatFeedback, ChatRow, ChunkRow, ExportBundle, Flashcard, ImportPrev, Mindmap, MindmapSources, NewTimetableSlot, Note, NoteSummary,
+  Profile, Question, QuestionPatch, Quiz, QuizAnswer, QuizAttempt, Repo, SlotPatch, Source, StudySession, Subject, TimetableSlot, WeakTopic,
 } from "./types";
+import { cleanSkips, MAX_SLOTS, type SlotCore } from "@/lib/timetable/slots";
+import { safeTimeZone } from "@/lib/srs/due";
+import { tokenHash } from "@/lib/timetable/token";
+import type { Phase } from "@/lib/timer/machine";
 
 type Row = Record<string, unknown>;
 
@@ -211,6 +215,92 @@ const toChat = (r: Row): ChatRow => ({
   createdAt: iso(r.created_at)!,
 });
 const CHAT_COLS = "id, subject_id, role, kind, content, citations_json, reveal, feedback, client_key, reply_to, created_at";
+
+const toStudySession = (r: Row): StudySession => ({
+  id: r.id as string,
+  subjectId: (r.subject_id as string | null) ?? null,
+  kind: r.kind as Phase,
+  plannedSec: r.planned_sec as number,
+  focusedSec: r.focused_sec as number,
+  completed: r.completed as boolean,
+  startedAt: iso(r.started_at)!,
+  endedAt: iso(r.ended_at)!,
+  clientKey: r.client_key as string,
+  createdAt: iso(r.created_at)!,
+});
+const STUDY_COLS = "id, subject_id, kind, planned_sec, focused_sec, completed, started_at, ended_at, client_key, created_at";
+const PROFILE_COLS = "sound_on, volume, theme, timezone, timer_focus_min, timer_short_min, timer_long_min, timer_long_every, timer_auto_start, focus_quiet, week_start";
+
+const SLOT_COLS = "id, subject_id, kind, title, location, tz, start_date, start_min, end_min, recurrence, repeat_until, skip_dates, source, import_uid, import_batch, created_at, updated_at";
+const toSlot = (r: Row): TimetableSlot => {
+  const core = {
+    subjectId: (r.subject_id as string | null) ?? null,
+    kind: r.kind as TimetableSlot["kind"],
+    title: (r.title as string | null) ?? null,
+    location: (r.location as string | null) ?? null,
+    tz: r.tz as string,
+    startDate: r.start_date as string,
+    startMin: r.start_min as number,
+    endMin: r.end_min as number,
+    recurrence: r.recurrence as TimetableSlot["recurrence"],
+    repeatUntil: (r.repeat_until as string | null) ?? null,
+    skipDates: (r.skip_dates as string[] | null) ?? [],
+  };
+  return {
+    ...core, skipDates: cleanSkips(core), id: r.id as string,
+    source: r.source as TimetableSlot["source"], importUid: (r.import_uid as string | null) ?? null, importBatch: (r.import_batch as string | null) ?? null,
+    createdAt: iso(r.created_at)!, updatedAt: iso(r.updated_at)!,
+  };
+};
+/** A slot's fields as columns (only the ones given). */
+function slotRow(p: SlotPatch): Row {
+  const row: Row = {};
+  if (p.subjectId !== undefined) row.subject_id = p.subjectId;
+  if (p.kind !== undefined) row.kind = p.kind;
+  if (p.title !== undefined) row.title = p.title;
+  if (p.location !== undefined) row.location = p.location;
+  if (p.tz !== undefined) row.tz = p.tz;
+  if (p.startDate !== undefined) row.start_date = p.startDate;
+  if (p.startMin !== undefined) row.start_min = p.startMin;
+  if (p.endMin !== undefined) row.end_min = p.endMin;
+  if (p.recurrence !== undefined) row.recurrence = p.recurrence;
+  if (p.repeatUntil !== undefined) row.repeat_until = p.repeatUntil;
+  if (p.skipDates !== undefined) row.skip_dates = p.skipDates;
+  if (p.importBatch !== undefined) row.import_batch = p.importBatch;
+  if (p.importPrev !== undefined) row.import_prev = p.importPrev;
+  return row;
+}
+const coreOf = (s: SlotCore): SlotCore => ({
+  subjectId: s.subjectId, kind: s.kind, title: s.title, location: s.location, tz: s.tz, startDate: s.startDate, startMin: s.startMin, endMin: s.endMin,
+  recurrence: s.recurrence, repeatUntil: s.repeatUntil, skipDates: s.skipDates,
+});
+
+/**
+ * The public calendar feed (no signed-in student): looks the link up by its token hash with the
+ * secret key, then reads that student's live slots (at most 300) and subjects, pinned to their id.
+ * Records when a calendar last checked, at most every 15 minutes, so the route stays cheap.
+ */
+export async function supabaseCalendarFeed(admin: SupabaseClient, hash: string): Promise<CalendarFeedData | null> {
+  const link = await admin.from("calendar_links").select("user_id, last_fetched_at").eq("token_hash", hash).maybeSingle();
+  fail(link.error, "calendar feed");
+  if (!link.data) return null;
+  const userId = link.data.user_id as string;
+  const [slots, subjects] = await Promise.all([
+    admin.from("timetable_slots").select(SLOT_COLS).eq("user_id", userId).is("deleted_at", null).order("start_date").order("id").limit(MAX_SLOTS),
+    admin.from("subjects").select("id, name, emoji").eq("user_id", userId).limit(200),
+  ]);
+  fail(slots.error, "calendar feed slots");
+  fail(subjects.error, "calendar feed subjects");
+  const last = link.data.last_fetched_at ? Date.parse(link.data.last_fetched_at as string) : 0;
+  if (Date.now() - last > 15 * 60_000) {
+    // Best effort: a failed note of the time never fails the feed.
+    await admin.from("calendar_links").update({ last_fetched_at: new Date().toISOString() }).eq("user_id", userId).eq("token_hash", hash);
+  }
+  return {
+    slots: (slots.data ?? []).map((r) => ({ ...toSlot(r), updatedAt: iso(r.updated_at)! })),
+    subjects: (subjects.data ?? []).map((r) => ({ id: r.id as string, name: r.name as string, emoji: r.emoji as string })),
+  };
+}
 
 const CHUNK_COLS = "id, subject_id, note_id, source_id, ordinal, page, text, content_hash";
 const SUBJECT_COLS = "id, name, colour, emoji, created_at, notes(count), sources(count)";
@@ -807,12 +897,139 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
       if (ids.length) fail((await admin().from("chat_messages").delete().in("id", ids).eq("user_id", userId)).error, "deleteOldestChat");
     },
 
+    // ---- Step 4: study timer ----
+    // Sessions are read with the student's session and written with the secret key, pinned.
+    async addStudySession(input) {
+      const row = {
+        user_id: userId, subject_id: input.subjectId, kind: input.kind, planned_sec: input.plannedSec, focused_sec: input.focusedSec,
+        completed: input.completed, started_at: input.startedAt, ended_at: input.endedAt, client_key: input.clientKey,
+      };
+      const { data, error } = await admin().from("study_sessions").insert(row).select(STUDY_COLS).single();
+      if (error?.code === "23505") {
+        // Already saved (a retried save, or another tab): return the first row.
+        const earlier = await admin().from("study_sessions").select(STUDY_COLS).eq("user_id", userId).eq("client_key", input.clientKey).single();
+        fail(earlier.error, "addStudySession");
+        return { session: toStudySession(earlier.data), created: false };
+      }
+      fail(error, "addStudySession");
+      return { session: toStudySession(data), created: true };
+    },
+    async listStudySessions({ endedSince }) {
+      const { data, error } = await db.from("study_sessions").select(STUDY_COLS).gte("ended_at", endedSince).order("ended_at").order("id").limit(1000);
+      fail(error, "listStudySessions");
+      return (data ?? []).map(toStudySession);
+    },
+
+    // ---- Step 4 part 2: timetable and calendar link ----
+    // Slots are read with the student's session (RLS) and written with the secret key, pinned.
+    async listSlots() {
+      const { data, error } = await db.from("timetable_slots").select(SLOT_COLS).is("deleted_at", null).order("start_date").order("id").limit(MAX_SLOTS + 100);
+      fail(error, "listSlots");
+      return (data ?? []).map(toSlot);
+    },
+    async getSlot(id, opts) {
+      let q = db.from("timetable_slots").select(SLOT_COLS).eq("id", id);
+      if (!opts?.deleted) q = q.is("deleted_at", null);
+      const { data, error } = await q.maybeSingle();
+      fail(error, "getSlot");
+      return data ? toSlot(data) : null;
+    },
+    async createSlots(rows) {
+      if (!rows.length) return [];
+      const ins = rows.map((r: NewTimetableSlot) => ({ ...slotRow(coreOf(r)), user_id: userId, source: r.source, import_uid: r.importUid, import_batch: r.importBatch, import_prev: r.importPrev ?? null }));
+      const { data, error } = await admin().from("timetable_slots").insert(ins).select(SLOT_COLS);
+      fail(error, "createSlots");
+      return (data ?? []).map(toSlot);
+    },
+    async updateSlot(id, patch) {
+      fail((await admin().from("timetable_slots").update(slotRow(patch)).eq("id", id).eq("user_id", userId)).error, "updateSlot");
+    },
+    async setSlotDeleted(id, deleted) {
+      fail((await admin().from("timetable_slots").update({ deleted_at: deleted ? new Date().toISOString() : null }).eq("id", id).eq("user_id", userId)).error, "setSlotDeleted");
+    },
+    async purgeDeletedSlots(beforeIso) {
+      fail((await admin().from("timetable_slots").delete().eq("user_id", userId).lt("deleted_at", beforeIso)).error, "purgeDeletedSlots");
+    },
+    async applyImport(batch, ops) {
+      // A new import ends the previous one's Undo (removed rows waiting for the purge included).
+      fail((await admin().from("timetable_slots").update({ import_prev: null }).eq("user_id", userId).not("import_prev", "is", null)).error, "applyImport");
+      const at = new Date().toISOString();
+      await repo.createSlots(ops.insert.map((r) => ({ ...r, importPrev: { batch, at, added: true } })));
+      try {
+        if (ops.update.length) {
+          const ids = ops.update.map((u) => u.id);
+          const cur = await admin().from("timetable_slots").select(SLOT_COLS).eq("user_id", userId).is("deleted_at", null).in("id", ids);
+          fail(cur.error, "applyImport");
+          const byId = new Map((cur.data ?? []).map((r) => [r.id as string, toSlot(r)]));
+          const rows = ops.update.filter((u) => byId.has(u.id)).map((u) => {
+            const was = byId.get(u.id)!;
+            const prev: ImportPrev = { batch, at, before: { ...coreOf(was), importBatch: was.importBatch } };
+            return { ...slotRow(coreOf(u.next)), id: u.id, user_id: userId, source: "import", import_uid: u.next.importUid, import_batch: batch, import_prev: prev };
+          });
+          if (rows.length) fail((await admin().from("timetable_slots").upsert(rows, { onConflict: "id" })).error, "applyImport");
+        }
+        if (ops.remove.length) {
+          const prev: ImportPrev = { batch, at, removed: true };
+          fail((await admin().from("timetable_slots").update({ deleted_at: new Date().toISOString(), import_prev: prev }).eq("user_id", userId).is("deleted_at", null).in("id", ops.remove)).error, "applyImport");
+        }
+      } catch (e) {
+        await repo.undoImport(batch, at);
+        throw e;
+      }
+    },
+    async undoImport(batch, sinceIso) {
+      // Only rows this import touched still carry its batch in import_prev (the next import clears it).
+      const touched = await admin().from("timetable_slots").select("id, import_prev").eq("user_id", userId).filter("import_prev->>batch", "eq", batch);
+      fail(touched.error, "undoImport");
+      const since = Date.parse(sinceIso);
+      const added: string[] = [];
+      const restore: Row[] = [];
+      const undelete: string[] = [];
+      for (const r of touched.data ?? []) {
+        const prev = r.import_prev as ImportPrev;
+        if (!(Date.parse(prev.at) >= since)) continue;
+        if ("added" in prev) added.push(r.id as string);
+        else if ("removed" in prev) undelete.push(r.id as string);
+        else restore.push({ ...slotRow(prev.before), id: r.id, user_id: userId, source: "import", import_batch: prev.before.importBatch, import_prev: null });
+      }
+      if (added.length) fail((await admin().from("timetable_slots").delete().eq("user_id", userId).in("id", added)).error, "undoImport");
+      if (restore.length) fail((await admin().from("timetable_slots").upsert(restore, { onConflict: "id" })).error, "undoImport");
+      if (undelete.length) fail((await admin().from("timetable_slots").update({ deleted_at: null, import_prev: null }).eq("user_id", userId).in("id", undelete)).error, "undoImport");
+      return added.length + restore.length + undelete.length;
+    },
+
+    // The calendar link table is server-only (no student access at all): secret key, pinned.
+    async getCalendarLink(): Promise<CalendarLink | null> {
+      const { data, error } = await admin().from("calendar_links").select("token, created_at, last_fetched_at").eq("user_id", userId).maybeSingle();
+      fail(error, "getCalendarLink");
+      return data ? { token: data.token as string, createdAt: iso(data.created_at)!, lastFetchedAt: iso(data.last_fetched_at) } : null;
+    },
+    async setCalendarLink(token) {
+      const row = { user_id: userId, token, token_hash: tokenHash(token), created_at: new Date().toISOString(), last_fetched_at: null };
+      const { data, error } = await admin().from("calendar_links").upsert(row, { onConflict: "user_id" }).select("token, created_at, last_fetched_at").single();
+      fail(error, "setCalendarLink");
+      return { token: data.token as string, createdAt: iso(data.created_at)!, lastFetchedAt: null };
+    },
+    async deleteCalendarLink() {
+      fail((await admin().from("calendar_links").delete().eq("user_id", userId)).error, "deleteCalendarLink");
+    },
+
     async getProfile(): Promise<Profile> {
-      const { data, error } = await db.from("profiles").select("sound_on, volume, theme, timezone").maybeSingle();
+      const { data, error } = await db.from("profiles").select(PROFILE_COLS).maybeSingle();
       fail(error, "getProfile");
       return data
-        ? { soundOn: data.sound_on, volume: data.volume, theme: data.theme, timezone: data.timezone }
-        : { soundOn: true, volume: 0.35, theme: "system", timezone: "UTC" };
+        ? {
+          // The column is writable by the student directly (own profile), so it is checked on the way
+          // out too: slots, imports and the calendar feed use it as a time zone (S4-4).
+          soundOn: data.sound_on, volume: data.volume, theme: data.theme, timezone: safeTimeZone(data.timezone),
+          timerFocusMin: data.timer_focus_min ?? 25, timerShortMin: data.timer_short_min ?? 5, timerLongMin: data.timer_long_min ?? 15,
+          timerLongEvery: data.timer_long_every ?? 4, timerAutoStart: data.timer_auto_start ?? false, focusQuiet: data.focus_quiet ?? true,
+          weekStart: data.week_start === "sun" ? "sun" : "mon",
+        }
+        : {
+          soundOn: true, volume: 0.35, theme: "system", timezone: "UTC",
+          timerFocusMin: 25, timerShortMin: 5, timerLongMin: 15, timerLongEvery: 4, timerAutoStart: false, focusQuiet: true, weekStart: "mon",
+        };
     },
     async updateProfile(patch) {
       const row: Row = { user_id: userId };
@@ -820,10 +1037,17 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
       if (patch.volume !== undefined) row.volume = patch.volume;
       if (patch.theme !== undefined) row.theme = patch.theme;
       if (patch.timezone !== undefined) row.timezone = patch.timezone;
+      if (patch.timerFocusMin !== undefined) row.timer_focus_min = patch.timerFocusMin;
+      if (patch.timerShortMin !== undefined) row.timer_short_min = patch.timerShortMin;
+      if (patch.timerLongMin !== undefined) row.timer_long_min = patch.timerLongMin;
+      if (patch.timerLongEvery !== undefined) row.timer_long_every = patch.timerLongEvery;
+      if (patch.timerAutoStart !== undefined) row.timer_auto_start = patch.timerAutoStart;
+      if (patch.focusQuiet !== undefined) row.focus_quiet = patch.focusQuiet;
+      if (patch.weekStart !== undefined) row.week_start = patch.weekStart;
       fail((await db.from("profiles").upsert(row)).error, "updateProfile");
     },
     async exportAll(): Promise<ExportBundle> {
-      const [subjects, notesRes, sourcesRes, chunksRes, profile, cardsRes, reviewsRes, mapsRes, quizzesRes, attemptsRes, answersRes, weakRes, questionsRes, chatRes] = await Promise.all([
+      const [subjects, notesRes, sourcesRes, chunksRes, profile, cardsRes, reviewsRes, mapsRes, quizzesRes, attemptsRes, answersRes, weakRes, questionsRes, chatRes, studyRes, slotsRes] = await Promise.all([
         repo.listSubjects(),
         db.from("notes").select("*"),
         db.from("sources").select("*"),
@@ -838,6 +1062,8 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
         allRows("weak_topics", "created_at"),
         allQuestions(),
         allRows("chat_messages", "created_at"),
+        allRows("study_sessions", "started_at"),
+        allRows("timetable_slots", "start_date"),
       ]);
       fail(notesRes.error, "export notes");
       fail(sourcesRes.error, "export sources");
@@ -862,6 +1088,9 @@ export function supabaseRepo(db: SupabaseClient, userId: string, admin: () => Su
         answers: answersRes.map(toAnswer),
         weakTopics: weakRes.map(toWeakTopic),
         chatMessages: chatRes.map(toChat),
+        studySessions: studyRes.map(toStudySession),
+        // Live slots only; the calendar link token is never exported.
+        timetableSlots: slotsRes.filter((r) => !r.deleted_at).map(toSlot),
       };
     },
   };

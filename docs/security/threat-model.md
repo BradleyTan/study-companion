@@ -1,17 +1,18 @@
 # Threat model
 
-Last updated: 2026-10-18 (Step 3 review). Owner: security-engineer.
+Last updated: 2026-10-19 (Step 4 review). Owner: security-engineer.
 
 ## What we protect
-1. Students' notes, uploaded lecture files and extracted text (private, sometimes personal); from Step 2 their flashcards, review history and mindmaps; from Step 3 their quizzes, answers, weak topics, chat history and passage embeddings.
+1. Students' notes, uploaded lecture files and extracted text (private, sometimes personal); from Step 2 their flashcards, review history and mindmaps; from Step 3 their quizzes, answers, weak topics, chat history and passage embeddings; from Step 4 their study rounds, timetable and private calendar link.
 5. The integrity of a student's own quiz: answers stay hidden until each question is answered (Step 3).
 2. Account identities (emails) and sessions.
-3. Secrets: Supabase secret key, Groq and Cloudflare AI keys (Step 2+), Google OAuth tokens (Step 4).
+3. Secrets: Supabase secret key, Groq and Cloudflare AI keys (Step 2+), each student's calendar feed token (Step 4).
 4. The shared free AI allowance (Step 2+). No service has a card attached, so nothing can create a bill.
 
 ## Trust boundaries
 Browser → Next.js server (Vercel) → Supabase (Postgres with RLS, Storage, Auth, Edge Functions incl. the `embed` function with gte-small) → Groq API, Cloudflare Workers AI fallback (Step 2+, free plans).
 Every server action and route handler is a public endpoint. The browser only ever holds the publishable key and the student's own session.
+Step 4 adds the one route that reads a student's data without their session: `/api/calendar/<token>.ics`, fetched by Google, Apple or Outlook Calendar, where the token is the only key.
 
 ## Threats and controls
 
@@ -31,11 +32,14 @@ Every server action and route handler is a public endpoint. The browser only eve
 | T16 | Sign-in links built from a spoofed Host header | `NEXT_PUBLIC_SITE_URL` required in production; Supabase redirect allow-list should list exact URLs only. | Done |
 | T10 | Prompt injection from uploaded PDFs and notes | Text goes to the model only inside `<passage>` data blocks, with rules saying it is data, never instructions. Delimiters are defused, including look-alike, invisible-character and HTML-entity disguises, and the subject name is defused too. The model cites short refs (`p1`) only, which the server maps to the chunk ids it sent. Replies are validated with zod, clipped to the database limits, and quotes must appear in the cited passage. Step 3: topic names, the chat question and the last 4 chat messages go in the user message as quoted, defused data; quiz answers and chat sentences must be grounded in the cited passage and not swap a passage term; citations map only to passages the server sent, with quotes re-derived from the passage. A successful injection can only affect the uploading student's own cards, quizzes and answers. Tested in `src/lib/ai/injection.test.ts`, `src/lib/ai/quiz.test.ts`, `src/lib/chat/chat.test.ts`. | Done (Step 3 review) |
 | T11 | AI allowance abuse (one student uses up the shared free AI allowance) | Server-side daily quotas per student in `ai_usage` (students can read, not write, their rows): successful goes (flashcards 15, mindmaps 3, quizzes 3, chat questions 20; flashcards raised from 5 by Bradley on 2026-10-17) and tries including failures (45 / 9 / 9 / 60). Chat reserves before retrieval, so embedding and keyword searches count as tries. An app-wide daily budget per model below the free plan limit. Cache by content hash. Atomic reserve/settle functions callable only by `service_role`. A set where every card is already in the deck (`all_skipped`) gives the go back but keeps the try. No paid plan or card is attached anywhere, so abuse can't create a bill. Residual (S2-14): at 15 goes and 45 tries one student can use up most of the day's app-wide flashcard budget, so other students wait until tomorrow; needs a per-student token cap or throttle before more students join. Residual (S3-4): the same for `gpt-oss-120b` (quizzes and chat), where 60 chat tries alone are more than the day's budget. | Done (Step 3 review); S2-14 and S3-4 open |
-| T12 | Google OAuth token theft | Encrypted at rest (Vault), least scopes, revocable. | Step 4 |
+| T12 | Google OAuth token theft | Dropped: Step 4 uses an .ics feed and file import, not Google OAuth (PLAN decision 9). No OAuth tokens are stored. | N/A |
 | T17 | One student fills the shared free database with direct writes | Students can't write flashcards, reviews or mindmaps directly. Subject (50) and note (500 per subject) caps and the note size limits are enforced in the database as well as in server actions. Card text and quotes, mindmap JSON and sources JSON have size checks. | Done (Step 2 review) |
 | T18 | Read-aloud text leaving the device | Web Speech with on-device voices first; online voices are labelled, with a hint that the browser's maker receives the text; stated on the privacy page. StudyNest sends nothing. | Done |
 | T19 | Reading a quiz's answers before answering (cheating on your own quiz) | Students can't select `questions.answer`, `correct_index`, `accepted_json`, `explanation` or `source_quote` (column grants), or `ai_cache` (no privileges, no policy). The quiz screen gets prompts, shuffled options and topics only; answers come back in the feedback for an answered question, and results only for a finished attempt. Option order is shuffled by the server. Tested in `05_grants.sql`, `10_rls.sql`, `quiz.test.ts` and QA's e2e network check. Accepted: the "Quiz me" chat answer is in the page before "Show answer" (S3-9). | Done (Step 3 review) |
 | T20 | CPU exhaustion through hostile model replies or notes (ReDoS) | Every regex over passage, reply or file text gets a timing test on long adversarial input (S2-13, S2-15, S2-16, S3-1); replies are bounded by `max_tokens` and fields are clipped before the heavier checks. | Done (Step 3 review) |
+| T21 | Calendar feed link guessed, leaked or not revocable | 256-bit random token (base64url); shape checked before any lookup; looked up only by SHA-256 hash on a unique index; `calendar_links` is server-only (no policies, no privileges for students or anon) and not in the export; reset replaces the hash, turn-off deletes the row, account deletion cascades; `private, no-store`, `noindex`, `no-referrer`; the feed holds only slot titles, subject emoji, rooms and times; TEXT values escaped and folded, `TZID` only a real zone name (S4-4). Accepted: the token is in the URL path (provider and request logs) and kept in plaintext so the panel can show it again (S4-7); no rate limit on the route (S4-6). | Done (Step 4 review) |
+| T22 | CPU exhaustion through a hostile timetable file or feed | `.ics` read on the server only (never a URL), at most 1 MB, single-pass parser, 5,000 events, 100 zones, 400 EXDATE/RDATE per event, nesting limit 20; repeat expansion bounded by 200,000 rule steps and 8,000 worked-out dates per file (S4-1); 500 classes per import, 300 live slots per student (action and trigger). Feed VTIMEZONE blocks cached per zone, byte-counted folding (S4-5). | Done (Step 4 review) |
+| T23 | Links built from a spoofed Host header | `siteOrigin()` uses `NEXT_PUBLIC_SITE_URL` (or Vercel's preview URL) and refuses the Host header in production unless the app is the real in-memory demo (`isDemoMode()`, S4-2). | Done (Step 4 review) |
 | T13 | Dependency vulnerabilities | `npm audit --omit=dev --audit-level=high` in CI. | Done |
 
 ## Step 1 security review (2026-10-11)
@@ -96,6 +100,21 @@ Reviewer: security-engineer. Verdict: no critical/high findings; cleared to merg
 | S3-12 Swapped-term check O(sentence × passage), ~300 ms worst | Low | Accepted |
 | S3-13 Client Markdown parser quadratic on space runs (≤ 4,000 chars) | Low | Accepted |
 
+## Step 4 security review (2026-10-19)
+Reviewer: security-engineer. Verdict: no critical/high findings; cleared to merge after fixes. Details in `docs/security/step-4-review.md`.
+
+| Finding | Severity | Status |
+|---|---|---|
+| S4-1 Hostile `.ics` took ~5 s of server CPU to preview | Medium | Fixed: whole-file date budget, cached zone checks, timing test |
+| S4-2 `siteOrigin` used the Host header with `DEMO_MODE=1` even with Supabase configured (QA) | Low | Fixed: only when `isDemoMode()` |
+| S4-3 Import Undo worked for any batch at any time; Supabase and demo differed (QA) | Low | Fixed: latest import only, within 5 minutes |
+| S4-4 Unvalidated profile time zone could reach slots and the feed's `TZID` | Low | Fixed: `safeTimeZone` on read, DB format check, feed falls back to UTC |
+| S4-5 Feed rebuilt VTIMEZONE and folded per character on every fetch | Low | Fixed: cached zone rules, byte-counted folding |
+| S4-6 No rate limit on the public feed route | Low | Accepted (S2-10 class); Vercel firewall rule if abused |
+| S4-7 Feed token in the URL and stored in plaintext (server-only) | Low | Accepted (design: the panel shows the link again) |
+| S4-8 Privacy page didn't say calendar apps keep their copy | Low | Fixed |
+| S4-9 A student can log made-up study rounds (own totals only) | Low | Accepted |
+
 ## Residual risks / follow-ups
 - Clean up upload rows left `pending` (browser closed mid-upload) with a scheduled job, once Supabase is connected (free `pg_cron`).
 - A Content-Security-Policy header is not set yet (Next inline scripts need nonces). Planned for the polish pass.
@@ -111,3 +130,6 @@ Reviewer: security-engineer. Verdict: no critical/high findings; cleared to merg
 - Per-student daily token cap across all AI kinds, or tries at 2× goes, before a second student (S2-14, S3-4).
 - One embedding backfill per request, smaller batches, skipped if one ran recently (S3-8).
 - Account deletion relies on Supabase backups expiring (stated on the privacy page as 30 days).
+- Apply `20261019000001` and `20261020000001` (Step 4) to the live project before deploying Step 4, then run the Supabase security advisor and the two-student checks. Live Vercel must have `NEXT_PUBLIC_SITE_URL` set and no `DEMO_MODE`.
+- A rate-limit rule (free Vercel firewall) on `/api/calendar/*` if the feed is ever abused (S4-6).
+- Test real Google, Apple and Outlook subscriptions to the feed on a preview deploy (QA "Not tested yet").

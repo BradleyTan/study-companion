@@ -26,10 +26,13 @@ export async function createSubject(page: Page, name: string, opts: { emoji?: st
 
 export async function expectNoA11yViolations(page: Page) {
   // After an autosave the route refreshes and Next swaps <title>; wait for it (fails if a page has none).
+  // Polled: Next can swap <title> again between the wait and the scan ("document-title", seen in
+  // Step 2 and Step 4 QA runs under load). A real violation stays and still fails after 5 s.
   await expect(page).toHaveTitle(/\S/);
-  const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
-  const summary = results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`);
-  expect(summary).toEqual([]);
+  await expect.poll(async () => {
+    const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+    return results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`);
+  }, { timeout: 5_000 }).toEqual([]);
 }
 
 export async function expectNoHorizontalScroll(page: Page) {
@@ -68,4 +71,14 @@ export async function smallTargets(page: Page) {
     }
     return out;
   });
+}
+
+/** Header "Settings": a link from 640 px, inside the "Menu" (⋯) on phones (Step 4 header). */
+export async function openSettings(page: Page) {
+  const direct = page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Settings" });
+  const menu = page.getByRole("button", { name: "Menu" });
+  await expect(direct.or(menu).filter({ visible: true }).first()).toBeVisible();
+  if (await menu.isVisible()) await menu.click();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Settings" }).filter({ visible: true }).click();
+  await expect(page).toHaveURL(/\/settings$/);
 }

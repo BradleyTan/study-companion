@@ -13,6 +13,12 @@
 
 **Weak topics strip** (Step 3, directly under the tools row, only when the subject has open weak topics): slim sticker (`--card`, 6 px left band `--subject`, no rotation), target icon, text "**3 weak topics:** Krebs cycle, Osmosis +1" (top 2 names, then "+N"), and on the right a plain small button "Practise" → `/subjects/[id]/weak-topics` (weak-topics.md). Phone: text on one line (names truncate with ellipsis, full list in the accessible name), button on the right, 44 px. When every weak topic is cleared, the strip disappears (no "0 weak topics" line).
 
+**Study strip** (Step 4, under the weak-topics strip, or under the tools row when there is none; always shown): slim sticker (`--card`, 6 px left band `--subject`, no rotation), three parts in one row on tablet/laptop, stacked on phone:
+- Primary small button **"Start focus"** (tomato icon): starts a focus round with this subject at the default length and opens the timer panel (timer.md). While the timer runs for this subject the button becomes the live chip text "Focusing · 18:42" and opens the panel; while it runs for another subject: "Switch timer to Biology" (plain).
+- "This week: **2 h 10 min** studied" (focus rounds Monday to now in `profiles.timezone`; none yet: "No focus rounds this week yet").
+- "Next: **Lecture**, Tue 10:00 · Room 2.14" linking to `/timetable` at that week (none: "Add a class" link → `/timetable` with the form open and this subject chosen). A Study block happening now replaces it with "Study block now · until 15:00".
+- Accessible names spell it out ("Next class: BIOL1001 Lecture, Tuesday 10:00, Room 2.14"). Loading: text parts show "…"; a failed count hides that part only.
+
 **Two sections** (stacked on phone, side by side ≥ 900 px):
 1. **Notes**: "New note" primary. List of note rows: title, first line preview, "edited 2 h ago". Empty: "No notes yet. Type your first one."
 2. **Lecture files**: upload drop zone (dashed outline, "Drop a PDF or PowerPoint here, or choose a file", "PDF or PPTX, up to 25 MB"). File rows: type chip (PDF/PPTX), name, size, pages/slides, status chip.
@@ -29,3 +35,5 @@
 **Note rows** (Step 2): "⋯" menu per row with "Make flashcards", "Make a quiz" (Step 3) and "Delete".
 
 **Deleting a note or file that cards came from:** the confirm adds "Flashcards made from it stay in your deck, with their quotes." (Step 3: "Flashcards and quizzes made from it stay, with their quotes.") Mindmap nodes keep their labels; their passage panel shows "Source deleted". Quiz source blocks, weak-topic links and chat citations show the "Source deleted" chip the same way.
+
+**Subject colour and emoji in Step 4:** the timer chip and ring use `--subject` for a round on this subject; timetable class slots are filled with it and study blocks carry it as a left band; the calendar feed titles start with the emoji ("🧬 Biology class").

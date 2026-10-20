@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PROTECTED = ["/subjects", "/settings", "/review"];
+const PROTECTED = ["/subjects", "/settings", "/review", "/timer", "/timetable"];
 const DEMO_COOKIE = "studynest_demo_uid";
 
 // Refreshes the Supabase session cookie on every request and sends signed-out
@@ -60,5 +60,6 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|manifest.webmanifest|sw.js|.*\\.(?:png|svg|jpg|ico|webp)$).*)"],
+  // The calendar feed is fetched by calendar apps without cookies: no session to refresh there.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|manifest.webmanifest|sw.js|api/calendar/|.*\\.(?:png|svg|jpg|ico|webp)$).*)"],
 };

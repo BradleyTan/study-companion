@@ -33,6 +33,29 @@ select pg_temp.check(not has_column_privilege('authenticated', 'public.questions
 select pg_temp.check(not has_table_privilege('authenticated', 'public.ai_cache', 'select') and not has_table_privilege('authenticated', 'public.ai_cache', 'insert')
   and not has_table_privilege('authenticated', 'public.ai_cache', 'update') and not has_table_privilege('authenticated', 'public.ai_cache', 'delete'), 'students cannot touch ai_cache');
 select pg_temp.check(not exists (select from pg_policy where polrelid = 'public.ai_cache'::regclass), 'ai_cache has no student policy');
+-- Step 4: study sessions are read-only to students (the server logs them, pinned to the student).
+select pg_temp.check(has_table_privilege('authenticated', 'public.study_sessions', 'select'), 'students can read study_sessions');
+select pg_temp.check(not has_table_privilege('authenticated', 'public.study_sessions', 'insert') and not has_table_privilege('authenticated', 'public.study_sessions', 'update')
+  and not has_table_privilege('authenticated', 'public.study_sessions', 'delete') and not has_table_privilege('authenticated', 'public.study_sessions', 'truncate'), 'students cannot write study_sessions');
+select pg_temp.check(not has_table_privilege('anon', 'public.study_sessions', 'select'), 'anon cannot read study_sessions');
+select pg_temp.check(exists (select from pg_policy where polrelid = 'public.study_sessions'::regclass and polcmd = 'r')
+  and not exists (select from pg_policy where polrelid = 'public.study_sessions'::regclass and polcmd <> 'r'), 'study_sessions has only a read policy');
+select pg_temp.check(not has_function_privilege('authenticated', 'public.enforce_study_session_cap()', 'execute'), 'students cannot call the study session cap trigger function');
+-- Timer settings are profile columns students may update (like sound and theme).
+select pg_temp.check(has_column_privilege('authenticated', 'public.profiles', 'timer_focus_min', 'update') and has_column_privilege('authenticated', 'public.profiles', 'focus_quiet', 'update'), 'students can save timer settings');
+-- Step 4 part 2: timetable slots are read-only to students; the calendar link is server-only
+-- (no grants, no policy), so its token can never reach the browser through the data API.
+select pg_temp.check(has_table_privilege('authenticated', 'public.timetable_slots', 'select'), 'students can read timetable_slots');
+select pg_temp.check(not has_table_privilege('authenticated', 'public.timetable_slots', 'insert') and not has_table_privilege('authenticated', 'public.timetable_slots', 'update')
+  and not has_table_privilege('authenticated', 'public.timetable_slots', 'delete') and not has_table_privilege('authenticated', 'public.timetable_slots', 'truncate'), 'students cannot write timetable_slots');
+select pg_temp.check(exists (select from pg_policy where polrelid = 'public.timetable_slots'::regclass and polcmd = 'r')
+  and not exists (select from pg_policy where polrelid = 'public.timetable_slots'::regclass and polcmd <> 'r'), 'timetable_slots has only a read policy');
+select pg_temp.check(not has_table_privilege('authenticated', 'public.calendar_links', 'select') and not has_table_privilege('authenticated', 'public.calendar_links', 'insert')
+  and not has_table_privilege('authenticated', 'public.calendar_links', 'update') and not has_table_privilege('authenticated', 'public.calendar_links', 'delete'), 'students cannot touch calendar_links');
+select pg_temp.check(not has_column_privilege('authenticated', 'public.calendar_links', 'token', 'select'), 'students cannot read the calendar token');
+select pg_temp.check(not exists (select from pg_policy where polrelid = 'public.calendar_links'::regclass), 'calendar_links has no student policy');
+select pg_temp.check(not has_function_privilege('authenticated', 'public.enforce_timetable_slot_cap()', 'execute'), 'students cannot call the timetable slot cap trigger function');
+select pg_temp.check(has_column_privilege('authenticated', 'public.profiles', 'week_start', 'update'), 'students can save the week start');
 -- Every table in public has RLS on, and anon can't read or call anything there (the stub grants
 -- like Supabase does by default, so this catches a table or function a migration forgot).
 select pg_temp.check(c.relrowsecurity, 'RLS is on for ' || c.relname)

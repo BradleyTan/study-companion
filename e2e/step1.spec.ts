@@ -1,6 +1,6 @@
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-import { createSubject, expectNoA11yViolations, expectNoHorizontalScroll, rowAction, startDemo } from "./helpers";
+import { createSubject, expectNoA11yViolations, expectNoHorizontalScroll, rowAction, startDemo, openSettings } from "./helpers";
 
 const fixture = (name: string) => path.join(__dirname, "fixtures", name);
 
@@ -133,7 +133,7 @@ test("one student can't open another student's subject", async ({ browser }) => 
 
 test("settings: sound and theme are remembered, export downloads", async ({ page }) => {
   await startDemo(page);
-  await page.getByRole("link", { name: "Settings" }).click();
+  await openSettings(page);
   await expectNoA11yViolations(page);
   const sound = page.getByLabel("Play sounds");
   await expect(sound).toBeChecked();
@@ -155,7 +155,7 @@ test("settings: sound and theme are remembered, export downloads", async ({ page
 test("delete account removes everything", async ({ page }) => {
   await startDemo(page);
   await createSubject(page, "Temporary");
-  await page.getByRole("link", { name: "Settings" }).click();
+  await openSettings(page);
   const btn = page.getByRole("button", { name: "Delete my account" });
   await expect(btn).toBeDisabled();
   await page.getByLabel("Type DELETE to confirm").fill("DELETE");

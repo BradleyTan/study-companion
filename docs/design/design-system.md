@@ -38,7 +38,7 @@ Eight pastels, each paired with ink text: sky `#8fb8ff`, sun `#ffe45c`, coral `#
 ## Motion
 - Durations: 120 ms (press), 200 ms (hover lift), 350 ms (sticker pop, springy `cubic-bezier(.3,1.8,.5,1)`).
 - `prefers-reduced-motion: reduce` turns off rotation, pop and lift; state changes still show (colour, text).
-- Focus mode (Step 4) will mute decorative motion.
+- Focus mode (Step 4) mutes decorative motion; see "Step 4 additions".
 
 ## Components (Step 1)
 `Button` (primary yellow / plain / danger), `IconButton`, `Input`, `Textarea`, `Select`, `Dialog` (native `<dialog>`), `StickerCard`, `Chip`, `Tape` (decorative), `Toast` ("Saved", "Uploaded"), `EmptyState`.
@@ -92,3 +92,25 @@ No new colour tokens: right/wrong reuse `--success` / `--danger` with `--on-colo
 
 ### New components
 `OptionButton` (MCQ option sticker with key cap and ✓/✗ states), `BlankInput` (fill-in sentence with inline gap + input), `FeedbackPanel`, `ScoreSticker`, `StreakTag`, `TopicNote` (weak-topic sticky note with recent-tries dots), `ChatBubble` (student / answer / not-covered), `CitationChip` + `CitationPreview` (popover ≥ 640 px, `BottomSheet` on phone), `Composer`. `SourceQuote`, `QuotaChip`, `ProgressBar`, `Confetti` and the page-range fields are reused from Step 2.
+
+## Step 4 additions (timer, timetable, calendar link)
+
+No new colour tokens. The timer ring uses `--subject` (or `--highlight` with no subject) for focus and `--success` for breaks; timetable classes use `--subject` fills, study blocks `--card` with a dashed outline and a `--subject` band; the drag ghost is `color-mix(in srgb, var(--highlight) 40%, var(--card))`. All fills keep `--on-colour` text; text on `--card` is `--ink`.
+
+### Type
+- **Timer digits:** 56 px bold Atkinson Hyperlegible with `font-variant-numeric: tabular-nums` (48 px in the 240 px panel ring). The only size outside the 14 / 16 / 20 / 28 / 40 scale; never used for anything else. Not Permanent Marker (it has no even-width digits).
+
+### Focus mode (now live)
+- **On** while a focus round is running or paused and the "Quiet the app while I focus" setting is on (default). **Off** during breaks and when idle.
+- Only `chime` plays; decorative motion follows reduced-motion rules; no confetti, bursts, shakes, loops or tile lifts. State changes (✓/✗ badges, text, colour) still show. Read-aloud still works.
+- Shown in the header by the timer chip; announced once when a round starts ("Focus mode is on: sounds and animations are quieter.").
+
+### Motion
+- Timer ring: 1000 ms linear per second; reduced motion: steps once a second, no transition. Phase end: one 350 ms spring scale (1 → 1.04 → 1) and a tomato sticker pop (not under reduced motion).
+- Timetable: slot saved 350 ms pop, deleted 200 ms shrink, drag snaps 120 ms ease-out, week change 200 ms slide + fade (24 px). Reduced motion / focus mode: none of these, at most a 120 ms fade. Drag ghosts always follow the pointer.
+
+### New components
+`TimerProvider` (global state, wall-clock), `TimerChip`, `TimerPanel` (used in the side panel / bottom sheet and full size on `/timer`), `TimerRing`, `DurationStepper`, `TodayTally`, `NotificationNudge`, `WeekGrid`, `DayStrip`, `SlotSticker` (class / study / other), `SlotForm`, `SlotDetails`, `ImportDialog` (choose → reading → preview), `CalendarLinkPanel` (also inline in Settings), `StudyStrip` (subject page). Built on existing primitives (`Dialog`, `BottomSheet`, `SidePanel`, `Chip`, `Toast`, `Select`).
+
+### Header navigation (Step 4)
+Laptop/tablet: logo · Subjects · Timetable · timer chip · Settings · Sign out. Phone: logo · timer chip · Timetable icon button · Menu "⋯" (Subjects, Settings, Sign out). Details in timetable.md.

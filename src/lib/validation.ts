@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { safeTimeZone } from "./srs/due";
+import { MAX_PLANNED_SEC, MIN_LOG_SEC, RANGES } from "./timer/machine";
 import { COLOUR_NAMES, SUBJECT_EMOJIS } from "./subjects";
+import { dayOf } from "./timetable/dates";
+import { IMPORT_MAX_CLASSES } from "./timetable/limits";
+import { LOCATION_MAX, MAX_SKIPS, SLOT_ERRORS, SLOT_KINDS, slotError, TITLE_MAX } from "./timetable/slots";
 
 export const subjectInput = z.object({
   name: z.string().trim().min(1, "Give your subject a name.").max(60, "Keep the name under 60 characters."),
@@ -24,6 +28,15 @@ export const settingsUpdate = z.object({
   volume: z.number().min(0).max(1).optional(),
   theme: z.enum(["system", "light", "dark"]).optional(),
   timezone: z.string().max(64).refine((tz) => safeTimeZone(tz) === tz, "Unknown time zone.").optional(),
+  // Step 4: study timer defaults (settings.md, timer.md "Durations").
+  timerFocusMin: z.int().min(RANGES.focusMin.min).max(RANGES.focusMin.max).multipleOf(RANGES.focusMin.step).optional(),
+  timerShortMin: z.int().min(RANGES.shortMin.min).max(RANGES.shortMin.max).optional(),
+  timerLongMin: z.int().min(RANGES.longMin.min).max(RANGES.longMin.max).multipleOf(RANGES.longMin.step).optional(),
+  timerLongEvery: z.int().min(RANGES.longEvery.min).max(RANGES.longEvery.max).optional(),
+  timerAutoStart: z.boolean().optional(),
+  focusQuiet: z.boolean().optional(),
+  // Step 4 part 2: timetable (settings.md "Week starts on").
+  weekStart: z.enum(["mon", "sun"]).optional(),
 });
 export type SettingsUpdate = z.infer<typeof settingsUpdate>;
 
@@ -137,3 +150,76 @@ export const askInput = z.object({
 });
 export const olderChatInput = z.object({ subjectId: id, before: z.iso.datetime({ offset: true }) });
 export const chatFeedbackInput = z.object({ messageId: id, feedback: z.enum(["wrong", "not_in_notes", "too_long"]) });
+
+// ---- Step 4: study timer --------------------------------------------------------------
+/** A queued round older than this is dropped instead of saved (timer.md: one device's timer). */
+export const STUDY_LOG_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export const studySessionInput = z.object({
+  clientKey: z.uuid(),
+  subjectId: z.uuid().nullable(),
+  kind: z.enum(["focus", "short_break", "long_break"]),
+  plannedSec: z.int().min(60).max(MAX_PLANNED_SEC),
+  focusedSec: z.int().min(MIN_LOG_SEC, "Rounds under a minute aren't saved.").max(MAX_PLANNED_SEC),
+  completed: z.boolean(),
+  startedAt: z.iso.datetime({ offset: true }),
+  endedAt: z.iso.datetime({ offset: true }),
+})
+  .refine((s) => Date.parse(s.endedAt) > Date.parse(s.startedAt), "A round ends after it starts.")
+  .refine((s) => Date.parse(s.endedAt) - Date.parse(s.startedAt) <= 2 * DAY_MS, "That round is too long.")
+  .refine((s) => s.focusedSec <= (Date.parse(s.endedAt) - Date.parse(s.startedAt)) / 1000 + 5, "More time than the round lasted.")
+  .refine((s) => s.focusedSec <= s.plannedSec + 5, "More time than the round was set for.");
+export type StudySessionInput = z.infer<typeof studySessionInput>;
+
+// ---- Step 4 part 2: timetable and calendar link (timetable.md) ---------------------------
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a date.").refine((d) => {
+  const n = dayOf(d);
+  return Number.isFinite(n) && d >= "2000-01-01" && d <= "2100-12-31";
+}, "Pick a real date.");
+
+/** The slot form (and drag, which sends the same thing). */
+export const slotInput = z.object({
+  kind: z.enum(SLOT_KINDS),
+  subjectId: z.uuid().nullable(),
+  title: z.string().trim().max(TITLE_MAX, `Keep the title under ${TITLE_MAX} characters.`).transform((v) => v || null),
+  location: z.string().trim().max(LOCATION_MAX, `Keep the location under ${LOCATION_MAX} characters.`).transform((v) => v || null),
+  date: isoDate,
+  startMin: z.int().min(0).max(1439),
+  endMin: z.int().min(1).max(1440),
+  repeats: z.enum(["weekly", "none"]),
+  until: isoDate.nullable(),
+}).superRefine((s, ctx) => {
+  const bad = slotError({ startMin: s.startMin, endMin: s.endMin, startDate: s.date, repeatUntil: s.until, recurrence: s.repeats });
+  if (bad) ctx.addIssue({ code: "custom", message: bad, path: [bad === SLOT_ERRORS.untilBefore ? "until" : "endMin"] });
+});
+export type SlotInput = z.infer<typeof slotInput>;
+
+export const editSlotInput = z.object({ id, date: isoDate, scope: z.enum(["this", "all"]), slot: slotInput });
+export const deleteSlotInput = z.object({ id, date: isoDate, scope: z.enum(["this", "all"]) });
+export const undoSlotInput = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("restore"), id }),
+  z.object({ type: z.literal("unskip"), id, date: isoDate }),
+  z.object({ type: z.literal("until"), id, until: isoDate.nullable() }),
+]);
+export type SlotUndo = z.infer<typeof undoSlotInput>;
+
+/** A class from the import preview, sent back when the student presses "Add N classes". */
+const importClass = z.object({
+  key: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
+  subjectId: z.uuid().nullable(),
+  title: z.string().trim().min(1).max(TITLE_MAX).nullable(),
+  location: z.string().trim().min(1).max(LOCATION_MAX).nullable(),
+  startDate: isoDate,
+  startMin: z.int().min(0).max(1439),
+  endMin: z.int().min(1).max(1440),
+  recurrence: z.enum(["weekly", "none"]),
+  repeatUntil: isoDate.nullable(),
+  skipDates: z.array(isoDate).max(MAX_SKIPS),
+}).refine((c) => !slotError({ ...c }), "A class in that file has times we can't use.")
+  .refine((c) => c.recurrence === "weekly" || (c.repeatUntil === null && c.skipDates.length === 0), "A class in that file has times we can't use.");
+export const addImportInput = z.object({
+  classes: z.array(importClass).min(1, "Tick at least one group.").max(IMPORT_MAX_CLASSES),
+  replace: z.boolean(),
+}).refine((v) => new Set(v.classes.map((c) => c.key)).size === v.classes.length, "That import has the same class twice.");
+export const undoImportInput = z.object({ batch: id });

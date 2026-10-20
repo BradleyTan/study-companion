@@ -1,25 +1,13 @@
 "use server";
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { isDemoMode } from "@/lib/env";
 import { googleSignInEnabled } from "@/server/auth-providers";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { siteOrigin } from "../origin";
 import { DEMO_COOKIE } from "../session";
 import type { ActionResult } from "./result";
-
-async function siteOrigin(): Promise<string> {
-  // Vercel preview deploys sign in on their own branch URL (set by Vercel, not by the request),
-  // so a test sign-in stays on the preview instead of landing on the live site.
-  if (process.env.VERCEL_ENV === "preview" && process.env.VERCEL_BRANCH_URL) return `https://${process.env.VERCEL_BRANCH_URL}`;
-  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "");
-  // Never build sign-in links from a request header in production.
-  if (process.env.NODE_ENV === "production") throw new Error("NEXT_PUBLIC_SITE_URL must be set in production");
-  const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host");
-  const proto = h.get("x-forwarded-proto") ?? "http";
-  return `${proto}://${host}`;
-}
 
 const email = z.email("That doesn't look like an email address.").max(254);
 

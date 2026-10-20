@@ -521,6 +521,214 @@ set role authenticated;
 set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
 select pg_temp.check((select count(*) from public.chat_messages where feedback is null) = 2, 'A chat unchanged by B');
 
+-- ===== Step 4 part 1: study sessions (server-written, read-only to students) and timer settings
+-- Timer settings sit on the profile, which students update themselves, inside the stepper ranges.
+update public.profiles set timer_focus_min = 30, timer_short_min = 7, timer_long_min = 20, timer_long_every = 3, timer_auto_start = true, focus_quiet = false;
+select pg_temp.check((select timer_focus_min = 30 and timer_short_min = 7 and timer_long_every = 3 and timer_auto_start and not focus_quiet from public.profiles), 'A saves timer settings');
+do $$ begin
+  update public.profiles set timer_focus_min = 7;
+  raise exception 'RLS TEST FAILED: a 7-minute focus default accepted (step 5)';
+exception when check_violation then null; end $$;
+do $$ begin
+  update public.profiles set timer_focus_min = 125;
+  raise exception 'RLS TEST FAILED: a 125-minute focus default accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  update public.profiles set timer_short_min = 0;
+  raise exception 'RLS TEST FAILED: a 0-minute short break accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  update public.profiles set timer_long_every = 9;
+  raise exception 'RLS TEST FAILED: a long break every 9 rounds accepted';
+exception when check_violation then null; end $$;
+-- B can't change A's timer settings
+set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
+update public.profiles set timer_focus_min = 120 where user_id = 'aaaaaaaa-0000-0000-0000-000000000001';
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+select pg_temp.check((select timer_focus_min from public.profiles) = 30, 'B cannot change A timer settings');
+
+reset role;
+insert into public.study_sessions (id, user_id, subject_id, kind, planned_sec, focused_sec, completed, started_at, ended_at, client_key) values
+  ('5a000000-0000-0000-0000-000000000051', 'aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'focus', 1500, 1500, true, '2026-10-19 09:00+00', '2026-10-19 09:25+00', '0d000000-0000-4000-8000-000000000001'),
+  ('5a000000-0000-0000-0000-000000000052', 'aaaaaaaa-0000-0000-0000-000000000001', null, 'short_break', 300, 300, true, '2026-10-19 09:25+00', '2026-10-19 09:30+00', '0d000000-0000-4000-8000-000000000002');
+-- shape checks
+do $$ begin
+  insert into public.study_sessions (user_id, kind, planned_sec, focused_sec, completed, started_at, ended_at, client_key)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', 'focus', 1500, 59, false, '2026-10-19 10:00+00', '2026-10-19 10:01+00', gen_random_uuid());
+  raise exception 'RLS TEST FAILED: a round under a minute was saved';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.study_sessions (user_id, kind, planned_sec, focused_sec, completed, started_at, ended_at, client_key)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', 'focus', 1500, 1500, true, '2026-10-19 10:00+00', '2026-10-19 10:10+00', gen_random_uuid());
+  raise exception 'RLS TEST FAILED: more focused time than wall-clock time accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.study_sessions (user_id, kind, planned_sec, focused_sec, completed, started_at, ended_at, client_key)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', 'focus', 10860, 10860, true, '2026-10-19 10:00+00', '2026-10-19 14:00+00', gen_random_uuid());
+  raise exception 'RLS TEST FAILED: a round over 180 minutes accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.study_sessions (user_id, kind, planned_sec, focused_sec, completed, started_at, ended_at, client_key)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', 'nap', 1500, 1500, true, '2026-10-19 10:00+00', '2026-10-19 10:30+00', gen_random_uuid());
+  raise exception 'RLS TEST FAILED: unknown kind accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.study_sessions (user_id, kind, planned_sec, focused_sec, completed, started_at, ended_at, client_key)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', 'focus', 1500, 1500, true, '2026-10-19 11:00+00', '2026-10-19 11:30+00', '0d000000-0000-4000-8000-000000000001');
+  raise exception 'RLS TEST FAILED: client key reused';
+exception when unique_violation then null; end $$;
+-- even the server can't log B's round under A's subject (composite FK)
+do $$ begin
+  insert into public.study_sessions (user_id, subject_id, kind, planned_sec, focused_sec, completed, started_at, ended_at, client_key)
+    values ('bbbbbbbb-0000-0000-0000-000000000002', '5a000000-0000-0000-0000-000000000001', 'focus', 1500, 1500, true, '2026-10-19 10:00+00', '2026-10-19 10:30+00', gen_random_uuid());
+  raise exception 'RLS TEST FAILED: server put a B round in an A subject';
+exception when foreign_key_violation then null; end $$;
+-- cap: at most 10,000 sessions per student
+insert into public.study_sessions (user_id, kind, planned_sec, focused_sec, completed, started_at, ended_at, client_key)
+  select 'aaaaaaaa-0000-0000-0000-000000000001', 'focus', 1500, 1500, true, '2026-01-01 00:00+00'::timestamptz + g * interval '1 hour', '2026-01-01 00:30+00'::timestamptz + g * interval '1 hour', gen_random_uuid()
+  from generate_series(3, 10000) g;
+do $$ begin
+  insert into public.study_sessions (user_id, kind, planned_sec, focused_sec, completed, started_at, ended_at, client_key)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', 'focus', 1500, 1500, true, '2026-10-20 10:00+00', '2026-10-20 10:30+00', gen_random_uuid());
+  raise exception 'RLS TEST FAILED: 10,001st study session accepted';
+exception when check_violation then null; end $$;
+delete from public.study_sessions where id not in ('5a000000-0000-0000-0000-000000000051', '5a000000-0000-0000-0000-000000000052');
+
+-- A reads own sessions but can't write them
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+select pg_temp.check((select count(*) from public.study_sessions) = 2, 'A sees own study sessions');
+do $$ begin
+  insert into public.study_sessions (kind, planned_sec, focused_sec, completed, started_at, ended_at, client_key)
+    values ('focus', 1500, 1500, true, '2026-10-19 12:00+00', '2026-10-19 12:25+00', gen_random_uuid());
+  raise exception 'RLS TEST FAILED: student inserted a study session directly';
+exception when insufficient_privilege then null; end $$;
+update public.study_sessions set focused_sec = 9000, planned_sec = 9000;
+delete from public.study_sessions;
+select pg_temp.check((select sum(focused_sec) from public.study_sessions) = 1800, 'student cannot rewrite or delete study sessions');
+-- B sees and changes none of it
+set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
+select pg_temp.check((select count(*) from public.study_sessions) = 0, 'B cannot see A study sessions');
+update public.study_sessions set focused_sec = 60;
+delete from public.study_sessions;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+select pg_temp.check((select sum(focused_sec) from public.study_sessions) = 1800, 'A study sessions unchanged by B');
+
+-- ===== Step 4 part 2: timetable slots (server-written, read-only to students) and the calendar link
+reset role;
+insert into public.subjects (id, user_id, name, colour, emoji) values ('5a000000-0000-0000-0000-0000000000b9', 'bbbbbbbb-0000-0000-0000-000000000002', 'B History', 'mint', '📜');
+-- server (secret key, pinned to A) writes A's slots
+insert into public.timetable_slots (id, user_id, subject_id, kind, title, location, tz, start_date, start_min, end_min, recurrence, repeat_until, skip_dates) values
+  ('5a000000-0000-0000-0000-000000000071', 'aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001', 'class', 'BIOL1001 Lecture', 'Room 2.14', 'Europe/London', '2026-10-19', 600, 660, 'weekly', '2026-12-14', array['2026-11-02']::date[]),
+  ('5a000000-0000-0000-0000-000000000072', 'aaaaaaaa-0000-0000-0000-000000000001', null, 'other', null, null, 'Europe/London', '2026-10-20', 1380, 1440, 'none', null, '{}');
+insert into public.timetable_slots (user_id, kind, tz, start_date, start_min, end_min, recurrence, source, import_uid, import_batch) values
+  ('aaaaaaaa-0000-0000-0000-000000000001', 'class', 'Europe/London', '2026-10-21', 540, 600, 'weekly', 'import', 'k1', gen_random_uuid());
+-- shape rules hold even for the server
+do $$ begin
+  insert into public.timetable_slots (user_id, kind, tz, start_date, start_min, end_min, recurrence) values ('aaaaaaaa-0000-0000-0000-000000000001', 'class', 'UTC', '2026-10-19', 600, 600, 'none');
+  raise exception 'RLS TEST FAILED: slot ending at its start accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.timetable_slots (user_id, kind, tz, start_date, start_min, end_min, recurrence) values ('aaaaaaaa-0000-0000-0000-000000000001', 'class', 'UTC', '2026-10-19', 0, 721, 'none');
+  raise exception 'RLS TEST FAILED: slot over 12 hours accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.timetable_slots (user_id, kind, tz, start_date, start_min, end_min, recurrence, skip_dates) values ('aaaaaaaa-0000-0000-0000-000000000001', 'class', 'UTC', '2026-10-19', 600, 660, 'none', array['2026-10-26']::date[]);
+  raise exception 'RLS TEST FAILED: one-off slot with skipped weeks accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.timetable_slots (user_id, kind, tz, start_date, start_min, end_min, recurrence, source) values ('aaaaaaaa-0000-0000-0000-000000000001', 'class', 'UTC', '2026-10-19', 600, 660, 'none', 'import');
+  raise exception 'RLS TEST FAILED: imported slot without import key accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.timetable_slots (user_id, kind, tz, start_date, start_min, end_min, recurrence, skip_dates)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', 'class', 'UTC', '2026-10-19', 600, 660, 'weekly', (select array_agg(date '2026-10-19' + 7 * g) from generate_series(1, 61) g));
+  raise exception 'RLS TEST FAILED: 61 skipped weeks accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.timetable_slots (user_id, kind, tz, start_date, start_min, end_min, recurrence) values ('aaaaaaaa-0000-0000-0000-000000000001', 'class', E'Europe/London\r\nX-INJECTED:1', '2026-10-19', 600, 660, 'none');
+  raise exception 'RLS TEST FAILED: zone name with a line break accepted (it goes into the feed''s TZID)';
+exception when check_violation then null; end $$;
+-- the server can't put A's slot in B's subject (composite FK)
+do $$ begin
+  insert into public.timetable_slots (user_id, subject_id, kind, tz, start_date, start_min, end_min, recurrence) values ('aaaaaaaa-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-0000000000b9', 'class', 'UTC', '2026-10-19', 600, 660, 'none');
+  raise exception 'RLS TEST FAILED: A slot in B subject accepted';
+exception when foreign_key_violation then null; end $$;
+-- the 300-slot cap holds in the database (live slots; Undo can't bring one back over it)
+insert into public.timetable_slots (user_id, kind, tz, start_date, start_min, end_min, recurrence)
+  select 'bbbbbbbb-0000-0000-0000-000000000002', 'study', 'UTC', date '2026-10-19' + g, 600, 660, 'none' from generate_series(1, 300) g;
+do $$ begin
+  insert into public.timetable_slots (user_id, kind, tz, start_date, start_min, end_min, recurrence) values ('bbbbbbbb-0000-0000-0000-000000000002', 'study', 'UTC', '2026-10-19', 600, 660, 'none');
+  raise exception 'RLS TEST FAILED: 301st slot accepted';
+exception when check_violation then null; end $$;
+update public.timetable_slots set deleted_at = now() where id = (select id from public.timetable_slots where user_id = 'bbbbbbbb-0000-0000-0000-000000000002' limit 1);
+insert into public.timetable_slots (user_id, kind, tz, start_date, start_min, end_min, recurrence) values ('bbbbbbbb-0000-0000-0000-000000000002', 'study', 'UTC', '2026-10-19', 600, 660, 'none');
+do $$ begin
+  update public.timetable_slots set deleted_at = null where user_id = 'bbbbbbbb-0000-0000-0000-000000000002' and deleted_at is not null;
+  raise exception 'RLS TEST FAILED: Undo brought back a slot over the cap';
+exception when check_violation then null; end $$;
+-- with 300 live and 300 soft-deleted rows (a replace import's Undo window), an upsert that only
+-- updates an existing slot is not refused by the 600-row backstop; a real new row still is
+delete from public.timetable_slots where user_id = 'bbbbbbbb-0000-0000-0000-000000000002';
+insert into public.timetable_slots (user_id, kind, tz, start_date, start_min, end_min, recurrence, deleted_at)
+  select 'bbbbbbbb-0000-0000-0000-000000000002', 'study', 'UTC', date '2026-10-19' + g, 600, 660, 'none', case when g > 300 then now() end from generate_series(1, 600) g;
+insert into public.timetable_slots (id, user_id, kind, tz, start_date, start_min, end_min, recurrence)
+  select id, user_id, kind, tz, start_date, 700, 760, recurrence from public.timetable_slots
+  where user_id = 'bbbbbbbb-0000-0000-0000-000000000002' and deleted_at is null limit 5
+  on conflict (id) do update set start_min = excluded.start_min, end_min = excluded.end_min;
+select pg_temp.check((select count(*) from public.timetable_slots where user_id = 'bbbbbbbb-0000-0000-0000-000000000002' and start_min = 700) = 5, 'upsert updates are not counted as new rows by the backstop');
+update public.timetable_slots set deleted_at = now() where id = (select id from public.timetable_slots where user_id = 'bbbbbbbb-0000-0000-0000-000000000002' and deleted_at is null limit 1);
+do $$ begin
+  insert into public.timetable_slots (user_id, kind, tz, start_date, start_min, end_min, recurrence) values ('bbbbbbbb-0000-0000-0000-000000000002', 'study', 'UTC', '2026-10-19', 600, 660, 'none');
+  raise exception 'RLS TEST FAILED: 601st row accepted';
+exception when check_violation then null; end $$;
+delete from public.timetable_slots where user_id = 'bbbbbbbb-0000-0000-0000-000000000002';
+-- the calendar link: the token must match its hash
+insert into public.calendar_links (user_id, token, token_hash) values
+  ('aaaaaaaa-0000-0000-0000-000000000001', repeat('a', 43), encode(sha256(convert_to(repeat('a', 43), 'UTF8')), 'hex'));
+do $$ begin
+  insert into public.calendar_links (user_id, token, token_hash) values ('bbbbbbbb-0000-0000-0000-000000000002', repeat('b', 43), repeat('0', 64));
+  raise exception 'RLS TEST FAILED: calendar token with a wrong hash accepted';
+exception when check_violation then null; end $$;
+do $$ begin
+  insert into public.calendar_links (user_id, token, token_hash) values ('bbbbbbbb-0000-0000-0000-000000000002', 'short', encode(sha256(convert_to('short', 'UTF8')), 'hex'));
+  raise exception 'RLS TEST FAILED: short calendar token accepted';
+exception when check_violation then null; end $$;
+
+-- A reads own slots but can't write them; nobody can read the link (the test granted every privilege, so this is RLS alone)
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+select pg_temp.check((select count(*) from public.timetable_slots) = 3, 'A sees own slots');
+do $$ begin
+  insert into public.timetable_slots (kind, tz, start_date, start_min, end_min, recurrence) values ('class', 'UTC', '2026-10-19', 600, 660, 'none');
+  raise exception 'RLS TEST FAILED: student inserted a slot directly';
+exception when insufficient_privilege then null; end $$;
+update public.timetable_slots set start_min = 0, end_min = 1440;
+delete from public.timetable_slots;
+select pg_temp.check((select count(*) from public.timetable_slots where start_min = 600 and end_min = 660) = 1, 'student cannot rewrite or delete slots');
+select pg_temp.check((select count(*) from public.calendar_links) = 0, 'A cannot read own calendar link');
+do $$ begin
+  insert into public.calendar_links (user_id, token, token_hash) values ('aaaaaaaa-0000-0000-0000-000000000001', repeat('c', 43), encode(sha256(convert_to(repeat('c', 43), 'UTF8')), 'hex'));
+  raise exception 'RLS TEST FAILED: student wrote a calendar link';
+exception when insufficient_privilege then null; end $$;
+-- B sees and changes none of it
+set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
+select pg_temp.check((select count(*) from public.timetable_slots) = 0, 'B cannot see A slots');
+select pg_temp.check((select count(*) from public.calendar_links) = 0, 'B cannot see A calendar link');
+update public.timetable_slots set title = 'pwned';
+delete from public.timetable_slots;
+update public.calendar_links set token = repeat('z', 43);
+delete from public.calendar_links;
+do $$ begin
+  insert into public.timetable_slots (user_id, kind, tz, start_date, start_min, end_min, recurrence) values ('aaaaaaaa-0000-0000-0000-000000000001', 'class', 'UTC', '2026-10-19', 600, 660, 'none');
+  raise exception 'RLS TEST FAILED: B inserted a slot owned by A';
+exception when insufficient_privilege then null; end $$;
+reset role;
+select pg_temp.check((select count(*) from public.timetable_slots where user_id = 'aaaaaaaa-0000-0000-0000-000000000001' and title is distinct from 'pwned') = 3, 'A slots unchanged by B');
+select pg_temp.check((select token from public.calendar_links where user_id = 'aaaaaaaa-0000-0000-0000-000000000001') = repeat('a', 43), 'A calendar link unchanged by B');
+set role authenticated;
+set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+
 -- ===== anon sees nothing
 reset request.jwt.claim.sub;
 set role anon;
@@ -548,10 +756,18 @@ select pg_temp.check((select count(*) from public.notes) + (select count(*) from
   + (select count(*) from public.flashcards) + (select count(*) from public.card_reviews) + (select count(*) from public.mindmaps)
   + (select count(*) from public.quizzes) + (select count(*) from public.questions) + (select count(*) from public.quiz_attempts)
   + (select count(*) from public.answers) + (select count(*) from public.weak_topics) + (select count(*) from public.chat_messages) = 0, 'subject delete cascades');
+-- slots stay after their subject is deleted, as "No subject"
+select pg_temp.check((select count(*) from public.timetable_slots where subject_id is null) = 3, 'slots survive subject delete as No subject');
+-- study time stays after its subject is deleted, as "No subject"
+select pg_temp.check((select count(*) from public.study_sessions where subject_id is null) = 2, 'study sessions survive subject delete as No subject');
 
 reset role;
 -- deleting a user removes their profile
 delete from auth.users where id = 'aaaaaaaa-0000-0000-0000-000000000001';
 select pg_temp.check((select count(*) from public.profiles where user_id = 'aaaaaaaa-0000-0000-0000-000000000001') = 0, 'account delete cascades');
+select pg_temp.check((select count(*) from public.study_sessions where user_id = 'aaaaaaaa-0000-0000-0000-000000000001') = 0, 'account delete removes study sessions');
+
+select pg_temp.check((select count(*) from public.timetable_slots where user_id = 'aaaaaaaa-0000-0000-0000-000000000001') = 0, 'account delete removes slots');
+select pg_temp.check((select count(*) from public.calendar_links where user_id = 'aaaaaaaa-0000-0000-0000-000000000001') = 0, 'account delete removes the calendar link');
 
 select 'ALL RLS TESTS PASSED' as result;

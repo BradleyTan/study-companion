@@ -47,6 +47,18 @@ function noise(c: AudioContext, dur: number, freq: number, gain: number, sweepTo
   s.start();
 }
 
+/**
+ * The provider's rules (sounds.md): nothing with sound off; in focus mode only `chime`; while
+ * read-aloud speaks only the read-aloud controls' own `click`, and `chime` (time-critical, the one
+ * exception to "speech wins", Step 4).
+ */
+export function allowed(name: SoundName, o: { soundOn: boolean; focusMode: boolean; speaking: boolean; duringSpeech?: boolean }): boolean {
+  if (!o.soundOn) return false;
+  if (o.focusMode && name !== "chime") return false;
+  if (o.speaking && name !== "chime" && !(o.duringSpeech && name === "click")) return false;
+  return true;
+}
+
 /** Returns false when the sound was skipped (muted, too soon, or no audio support). */
 export function playSound(name: SoundName, volume: number, now = performance.now()): boolean {
   if (volume <= 0) return false;

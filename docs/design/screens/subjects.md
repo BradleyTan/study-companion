@@ -12,4 +12,4 @@
 - Error: sticker card with "We couldn't load your subjects." and "Try again".
 - Created: new sticker pops in (350 ms spring), `pop` sound.
 
-**Delete** (from subject page menu): in-dialog confirm "Delete Biology? This removes 3 notes and 2 files. This can't be undone." Danger button "Delete subject", `tear` sound.
+**Delete** (from subject page menu): in-dialog confirm "Delete Biology? This removes 3 notes and 2 files. This can't be undone." Danger button "Delete subject", `tear` sound. Step 4: when the subject has timetable slots or study rounds, add "Your timetable keeps its 6 classes (as 'No subject'), and your study time still counts." Slots and study sessions are kept with `subject_id = null`.
