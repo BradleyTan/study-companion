@@ -3,6 +3,7 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { formatBytes } from "@/lib/time";
+import { openFileUrl } from "@/lib/open-file";
 import { MAX_UPLOAD_BYTES } from "@/lib/validation";
 import { deleteSource, getDownloadUrl, processUpload, startUpload, uploadDemoFile } from "@/server/actions/sources";
 import type { Source } from "@/server/repo/types";
@@ -123,7 +124,7 @@ function SourceRow({ source, subjectName }: { source: Source; subjectName: strin
   // "Open": the original in a new tab, like the source page's "Open the original file" (subject.md).
   const openFile = () => start(async () => {
     const res = await getDownloadUrl(source.id);
-    if (res.ok) window.open(res.url, "_blank", "noopener");
+    if (res.ok) openFileUrl(res.url);
     else { setError(res.error); play("boop"); }
   });
   const make = () => { setEverMade(true); setMaking(true); };

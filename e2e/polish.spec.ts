@@ -253,3 +253,26 @@ test("phone mindmap opens readable (zoom at least 0.7) with the Outline tip", as
   await expect(root).toBeInViewport();
   await expectNoHorizontalScroll(page);
 });
+
+test("Open on a file row opens a new tab, or downloads here when a popup blocker refuses the tab", async ({ page }) => {
+  await startDemo(page);
+  await createSubject(page, "Anatomy");
+  await page.getByRole("link", { name: /Anatomy/ }).click();
+  await page.locator("#file-input").setInputFiles(path.join(__dirname, "fixtures", "heart.pdf"));
+  await expect(page.getByText("Ready · 2 pages")).toBeVisible({ timeout: 15_000 });
+
+  const popup = page.waitForEvent("popup");
+  await rowAction(page, "heart.pdf", "Open", "Open heart.pdf");
+  const tab = await popup;
+  expect(await tab.evaluate(() => window.opener)).toBeNull();
+  await tab.close();
+
+  // Safari and iOS refuse window.open after the server round trip: the file downloads in this tab instead.
+  const here = page.url();
+  await page.evaluate(() => { window.open = () => null; });
+  const download = page.waitForEvent("download");
+  await rowAction(page, "heart.pdf", "Open", "Open heart.pdf");
+  expect((await download).suggestedFilename()).toBe("heart.pdf");
+  expect(page.url()).toBe(here);
+  await expect(page.getByRole("heading", { level: 1, name: "Anatomy" })).toBeVisible();
+});

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { openFileUrl } from "@/lib/open-file";
 import { getDownloadUrl } from "@/server/actions/sources";
 import { useSound } from "./sound-provider";
 import { Button } from "./ui/button";
@@ -43,7 +44,7 @@ export function SourceText({ sourceId, fileName, kind, pageCount, pages, missing
     if (!res.ok) { setError(res.error); play("boop"); return; }
     // PDFs open at the cited page where the browser's viewer supports it.
     const url = kind === "pdf" && markedPage ? `${res.url}#page=${markedPage}` : res.url;
-    window.open(url, "_blank", "noopener");
+    openFileUrl(url);
   });
 
   return (
