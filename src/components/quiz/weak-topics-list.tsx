@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Quota } from "@/lib/limits/ai";
 import { recentText } from "@/lib/quiz/weak";
 import { SUBJECT_COLOURS } from "@/lib/subjects";
-import { markGotIt, reopenTopic, topicQuestions, type AddedTopic, type MissedQuestion } from "@/server/actions/weak-topics";
+import { markGotIt, reopenTopic, topicQuestions, type MissedQuestion } from "@/server/actions/weak-topics";
 import type { SubjectLite } from "@/server/cards";
 import type { TopicView } from "@/server/quiz";
 import { Confetti } from "../review/confetti";
@@ -16,7 +16,6 @@ import { Button } from "../ui/button";
 import { QuotaChip } from "../ui/quota-chip";
 import { RowMenu } from "../ui/row-menu";
 import { subjectStyle } from "../ui/subject-style";
-import { AddTopicDialog } from "./add-topic-dialog";
 import { MakeQuizDialog, type QuizPreset } from "./make-quiz-dialog";
 
 function dayText(iso: string | null, now = new Date()): string {
@@ -43,14 +42,7 @@ export function WeakTopicsList({ subject, open: initialOpen, gotIt: initialGot, 
   const [showGotPick, setShowGot] = useState<boolean | null>(null);
   const [make, setMake] = useState<QuizPreset | null>(null);
   const [allClearParty, setAllClearParty] = useState(false);
-  const [adding, setAdding] = useState(false);
   const practiseAllRef = useRef<HTMLButtonElement>(null);
-  const addRef = useRef<HTMLButtonElement>(null);
-  /** Bumped after an add. From an empty state the button the sheet opened from is gone, so the
-   *  native dialog can't return focus to it: focus the one in the action row. Runs after the
-   *  Dialog's own effect has closed it (child effects first). */
-  const [focusAdd, setFocusAdd] = useState(0);
-  useEffect(() => { if (focusAdd) addRef.current?.focus(); }, [focusAdd]);
   const listRef = useRef<HTMLUListElement>(null);
   const reduced = useReducedMotion();
   const { play, focusMode } = useSound();
@@ -97,21 +89,6 @@ export function WeakTopicsList({ subject, open: initialOpen, gotIt: initialGot, 
     });
   }
 
-  /** A hand-added topic goes to the top of the open list; a cleared one moves back from Got it. */
-  function added(a: AddedTopic) {
-    setAdding(false);
-    const before = gotIt.find((x) => x.id === a.id);
-    const t: TopicView = before
-      ? { ...before, rightStreak: 0, clearedAt: null, lastMissedAt: a.lastMissedAt }
-      : { id: a.id, topic: a.topic, key: a.topic.toLowerCase(), missCount: a.missCount, rightStreak: 0, lastMissedAt: a.lastMissedAt, clearedAt: null, recent: a.recent, sources: [] };
-    setGotIt((l) => l.filter((x) => x.id !== a.id));
-    setOpen((l) => [t, ...l.filter((x) => x.id !== a.id)]);
-    setAllClearParty(false);
-    toast.show(a.reopened ? "Back on your list." : "Added to your weak topics.");
-    setFocusAdd((n) => n + 1);
-  }
-  const addButton = <Button ref={addRef} onClick={() => setAdding(true)}>+ Add weak topic</Button>;
-
   const header = (
     <header className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-3">
@@ -131,14 +108,11 @@ export function WeakTopicsList({ subject, open: initialOpen, gotIt: initialGot, 
       <div className="mx-auto flex w-full max-w-[760px] flex-col gap-6 min-[900px]:max-w-[1100px]">
         {header}
         {!empty && (
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex w-full items-center gap-2 sm:w-auto">
-              <Button ref={practiseAllRef} variant="primary" className="flex-1 sm:flex-none" onClick={() => setMake({ type: "weak" })} aria-describedby="weak-quota">
-                Practise all · {open.length} {open.length === 1 ? "topic" : "topics"}
-              </Button>
-              <QuotaChip quota={quota} id="weak-quota" />
-            </div>
-            {addButton}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button ref={practiseAllRef} variant="primary" className="flex-1 sm:flex-none" onClick={() => setMake({ type: "weak" })} aria-describedby="weak-quota">
+              Practise all · {open.length} {open.length === 1 ? "topic" : "topics"}
+            </Button>
+            <QuotaChip quota={quota} id="weak-quota" />
           </div>
         )}
       </div>
@@ -153,7 +127,6 @@ export function WeakTopicsList({ subject, open: initialOpen, gotIt: initialGot, 
               <p className="font-display text-3xl">All clear! <span role="img" aria-label="party">🎉</span></p>
               <p className="text-ink-soft">You&apos;ve got every topic you missed. Try a new quiz to keep it that way.</p>
               <Link href={`/subjects/${subject.id}/quizzes?make=1`} className="btn btn-primary" onClick={() => play("click")}>Make a quiz</Link>
-              {addButton}
             </>
           ) : (
             <>
@@ -164,7 +137,6 @@ export function WeakTopicsList({ subject, open: initialOpen, gotIt: initialGot, 
               ) : (
                 <Link href={`/subjects/${subject.id}/quizzes?make=1`} className="btn btn-primary" onClick={() => play("click")}>Make a quiz</Link>
               )}
-              {addButton}
             </>
           )}
         </div>
@@ -204,7 +176,6 @@ export function WeakTopicsList({ subject, open: initialOpen, gotIt: initialGot, 
       {make && (
         <MakeQuizDialog subjectId={subject.id} subjectName={subject.name} open onClose={() => setMake(null)} preset={make} />
       )}
-      <AddTopicDialog subjectId={subject.id} open={adding} onClose={() => setAdding(false)} onAdded={added} />
       {toast.node}
     </div>
   );
@@ -217,10 +188,8 @@ function TopicNote({ topic: t, rotate, onPractise, onGotIt }: { topic: TopicView
   const { play } = useSound();
   const headingId = `topic-${t.id}`;
   const sources = moreSources ? t.sources : t.sources.slice(0, 2);
-  // A topic the student added by hand has no misses yet (polish.md "+ Add weak topic").
-  const meta = t.missCount === 0
-    ? `Added by you${t.lastMissedAt ? ` ${dayText(t.lastMissedAt)}` : ""}`
-    : `${t.missCount === 1 ? "Missed once" : `Missed ${t.missCount} times`}${t.lastMissedAt ? ` · last ${dayText(t.lastMissedAt)}` : ""}`;
+  const missed = t.missCount === 1 ? "Missed once" : `Missed ${t.missCount} times`;
+  const last = t.lastMissedAt ? ` · last ${dayText(t.lastMissedAt)}` : "";
   async function loadQuestions() {
     setShowQs(true);
     if (questions) return;
@@ -230,7 +199,7 @@ function TopicNote({ topic: t, rotate, onPractise, onGotIt }: { topic: TopicView
   return (
     <article aria-labelledby={headingId} className="topic-note flex flex-col gap-2 p-4" style={{ ["--r" as string]: `${rotate}deg` }}>
       <h2 id={headingId} className="text-lg font-bold">{t.topic}</h2>
-      <p className="text-sm text-ink-soft">{meta}</p>
+      <p className="text-sm text-ink-soft">{missed}{last}</p>
       {t.recent.length > 0 && (
         <div role="img" aria-label={recentText(t.recent)} className="flex gap-1.5">
           {t.recent.map((r, i) => <span key={i} className={`try-dot ${r ? "try-right" : "try-miss"}`} aria-hidden="true">{r ? "✓" : "✗"}</span>)}

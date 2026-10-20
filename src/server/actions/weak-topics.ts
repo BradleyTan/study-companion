@@ -1,9 +1,8 @@
 "use server";
 import { revalidatePath } from "next/cache";
-import { addManual, topicKey, WEAK_TOPICS_MAX } from "@/lib/quiz/weak";
-import { addWeakTopicInput, id as idSchema } from "@/lib/validation";
+import { id as idSchema } from "@/lib/validation";
 import { getRepo } from "../session";
-import { firstIssue, type ActionResult } from "./result";
+import type { ActionResult } from "./result";
 
 // Weak topics (weak-topics.md). Public endpoints: ids are validated and looked up through the
 // student's own repo, so another student's topic is simply not found.
@@ -46,39 +45,4 @@ export async function topicQuestions(topicId: string): Promise<ActionResult<{ qu
     ok: true,
     questions: questions.filter((q) => missed.has(q.id)).slice(0, 20).map((q) => ({ id: q.id, prompt: q.prompt, answer: q.answer, explanation: q.explanation })),
   };
-}
-
-const FULL = `This subject has ${WEAK_TOPICS_MAX} weak topics, the most it can hold. Mark some as got it, then try again.`;
-
-export type AddedTopic = { id: string; topic: string; lastMissedAt: string; reopened: boolean; missCount: number; recent: boolean[] };
-export type AddWeakTopicResult = { ok: true; topic: AddedTopic } | { ok: false; error: string; already?: true };
-
-/**
- * "+ Add weak topic" (polish.md): a topic the student already finds tricky, with no misses yet.
- * Same topic (case-insensitive, spaces tidied) already open: refused; cleared: reopened. Later
- * quiz misses on it land on the same row (matched by topic key).
- */
-export async function addWeakTopic(raw: unknown): Promise<AddWeakTopicResult> {
-  const parsed = addWeakTopicInput.safeParse(raw);
-  if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
-  const { subjectId, topic } = parsed.data;
-  const repo = await getRepo();
-  if (!(await repo.getSubject(subjectId))) return { ok: false, error: "Subject not found." };
-  const now = new Date().toISOString();
-  const cur = await repo.findWeakTopic(subjectId, topicKey(topic));
-  const step = addManual(cur, topic, now);
-  if (step.status === "already") return { ok: false, error: "That's already on your list.", already: true };
-  if (!cur && (await repo.listWeakTopics(subjectId)).length >= WEAK_TOPICS_MAX) return { ok: false, error: FULL };
-  let saved;
-  try {
-    saved = await repo.saveWeakTopic(subjectId, step.next, cur?.id);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "";
-    if (/weak topic limit/.test(msg)) return { ok: false, error: FULL };
-    // Added twice at once (two tabs): the unique key caught the second insert.
-    if (!cur && (await repo.findWeakTopic(subjectId, topicKey(topic)))) return { ok: false, error: "That's already on your list.", already: true };
-    return { ok: false, error: "Couldn't add that. Try again." };
-  }
-  revalidatePath(`/subjects/${subjectId}`);
-  return { ok: true, topic: { id: saved.id, topic: saved.topic, lastMissedAt: saved.lastMissedAt ?? now, reopened: step.status === "reopened", missCount: saved.missCount, recent: saved.recent } };
 }

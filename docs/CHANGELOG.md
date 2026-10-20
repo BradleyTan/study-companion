@@ -1,10 +1,5 @@
 # Changelog
 
-## 2026-10-20 · "+ Add weak topic" (for the student test)
-- **Weak topics:** a "+ Add weak topic" button (on the list and in both empty states) puts a topic the student already finds tricky on the list by hand: one Topic field (1–40 characters, spaces tidied), "Added by you today" on the card, "That's already on your list." for an open duplicate, a cleared one comes back from Got it, friendly message at the 500-per-subject cap. No migration: an ordinary `weak_topics` row with no misses. Later quiz misses land on the same row; taking a miss back ("I was right") no longer deletes a hand-added topic.
-- **Practise:** a topic with no passages (hand-added, or its notes deleted) finds passages that mention it with Ask your notes' keyword search; when nothing matches, Make a quiz says "We couldn't find these topics in your notes yet." without using a go.
-- **Tests:** `src/lib/quiz/weak.test.ts`, `src/server/actions/weak-topics.test.ts`; e2e in `e2e/polish.spec.ts`. Spec: `docs/design/polish.md` "Added for the student test".
-
 ## 2026-10-20 · Polish pass security review
 - **Open a file:** only http(s) addresses are ever opened, in a new tab or in the same-tab fallback.
 - **Headers:** a baseline Content-Security-Policy (`base-uri 'self'; object-src 'none'; frame-ancestors 'none'`) on every page.

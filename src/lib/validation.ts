@@ -2,7 +2,6 @@ import { z } from "zod";
 import { safeTimeZone } from "./srs/due";
 import { MAX_PLANNED_SEC, MIN_LOG_SEC, RANGES } from "./timer/machine";
 import { COLOUR_NAMES, SUBJECT_EMOJIS } from "./subjects";
-import { cleanTopic, TOPIC_MAX } from "./quiz/weak";
 import { dayOf } from "./timetable/dates";
 import { IMPORT_MAX_CLASSES } from "./timetable/limits";
 import { LOCATION_MAX, MAX_SKIPS, SLOT_ERRORS, SLOT_KINDS, slotError, TITLE_MAX } from "./timetable/slots";
@@ -111,13 +110,6 @@ export const makeQuizInput = z.object({
   count: z.union([z.literal(5), z.literal(10), z.literal(15)]),
 });
 export type MakeQuizInput = z.infer<typeof makeQuizInput>;
-
-/** "+ Add weak topic": 1 to 40 characters once spaces are tidied (weak.ts cleanTopic). */
-export const addWeakTopicInput = z.object({
-  subjectId: id,
-  topic: z.string().max(400, `Keep it to ${TOPIC_MAX} characters.`).transform(cleanTopic)
-    .pipe(z.string().min(1, "Type a topic first.").max(TOPIC_MAX, `Keep it to ${TOPIC_MAX} characters.`)),
-});
 
 export const startAttemptInput = z.object({ quizId: id, fresh: z.boolean() });
 
