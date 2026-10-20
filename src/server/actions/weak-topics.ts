@@ -50,7 +50,7 @@ export async function topicQuestions(topicId: string): Promise<ActionResult<{ qu
 
 const FULL = `This subject has ${WEAK_TOPICS_MAX} weak topics, the most it can hold. Mark some as got it, then try again.`;
 
-export type AddedTopic = { id: string; topic: string; lastMissedAt: string; reopened: boolean };
+export type AddedTopic = { id: string; topic: string; lastMissedAt: string; reopened: boolean; missCount: number; recent: boolean[] };
 export type AddWeakTopicResult = { ok: true; topic: AddedTopic } | { ok: false; error: string; already?: true };
 
 /**
@@ -80,5 +80,5 @@ export async function addWeakTopic(raw: unknown): Promise<AddWeakTopicResult> {
     return { ok: false, error: "Couldn't add that. Try again." };
   }
   revalidatePath(`/subjects/${subjectId}`);
-  return { ok: true, topic: { id: saved.id, topic: saved.topic, lastMissedAt: saved.lastMissedAt ?? now, reopened: step.status === "reopened" } };
+  return { ok: true, topic: { id: saved.id, topic: saved.topic, lastMissedAt: saved.lastMissedAt ?? now, reopened: step.status === "reopened", missCount: saved.missCount, recent: saved.recent } };
 }

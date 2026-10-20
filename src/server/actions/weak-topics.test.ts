@@ -72,6 +72,16 @@ describe("addWeakTopic", () => {
     expect((await repo.listWeakTopics(subjectId)).length).toBe(1);
   });
 
+  it("a reopened topic reports its history, so a card for one hidden from Got it (over 60 days) isn't shown as 'Added by you'", async () => {
+    const subjectId = await setup(false);
+    const old = "2026-01-01T00:00:00.000Z";
+    const row = await repo.saveWeakTopic(subjectId, { topic: "Osmosis", missCount: 3, rightStreak: 2, lastMissedAt: old, clearedAt: old, chunkIds: [], recent: [false, false, false, true, true] });
+    const r = await weak.addWeakTopic({ subjectId, topic: "osmosis" });
+    expect(r.ok && r.topic).toMatchObject({ id: row.id, reopened: true, missCount: 3, recent: [false, false, false, true, true] });
+    const fresh = await weak.addWeakTopic({ subjectId, topic: "Diffusion" });
+    expect(fresh.ok && fresh.topic).toMatchObject({ reopened: false, missCount: 0, recent: [] });
+  });
+
   it("rejects another student's subject", async () => {
     const subjectId = await setup(false);
     repo = demoRepo(crypto.randomUUID());

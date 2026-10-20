@@ -73,3 +73,45 @@ The full e2e suite passes (all step specs). The sweep found no sideways scroll, 
 4. **Very long single-word subject names** wrap mid-word in the marker title (no dictionary hyphenation for made-up words). As specified (`overflow-wrap:anywhere`), only for words wider than the row.
 5. Real phones (iOS Safari for the Open fallback and sign-in in a mail app's browser) and the live Supabase project were not available. Bradley's dry run should include one sign-in on an iPhone.
 6. P3-2, P3-4 and P3-5 are left for later, as noted in the CHANGELOG.
+
+---
+
+## Add weak topic (2026-10-20)
+Feature: "+ Add weak topic" on the Weak topics page (spec: `docs/design/polish.md` "Added for the student test"; dev commits `3bafca8`, `97211dc`, `3aefc3f`, `52f651a`). Tested in demo mode (local quiz generator) against a production build, desktop Chrome and Pixel 7, plus 375 px light and dark.
+
+### What was tested
+| Area | Result | How |
+|---|---|---|
+| Sheet at 375 px, light and dark: title, hint, Topic field, "Up to 40 characters.", inline error, Add above Cancel | Pass | Screenshots. Input full width, 16 px text (no iOS zoom), 44 px tall; Add 47 px and Cancel 45 px, stacked. No sideways scroll. Contrast fine in both themes (axe clean) |
+| Sheet placement | Pass (note) | Centred card on phones, the same `dialog.sheet` as Make a quiz. The spec says "bottom sheet on phones, same as Make a quiz", but Make a quiz is centred too, so it matches the app |
+| Empty, over 40 characters, spaces tidied ("  Krebs    cycle " → "Krebs cycle"), control characters | Pass | e2e (developer's) and unit tests |
+| Duplicate refusal: "KREBS CYCLE" while "Krebs cycle" is open → "That's already on your list.", sheet stays open, no second row | Pass | e2e |
+| Reopen from "Got it": add the same name again → toast "Back on your list.", card back on the open list, Got it section gone, one row after reload | Pass | New e2e |
+| Practise, a note mentions the topic → quiz made, "From your weak topics", one go used (3 → 2 of 3 left) | Pass | New e2e and unit test |
+| Practise, no note mentions it (or no notes at all) → 🔎 "We couldn't find these topics in your notes yet…" with Back, no go used | Pass | e2e and unit tests (quota count stays 0) |
+| Quiz miss on a hand-added topic (added in another case with extra spaces) → same card, "Missed once · last today", one ✗ dot, one row | Pass | New e2e (second tab, reload) |
+| "I think my answer is right" → Count it on that miss → the topic stays, back to "Added by you today", no "Missed" | Pass | New e2e and unit test |
+| A topic that came only from a miss is still deleted on undo (regression) | Pass | Unit test |
+| Make a quiz → Weak topics list hint "added by you" | Pass | e2e |
+| Keyboard: Enter opens, focus in Topic, Escape cancels (typed text cleared), Enter submits | Pass | New e2e |
+| Focus after Add returns to "+ Add weak topic" | Fail, fixed (bug 5) | New e2e |
+| 500-topic cap (cleared one can still reopen), another student's subject refused ("Subject not found.") | Pass | Unit tests |
+| Sound: `click` on open and Cancel, `boop` on errors, `pop` on success | Pass | Code review (`Button` default sound; Add is `sound={null}` and plays its own) |
+
+### Bugs found and fixed
+| # | Severity | Bug | Steps to reproduce | Fix |
+|---|---|---|---|---|
+| 5 | Low | After adding a topic from an empty state ("Nothing tricky yet" or "All clear!"), focus fell to the page body. The button the sheet came from is unmounted when the list stops being empty, so the native dialog can't return focus; a keyboard user starts again from the top. | Empty Weak topics page, Tab to "+ Add weak topic", Enter, type a topic, Enter: nothing is focused | `weak-topics-list.tsx`: after an add, an effect (it runs after the Dialog's own close effect) focuses the action-row "+ Add weak topic". A `requestAnimationFrame` first try lost the race in dark mode runs. e2e "keyboard: …" |
+| 6 | Low | Re-adding a topic cleared over 60 days ago (hidden from "Got it now") showed it as "Added by you today" with no dots until a reload, then "Missed 3 times · last today". The client only knew the history of topics still in its Got it list. | Topic cleared more than 60 days ago, add it again by hand | `addWeakTopic` returns `missCount` and `recent`; the card uses them. Unit test |
+
+### Open items (not blocking)
+7. **Reopened topic says "last today" (Low, copy; designer):** reopening a cleared topic sets `lastMissedAt` to now so it sorts first, so a topic with real misses reads "Missed 2 times · last today" though nothing was missed today. Suggest "Missed 2 times · back on your list today" or keep the old date and sort by an "added at". Not specified in the spec.
+8. **Practise all with many hand-added topics:** one keyword search per topic without passages (up to 500 in one request). Fine at student scale; worth a cap if Practise all ever feels slow.
+
+### Checks
+- `npm test`: 37 files, 586 tests passed. `tsc --noEmit`: clean. `npm run lint`: clean.
+- `CI=1 npx playwright test` (full suite, both projects): 183 passed, 11 skipped, 0 failed, no retries needed (the known flaky `step3-quiz.spec.ts:81` and 375 px subject header test passed first time).
+- New spec `e2e/polish-add-topic.spec.ts` (3 tests × 2 projects) also passed 3 repeats each.
+
+### Sign-off
+**PASS.** "+ Add weak topic" matches the spec, with bugs 5 and 6 fixed and tested. Items 7 and 8 are for the designer and later.

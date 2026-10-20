@@ -45,6 +45,12 @@ export function WeakTopicsList({ subject, open: initialOpen, gotIt: initialGot, 
   const [allClearParty, setAllClearParty] = useState(false);
   const [adding, setAdding] = useState(false);
   const practiseAllRef = useRef<HTMLButtonElement>(null);
+  const addRef = useRef<HTMLButtonElement>(null);
+  /** Bumped after an add. From an empty state the button the sheet opened from is gone, so the
+   *  native dialog can't return focus to it: focus the one in the action row. Runs after the
+   *  Dialog's own effect has closed it (child effects first). */
+  const [focusAdd, setFocusAdd] = useState(0);
+  useEffect(() => { if (focusAdd) addRef.current?.focus(); }, [focusAdd]);
   const listRef = useRef<HTMLUListElement>(null);
   const reduced = useReducedMotion();
   const { play, focusMode } = useSound();
@@ -97,13 +103,14 @@ export function WeakTopicsList({ subject, open: initialOpen, gotIt: initialGot, 
     const before = gotIt.find((x) => x.id === a.id);
     const t: TopicView = before
       ? { ...before, rightStreak: 0, clearedAt: null, lastMissedAt: a.lastMissedAt }
-      : { id: a.id, topic: a.topic, key: a.topic.toLowerCase(), missCount: 0, rightStreak: 0, lastMissedAt: a.lastMissedAt, clearedAt: null, recent: [], sources: [] };
+      : { id: a.id, topic: a.topic, key: a.topic.toLowerCase(), missCount: a.missCount, rightStreak: 0, lastMissedAt: a.lastMissedAt, clearedAt: null, recent: a.recent, sources: [] };
     setGotIt((l) => l.filter((x) => x.id !== a.id));
     setOpen((l) => [t, ...l.filter((x) => x.id !== a.id)]);
     setAllClearParty(false);
     toast.show(a.reopened ? "Back on your list." : "Added to your weak topics.");
+    setFocusAdd((n) => n + 1);
   }
-  const addButton = <Button onClick={() => setAdding(true)}>+ Add weak topic</Button>;
+  const addButton = <Button ref={addRef} onClick={() => setAdding(true)}>+ Add weak topic</Button>;
 
   const header = (
     <header className="flex flex-col gap-2">
