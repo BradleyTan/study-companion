@@ -9,7 +9,7 @@ async function subjectWithNote(page: Page, subject: string, title = "Enzymes", t
   await startDemo(page);
   await createSubject(page, subject);
   await page.getByRole("link", { name: new RegExp(subject) }).click();
-  await page.getByRole("button", { name: "+ Write a note" }).click();
+  await page.getByRole("button", { name: "+ Write a note" }).first().click();
   await expect(page).toHaveURL(/\/notes\//);
   await page.getByLabel("Title").fill(title);
   await page.getByRole("textbox", { name: "Note text" }).click();
@@ -161,7 +161,9 @@ test.describe("at 375 px on a touch screen", () => {
     }
     await page.getByRole("button", { name: /^Show answer/ }).click();
     await expect(page.getByRole("group", { name: "How well did you remember it?" })).toBeVisible();
-    expect(await smallTargets(page)).toEqual([]);
+    // Polled: the card is still turning over, and the back face's "From …" link (44 px tall since
+    // the polish pass, so now measured) reads narrow mid-flip.
+    await expect.poll(() => smallTargets(page)).toEqual([]);
     await page.goto(`${subjectUrl}/mindmap`);
     await page.getByRole("button", { name: "Make a mindmap" }).click();
     await expect(page.locator(".react-flow__node").first()).toBeVisible({ timeout: 15_000 });

@@ -31,13 +31,14 @@ test("create, edit and delete a subject", async ({ page }) => {
   await expect(page.getByRole("heading", { level: 1, name: "Biology 101" })).toBeVisible();
   await expectNoA11yViolations(page);
 
-  await page.getByRole("button", { name: "Edit" }).click();
+  // Edit/Delete are buttons from 640 px and live in "More for …" on phones (polish P1-3).
+  await rowAction(page, "Biology 101", "Edit subject", "Edit");
   const edit = page.getByRole("dialog", { name: "Edit subject" });
   await edit.getByLabel("Name").fill("Cell Biology");
   await edit.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Cell Biology" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await rowAction(page, "Cell Biology", "Delete subject", "Delete");
   const confirm = page.getByRole("dialog", { name: "Delete Cell Biology?" });
   await expect(confirm).toContainText("0 notes and 0 files");
   await confirm.getByRole("button", { name: "Delete subject" }).click();
@@ -57,7 +58,7 @@ test("notes autosave and survive a reload", async ({ page }) => {
   await startDemo(page);
   await createSubject(page, "Chemistry");
   await page.getByRole("link", { name: /Chemistry/ }).click();
-  await page.getByRole("button", { name: "+ Write a note" }).click();
+  await page.getByRole("button", { name: "+ Write a note" }).first().click();
   await expect(page).toHaveURL(/\/notes\//);
 
   await page.getByLabel("Title").fill("Acids and bases");
@@ -80,7 +81,7 @@ test("notes autosave and survive a reload", async ({ page }) => {
   await expect(page.getByRole("textbox", { name: "Note text" })).toContainText("pH below 7 is acidic.");
   await expect(page.locator(".tiptap strong")).toHaveText("Neutral is 7.");
 
-  await page.getByRole("link", { name: "← Back to Chemistry" }).click();
+  await page.getByRole("link", { name: "← Chemistry", exact: true }).click();
   await expect(page.getByRole("link", { name: /Acids and bases/ })).toBeVisible();
 });
 
