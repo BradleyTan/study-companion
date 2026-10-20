@@ -94,7 +94,7 @@ export function QuizResults({ subject, results, celebrate, calm, onRetake, onCha
           <>
             <Button className="w-full sm:w-auto" onClick={onRetake}>Retake this quiz</Button>
             {focusButton}
-            <Link href={`/subjects/${subject.id}`} className="btn btn-ghost w-full sm:w-auto" onClick={() => play("click")}>Back to {subject.name}</Link>
+            <Link href={`/subjects/${subject.id}`} className="btn btn-ghost w-full sm:w-auto [overflow-wrap:anywhere]" onClick={() => play("click")}>Back to {subject.name}</Link>
           </>
         )}
       </div>

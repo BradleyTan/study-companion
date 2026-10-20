@@ -37,7 +37,7 @@ export function RowMenu({ label, items, className = "", text, align = "right", f
         {text ?? <span aria-hidden="true">⋯</span>}
       </button>
       {open && (
-        <ul id={id} className={`sticker absolute ${align === "left" ? "left-0" : "right-0"} ${up ? "bottom-full mb-2" : "top-full mt-2"} z-30 flex min-w-48 flex-col p-1`}>
+        <ul id={id} className={`sticker absolute text-ink ${align === "left" ? "left-0" : "right-0"} ${up ? "bottom-full mb-2" : "top-full mt-2"} z-30 flex min-w-48 flex-col p-1`}>
           {items.map((it) => (
             <li key={it.label}>
               <button

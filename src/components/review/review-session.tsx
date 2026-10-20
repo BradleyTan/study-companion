@@ -237,7 +237,7 @@ export function ReviewSession({ subject, subjects, initialQueue, initialOutlook,
         {!ended && <Button variant="ghost" size="sm" onClick={end}>✕ End</Button>}
         {/* End screens: a breadcrumb like every other page; during a session "✕ End" stays (polish.md P2-5). */}
         {ended && (
-          <Link href={homeHref} className="inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline" onClick={() => play("click")}>
+          <Link href={homeHref} className="inline-flex min-h-11 items-center font-bold underline-offset-4 [overflow-wrap:anywhere] hover:underline" onClick={() => play("click")}>
             ← {subject ? subject.name : "All subjects"}
           </Link>
         )}

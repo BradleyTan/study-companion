@@ -112,7 +112,7 @@ export function Deck({ subject, cards: initial, allowanceLeft, quota: initialQuo
       <div className="mx-auto flex w-full max-w-[880px] flex-col gap-6">
         <header className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-3">
-            <Link href={`/subjects/${subject.id}`} className="inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline" onClick={() => play("click")}>← {subject.name}</Link>
+            <Link href={`/subjects/${subject.id}`} className="inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline [overflow-wrap:anywhere]" onClick={() => play("click")}>← {subject.name}</Link>
             <SubjectChip name={subject.name} emoji={subject.emoji} colour={subject.colour} />
           </div>
           <h1 className="font-display text-3xl sm:text-4xl">Flashcards</h1>

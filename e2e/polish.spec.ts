@@ -276,3 +276,42 @@ test("Open on a file row opens a new tab, or downloads here when a popup blocker
   expect(page.url()).toBe(here);
   await expect(page.getByRole("heading", { level: 1, name: "Anatomy" })).toBeVisible();
 });
+
+test("long subject names never push a 375 px page sideways; the header menu is readable in dark mode", async ({ page, isMobile }) => {
+  test.skip(!isMobile, "Phone layout.");
+  await page.setViewportSize({ width: 375, height: 760 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await startDemo(page);
+  const word = "Pneumonoultramicroscopicsilicovolcanoconiosis";
+  const long = "Introduction to Molecular and Cellular Biology for Engineers"; // 60 characters, the maximum
+  await createSubject(page, word);
+  await expectNoHorizontalScroll(page);
+  await createSubject(page, long);
+  await expectNoHorizontalScroll(page);
+
+  await page.getByRole("link", { name: new RegExp(word) }).click();
+  await expect(page.getByTestId("subject-title")).toHaveText(word);
+  await expectNoHorizontalScroll(page);
+  const menu = page.getByRole("button", { name: `More for ${word}` });
+  await menu.click();
+  const edit = page.locator(`[id="${await menu.getAttribute("aria-controls")}"]`).getByRole("button", { name: "Edit subject" });
+  const ink = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--ink").trim());
+  expect(ink).toBe("#f3efe0");
+  await expect(edit).toHaveCSS("color", "rgb(243, 239, 224)"); // --ink on --card, not the dark text of the subject fill
+  await page.keyboard.press("Escape");
+
+  await page.goto("/subjects");
+  await page.getByRole("link", { name: new RegExp(long) }).click();
+  await writeNote(page, long);
+  const subjectUrl = page.url();
+  await expectNoHorizontalScroll(page);
+  for (const p of ["flashcards", "mindmap", "quizzes", "weak-topics", "ask"]) {
+    await page.goto(`${subjectUrl}/${p}`);
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expectNoHorizontalScroll(page);
+  }
+  await page.goto(subjectUrl);
+  await page.getByRole("link", { name: new RegExp(TITLE) }).click();
+  await expect(page).toHaveURL(/\/notes\//);
+  await expectNoHorizontalScroll(page);
+});

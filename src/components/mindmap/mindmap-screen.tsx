@@ -250,7 +250,7 @@ export function MindmapScreen({ subject, initial, quota: initialQuota, options, 
       <p className="sr-only" role="status" aria-live="polite">{announce}</p>
       <header className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-3">
-          <Link href={`/subjects/${subject.id}`} className="inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline" onClick={() => play("click")}>← {subject.name}</Link>
+          <Link href={`/subjects/${subject.id}`} className="inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline [overflow-wrap:anywhere]" onClick={() => play("click")}>← {subject.name}</Link>
           <SubjectChip name={subject.name} emoji={subject.emoji} colour={subject.colour} />
         </div>
         <div className="flex flex-wrap items-end gap-3">
@@ -299,7 +299,7 @@ export function MindmapScreen({ subject, initial, quota: initialQuota, options, 
         <div role="alert" className="sticker-flat flex flex-wrap items-center gap-3 p-3" data-testid="mindmap-problem">
           <p className="min-w-0 flex-1 font-bold">{problemText}</p>
           {problem === "failed" && <Button size="sm" onClick={() => void generate(!!view)}>Try again</Button>}
-          {problem === "too_short" && <Link className="btn btn-sm" href={`/subjects/${subject.id}`} onClick={() => play("click")}>Back to {subject.name}</Link>}
+          {problem === "too_short" && <Link className="btn btn-sm [overflow-wrap:anywhere]" href={`/subjects/${subject.id}`} onClick={() => play("click")}>Back to {subject.name}</Link>}
           {problem === "too_long" && <Button size="sm" onClick={() => setChoosing(true)}>Choose sources</Button>}
         </div>
       )}
