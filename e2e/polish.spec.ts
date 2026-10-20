@@ -350,3 +350,53 @@ test("long subject names never push a 375 px page sideways; the header menu is r
   await expect(page).toHaveURL(/\/notes\//);
   await expectNoHorizontalScroll(page);
 });
+
+test("+ Add weak topic at 375 px: listed as 'Added by you', a duplicate is refused, Practise without notes says so", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 760 });
+  await startDemo(page);
+  await createSubject(page, "Biology");
+  await page.getByRole("link", { name: /Biology/ }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Biology" })).toBeVisible();
+  await page.goto(`${page.url()}/weak-topics`);
+  await expect(page.getByText("Nothing tricky yet")).toBeVisible();
+
+  await page.getByRole("button", { name: "+ Add weak topic" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add a weak topic" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toHaveText("Type a topic first.");
+  await expect(dialog.getByLabel("Topic")).toHaveAttribute("aria-invalid", "true");
+  await dialog.getByLabel("Topic").fill("  Krebs    cycle ");
+  await dialog.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByTestId("toast")).toContainText("Added to your weak topics.");
+  const card = page.getByRole("article", { name: "Krebs cycle" });
+  await expect(card).toBeVisible();
+  await expect(card).toContainText("Added by you today");
+  await expect(card).not.toContainText("Missed");
+
+  // Stored on the server: still there after a reload.
+  await page.reload();
+  await expect(page.getByRole("article", { name: "Krebs cycle" })).toContainText("Added by you today");
+
+  await page.getByRole("button", { name: "+ Add weak topic" }).click();
+  await dialog.getByLabel("Topic").fill("KREBS CYCLE");
+  await dialog.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toHaveText("That's already on your list.");
+  await expect(dialog).toBeVisible();
+  await expectNoHorizontalScroll(page);
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("article")).toHaveCount(1);
+
+  // No notes mention it: a friendly message, not a failure.
+  await page.getByRole("button", { name: "Practise Krebs cycle" }).click();
+  const make = page.getByRole("dialog", { name: /Make a quiz/ });
+  await expect(make.getByText("added by you")).toBeVisible();
+  await make.getByRole("button", { name: "Make quiz" }).click();
+  await expect(make.getByText("We couldn't find these topics in your notes yet.", { exact: false })).toBeVisible();
+  await make.getByRole("button", { name: "Back" }).click();
+  await make.getByRole("button", { name: "Cancel" }).click();
+  await expectNoHorizontalScroll(page);
+  await expectNoA11yViolations(page);
+});

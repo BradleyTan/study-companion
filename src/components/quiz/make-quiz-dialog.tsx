@@ -272,7 +272,7 @@ export function MakeQuizDialog({ subjectId, subjectName, open, onClose, preset, 
                     />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-bold">{w.name}</span>
-                      <span className="hint">missed {w.missCount === 1 ? "once" : `${w.missCount} times`}</span>
+                      <span className="hint">{w.missCount === 0 ? "added by you" : `missed ${w.missCount === 1 ? "once" : `${w.missCount} times`}`}</span>
                     </span>
                   </label>
                 </li>
@@ -397,6 +397,7 @@ export function MakeQuizDialog({ subjectId, subjectName, open, onClose, preset, 
       failed: { emoji: "🌀", text: "The quiz maker got muddled. Try again. This one didn't use up a go." },
       not_configured: { emoji: "🔌", text: "AI isn't set up yet, so quizzes can't be made right now." },
       weak_gone: { emoji: "🗂️", text: "The notes behind these topics are gone, so we can't quiz them. Untick them or mark them as got it." },
+      weak_no_notes: { emoji: "🔎", text: "We couldn't find these topics in your notes yet. Add a note about them, then try again." },
     };
     const m = msg[r.status];
     body = (
@@ -421,7 +422,7 @@ export function MakeQuizDialog({ subjectId, subjectName, open, onClose, preset, 
             </>
           )}
           {r.status === "failed" && <Button variant="primary" onClick={() => void generate()}>Try again</Button>}
-          {r.status === "weak_gone" && <Button variant="primary" onClick={back}>Back</Button>}
+          {(r.status === "weak_gone" || r.status === "weak_no_notes") && <Button variant="primary" onClick={back}>Back</Button>}
           {(r.status === "allowance" || r.status === "not_configured") && <Button onClick={close}>Close</Button>}
         </div>
       </div>
