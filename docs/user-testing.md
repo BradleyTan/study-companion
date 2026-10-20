@@ -32,13 +32,21 @@ Making cards, a mindmap or a quiz again from exactly the same text, and retaking
 - Sign-in emails go out through your Gmail at **about 30 an hour** (Supabase's email rate limit). A group session of more than a few people could hit that. One address can ask for a new link only once a minute; sooner, the app says "We couldn't send the link. Try again in a minute."
 
 **Consent and privacy** (read this to the tester or send it in advance)
-> "This is a test of the app, not of you. There are no wrong answers. If something is confusing, that's the app's fault and exactly what I need to know. I'll watch your screen and take notes, but I won't record unless you say yes. The app stores what you upload (your notes and lecture files) and sends text from them to a free AI service to make cards, quizzes and answers. The privacy page in the app explains this. You can stop at any time, and I'll delete your account and everything in it afterwards unless you want to keep using it."
+> "This is a test of the app, not of you. There are no wrong answers. If something is confusing, that's the app's fault and exactly what I need to know. I'll watch your screen and take notes, but I won't record unless you say yes. The app stores what you upload (your notes and lecture files) and sends text from them to a free AI service to make cards, quizzes and answers. The privacy page in the app explains this. You can stop at any time, and we'll delete your account and everything in it together at the end unless you want to keep using it. If you have questions about your data later, email me at [your contact address]."
 
-- [ ] Get a clear "yes" before you start (a message is enough). If you'd like to record the screen, ask for that separately.
+- [ ] Fill in your contact address above before you send it. The privacy page tells testers to use "the email address you were given when you were invited", so this is that address.
+- [ ] Get a clear "yes" before you start (a message is enough). If you'd like to record the screen, ask for that separately, and say where the recording is kept and when you'll delete it.
 - [ ] Remind the tester not to upload anything they aren't allowed to share, such as files with other students' personal details.
 
+**Your own notes about the tester**
+- On the observer sheet and the feedback form, write a first name or initials only. Don't collect their email address or student number in the form.
+- Don't paste the tester's notes, file text, chat answers, email address or screenshots that show them into a GitHub issue or anywhere public. Describe the steps instead, and repeat the bug with the sample file in demo mode if you need a screenshot.
+- Keep the sheets, form answers and any recording private, and delete them once you've written up the results.
+
 **Deleting the tester's data afterwards**
-- The tester (or you on their device) goes to **Settings → Delete account**, types `DELETE` and presses **Delete my account**. This deletes their account, notes and files, and turns off their calendar link straight away. It can't be undone.
+- Do this **at the end of the session, while the tester is still with you**. Deleting needs a sign-in from the last 10 minutes, and only the tester can get a new sign-in link (it goes to their email).
+- The tester goes to **Settings → Delete account**. If the app says "For safety, sign out and sign in again", they press **Sign out**, ask for a new link, open it in the same browser and come straight back. Then they type `DELETE` and press **Delete my account**. This deletes their account, notes and files, and turns off their calendar link straight away. It can't be undone. Check that the app lands on the home page.
+- If the tester has already left and asked you to delete everything: in the Supabase dashboard, **first** go to **Storage → `sources`** and delete the folder named after their user id (find it under **Authentication → Users** by their email), **then** delete the user under **Authentication → Users**. Deleting the user removes everything in the database, but not their uploaded files, so the order matters. Then tell them it's done.
 - If they want to keep a copy first: **Settings → Your data → Download everything** (one JSON file with their subjects, notes, the list of uploaded files and the text read from them, flashcards, quizzes, chats, study sessions and timetable). The uploaded files themselves are not in it: they can download each one with **Open** on the file row first.
 - If they added the private calendar link to Google, Apple or Outlook, tell them to remove that calendar from their calendar app too. The link stops working, but the calendar app may keep showing old events until they remove it.
 
@@ -152,7 +160,7 @@ Give this straight after the tasks. Easiest is to copy it into a free Google For
 
 ### Same day
 - Write up the observer sheet while it's fresh. Copy any bugs into an issue with the steps to repeat them.
-- Delete the tester's data if they don't want to keep using the app (see section 1).
+- Make sure the tester's account was deleted at the end of the session if they don't want to keep using the app. If it wasn't, use the dashboard steps in section 1 (files first, then the user).
 
 ### How to read the results
 - **Task results matter most.** A task that needed a hint or wasn't finished points to a real problem, even if the tester rated the app well afterwards. People are polite on forms.
