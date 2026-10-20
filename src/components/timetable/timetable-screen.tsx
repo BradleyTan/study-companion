@@ -259,9 +259,10 @@ export function TimetableScreen({ slots: initialSlots, subjects, timezone, weekS
             <p className="flex flex-wrap items-center gap-2" data-testid="nothing-this-week">
               <span>Nothing this week</span>
               {outside && (
-                <button type="button" className="btn btn-sm" onClick={() => { const ws = weekStartOf(outside.day, weekStart); goWeek(ws, outside.day - ws); }}>
+                // goWeek plays the click (the slot is always in another week), so the Button stays silent: one sound per action.
+                <Button size="sm" sound={null} onClick={() => { const ws = weekStartOf(outside.day, weekStart); goWeek(ws, outside.day - ws); }}>
                   {outside.kind === "class" ? "Next class" : "Next slot"}: {nextLabel(outside.day)}
-                </button>
+                </Button>
               )}
             </p>
           )}

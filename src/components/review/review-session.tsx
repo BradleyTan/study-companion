@@ -235,7 +235,13 @@ export function ReviewSession({ subject, subjects, initialQueue, initialOutlook,
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
         {!ended && <Button variant="ghost" size="sm" onClick={end}>✕ End</Button>}
-        {subject ? <SubjectChip name={subject.name} emoji={subject.emoji} colour={subject.colour} /> : <span className="chip">All subjects</span>}
+        {/* End screens: a breadcrumb like every other page; during a session "✕ End" stays (polish.md P2-5). */}
+        {ended && (
+          <Link href={homeHref} className="inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline" onClick={() => play("click")}>
+            ← {subject ? subject.name : "All subjects"}
+          </Link>
+        )}
+        {subject ? <SubjectChip name={subject.name} emoji={subject.emoji} colour={subject.colour} /> : !ended && <span className="chip">All subjects</span>}
         <div className="ml-auto flex items-center gap-2">
           {!ended && <span className="text-sm font-bold" data-testid="progress-text">{doneGrades} done · {toGo} to go</span>}
           {!ended && (
@@ -288,8 +294,9 @@ export function ReviewSession({ subject, subjects, initialQueue, initialOutlook,
                 <h1 className="font-display text-3xl">All caught up!</h1>
                 <p className="text-ink-soft">{subject ? "Nothing to review right now." : "Nothing due in any subject."} {line?.replace("Next up:", "Next:")}</p>
                 <div className="flex flex-wrap justify-center gap-2">
-                  {subject && <Link href={`/subjects/${subject.id}/flashcards`} className="btn">Make more flashcards</Link>}
-                  <Link href={homeHref} className="btn btn-primary">{homeLabel}</Link>
+                  {subject && <Link href={`/subjects/${subject.id}/flashcards`} className="btn" onClick={() => play("click")}>Make more flashcards</Link>}
+                  <Link href={homeHref} className="btn btn-primary" onClick={() => play("click")}>{homeLabel}</Link>
+                  {subject && <Link href={`/subjects/${subject.id}/quizzes`} className="btn" onClick={() => play("click")}>Quiz yourself</Link>}
                 </div>
               </>
             )}
@@ -334,7 +341,8 @@ export function ReviewSession({ subject, subjects, initialQueue, initialOutlook,
           {line && <p data-testid="outlook">{line}</p>}
           <p className="font-bold">{signOff}</p>
           <div className="flex flex-wrap justify-center gap-2">
-            <Link href={homeHref} className="btn btn-primary">{homeLabel}</Link>
+            <Link href={homeHref} className="btn btn-primary" onClick={() => play("click")}>{homeLabel}</Link>
+            {subject && <Link href={`/subjects/${subject.id}/quizzes`} className="btn" onClick={() => play("click")}>Quiz yourself</Link>}
             {nextSubject && <Link href={`/subjects/${nextSubject.id}/review`} className="btn">Review {nextSubject.name} · {nextSubject.due} due</Link>}
           </div>
         </section>
