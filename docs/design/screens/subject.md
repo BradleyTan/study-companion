@@ -22,7 +22,7 @@
 - Accessible names spell it out ("Next class: BIOL1001 Lecture, Tuesday 10:00, Room 2.14"). Loading: text parts show "…"; a failed count hides that part only.
 
 **Two sections** (stacked on phone, side by side ≥ 900 px):
-1. **Notes**: "New note" primary. List of note rows: title, first line preview, "edited 2 h ago". Empty: "No notes yet. Type your first one."
+1. **Notes**: "✨ Make notes" (plain, opens `make-notes.md`) beside "New note" primary. List of note rows: title, first line preview, "edited 2 h ago". Empty: "No notes yet. Type your first one, or let us make notes from your lecture files or a web page." with "+ Write a note" and "✨ Make notes" (2026-10-28).
 2. **Lecture files**: upload drop zone (dashed outline, "Drop a PDF or PowerPoint here, or choose a file", "PDF or PPTX, up to 25 MB"). File rows: type chip (PDF/PPTX), name, size, pages/slides, status chip.
 
 **Upload states** (per file row)

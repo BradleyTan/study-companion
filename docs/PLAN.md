@@ -78,6 +78,9 @@ Timer with custom durations, wall-clock based (accurate in background tabs), fil
 Polish pass, `docs/user-testing.md` (tester access, 20-minute task script, feedback form). Bradley runs the student test and decides on Phase 2.
 - Polish pass built 2026-10-20 on `claude/polish` from the designer's audit `docs/design/polish.md` (all P1 and P2 items, small P3s); waiting for QA, security and Bradley's review. `docs/user-testing.md` is still to do.
 
+### Student test feedback (2026-10-28)
+Three changes from the first student test, on `claude/feedback-ai-quality-kgmile`: study notes made from a note, a file's pages or a public web page (`docs/design/screens/make-notes.md`); detailed mindmaps (a checked detail on every topic); exam-style flashcards. See section 3h.
+
 ## 3a. Implementation decisions (Step 1)
 
 - **Next.js 16** (current release). Cache Components is left off: nearly every page is per-student and dynamic, and the previous caching model is simpler to reason about for private data. Middleware is now called `proxy` (`src/proxy.ts`).
@@ -153,13 +156,21 @@ Polish pass, `docs/user-testing.md` (tester access, 20-minute task script, feedb
 - **Settings:** "Week starts on" is a profile column (`week_start`); the calendar link panel is the same component inline.
 - **Database** (`20261020000001_step4_timetable_calendar.sql`, not yet applied to the live project): `timetable_slots` (read-only to students, composite `(subject_id, user_id)` foreign key with `on delete set null (subject_id)`, shape checks, a partial unique index on live import keys, the cap trigger), `calendar_links` (server-only, token shape and hash checks) and `profiles.week_start`. Export includes slots (never the link). Grant and RLS tests in `supabase/tests/05_grants.sql` and `10_rls.sql`.
 
+## 3h. Implementation decisions (student test feedback, 2026-10-28)
+
+- **Study notes** (`src/lib/ai/notes.ts`, `src/server/actions/study-notes.ts`, `src/components/notes/make-notes-dialog.tsx`): one request to `openai/gpt-oss-120b` with up to 10,000 characters of passages (`NOTES_MAX_CHARS`; a long file uses the shared page-range fields), reply `{title, sections[{heading, points[{text, passage}]}], terms[{term, definition, passage}]}`. Every point and definition must pass the flashcard grounding checks (`isGrounded`, `groundedNearQuote`, no swapped word) against the passage it cites; a key term must also appear in it. Fewer than 3 points left = unusable. Saved as a normal note (Tiptap JSON built in `src/lib/notes/doc.ts`, text synced to passages at once). Quota kind `notes`: 5 a day, 15 tries; cached by content hash.
+- **Web pages** (`src/server/web-page.ts`, `src/lib/extract/html.ts`): fetched on the server only after the go is reserved. http(s) on ports 80/443, no credentials, no local names; every resolved address must be public (checked inside the connection's DNS lookup, so rebinding can't slip a private address in; IP literals checked directly), up to 4 redirects each re-checked, 10 s in total, 2 MB after decompression, HTML or plain text only (a PDF link gets its own message). The HTML reader is a single linear pass (no regex over markup), drops scripts, styles, menus, footers and forms, and prefers `<main>`/`<article>` when it holds 500+ characters. The page's text is used for that request only; nothing but the notes (with the page address on their first line) is stored.
+- **Mindmaps:** nodes get an optional `detail` (≤ 240 characters, stored in `graph_json`, no migration), kept only when grounded in the node's passage. Up to 50 nodes. Model `openai/gpt-oss-20b` → `openai/gpt-oss-120b`, 12,000 characters per map (was 16,000), 4,000 reply tokens, to fit the free plan's 8,000 tokens a minute.
+- **Flashcards:** exam-writer prompt (`EXAM_RULES`), optional `kind` in the reply (not stored), new drops `yes_no` and `about_the_lecture`, "according to the notes" removed from fronts. `PROMPT_VERSION` 2 → 3, so older cached sets, maps and quizzes aren't reused.
+- **Database:** `20261028000001_study_notes_quota.sql` adds `notes` to `ai_usage.kind`. Needs applying to the live project before the branch is merged.
+
 ## 3b. Zero-cost stack
 
 Bradley's rule: the app must cost nothing to run. Every service below is on a free plan that needs no credit card, so there is no way for a bill to arrive. When a free allowance runs out, the feature pauses until the next day; it never charges.
 
 | Need | Service (free plan) | Free allowance | What happens at the limit |
 |---|---|---|---|
-| AI: flashcards, quizzes, mindmaps, chat | **Groq API** (open models `openai/gpt-oss-120b` for quizzes and chat, `openai/gpt-oss-20b` for flashcards and mindmaps) | Per model, for the whole app: about 1,000 requests and 200,000 tokens a day, 30 requests a minute | Groq returns "rate limited"; the app tries the fallback |
+| AI: flashcards, quizzes, mindmaps, chat, study notes | **Groq API** (open models `openai/gpt-oss-120b` for quizzes, chat, mindmaps and study notes, `openai/gpt-oss-20b` for flashcards) | Per model, for the whole app: about 1,000 requests and 200,000 tokens a day, 30 requests a minute | Groq returns "rate limited"; the app tries the fallback |
 | AI fallback | **Cloudflare Workers AI** | 10,000 "neurons" a day (roughly 280,000 output tokens on a small Llama model) | App shows "Today's free AI allowance is used up. Try again tomorrow." |
 | Embeddings for ask-your-notes | Supabase Edge Function with built-in `gte-small` | Inside Supabase's 500,000 function calls a month | Chat falls back to keyword search |
 | Database, sign-in, file storage | **Supabase Free** | 500 MB database, 1 GB files, 5 GB transfer a month, 50,000 monthly users. Paused after 7 days without activity (one click to wake) | Writes are blocked until space is freed; never billed |
@@ -182,9 +193,10 @@ Bradley's rule: the app must cost nothing to run. Every service below is on a fr
 | Quiz generations | 3 |
 | Mindmap generations | 3 |
 | Chat questions | 20 |
+| Study notes | 5 (2026-10-28) |
 | Uploads | 20 files per 24 h, 25 MB each, 100 MB total (enforced from Step 1) |
 
-Enforced server-side in `ai_usage`; the UI shows "13 of 15 left today". Cached results don't count. Failed generations give the go back, but tries are capped too (flashcards 45, quizzes 9, mindmaps 9 a day, failures included; 3× the goes) because each try still spends the shared allowance. On top of this, an app-wide daily budget stops before Groq's limit so students get a friendly message rather than errors.
+Enforced server-side in `ai_usage`; the UI shows "13 of 15 left today". Cached results don't count. Failed generations give the go back, but tries are capped too (flashcards 45, quizzes 9, mindmaps 9, study notes 15 a day, failures included; 3× the goes) because each try still spends the shared allowance. On top of this, an app-wide daily budget stops before Groq's limit so students get a friendly message rather than errors.
 
 ## 5. Decisions and open questions
 
