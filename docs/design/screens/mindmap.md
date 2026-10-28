@@ -46,7 +46,7 @@ AI output limits the developer validates with zod: at most 40 nodes, depth ≤ 3
   - Sources changed: "Make a new map from your latest notes? Moved topics will go back to their places. Uses 1 of today's 3."
   - Sources unchanged: "Your notes haven't changed. Make a fresh version anyway? Uses 1 of today's 3." (the developer bypasses the cache for this; see hand-off notes).
   - Buttons "Make new map" (primary), "Cancel". The old map stays on screen (dimmed, non-interactive) until the new one arrives; if generation fails, the old map comes back untouched.
-- **Sources changed hint:** when the map is older than the notes, a slim highlight banner over the map: "Your notes changed since this map was made." + "Regenerate".
+- **Sources changed hint:** when the map is older than the notes, a slim highlight banner over the map: "Your notes changed since this map was made. Tap ↻ above to update it." No button of its own: the header's ↻ Regenerate ("New map" on phones) does it (Bradley, 2026-10-28: two Regenerate buttons looked doubled).
 - **Reset layout:** puts every node back to the auto layout, saves, toast "Layout reset".
 - **Choose sources:** dialog with checkboxes for notes and ready files (default all). If the selection is too long for one map (over `MINDMAP_MAX_CHARS`, the developer sets it from the model's token budget), a hint appears under the list: "That's a lot of reading! Untick a few so the map stays clear." and the primary button is disabled.
 

@@ -317,8 +317,7 @@ export function MindmapScreen({ subject, initial, quota: initialQuota, options, 
 
       {view?.changed && !generating && (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border-2 border-ink bg-highlight px-3 py-2 text-[var(--on-colour)]" role="status">
-          <span className="min-w-0 flex-1 font-bold">Your notes changed since this map was made.</span>
-          <Button size="sm" sound={null} onClick={onRegenerate}>Regenerate</Button>
+          <span className="min-w-0 flex-1 font-bold">Your notes changed since this map was made. Tap ↻ above to update it.</span>
         </div>
       )}
 

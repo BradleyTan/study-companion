@@ -4,6 +4,7 @@
 - **Make study notes (new):** "✨ Make notes" on the subject page turns a note, a lecture file (a page range for long ones) or a public web page into tidy notes (headings, one-sentence points, key terms), saved as a new note that works with flashcards, the mindmap, quizzes and chat. Every point is checked against the passage it came from. Web pages are read on the server with strict link rules (public addresses only, checked at connect time; 4 redirects; 10 s; 2 MB; HTML or text). 5 a day per student. Spec `docs/design/screens/make-notes.md`.
 - **Mindmaps with details:** every topic carries a short detail from its passage (definition, how it works, key numbers), shown on the map, in the outline and at the top of the passage panel; "Hide/Show details on map"; up to 50 topics. Unsupported details are left out. Maps now use `openai/gpt-oss-120b` (12,000 characters per map).
 - **Exam-style flashcards:** the card maker writes like the professor setting the exam: why/how/compare/steps questions, no more than a third plain definitions, model answers. Yes/no cards and cards about the lecture itself are dropped; "according to the notes" wording is removed. Old cached sets aren't reused.
+- **Mindmap:** the "notes changed" banner no longer has its own Regenerate button (it doubled the header one); it points to ↻ above.
 - **Database:** `20261028000001_study_notes_quota.sql` (adds `notes` to `ai_usage.kind`).
 - **Tests:** `src/lib/ai/feedback.test.ts`, `src/server/web-page.test.ts`, `src/server/actions/study-notes.test.ts`; e2e `e2e/feedback.spec.ts`.
 
