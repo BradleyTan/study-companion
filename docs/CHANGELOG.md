@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-28 · Security upgrade: next 16.4.3, zod 4.6.7
+- `next` 16.4.0 → 16.4.3 (and `eslint-config-next`): fixes GHSA-2464-fhr4-w9xw, GHSA-p3m5-59mp-jv5r, GHSA-673q-mjm6-r5xr (critical).
+- `zod` ^4.6.5 → ^4.6.7: fixes GHSA-mrhx-c7xc-m3w5 (high).
+- `npm audit --omit=dev --audit-level=high` is clean again, so the CI audit step passes. No code changes.
+
 ## 2026-10-28 · Student test feedback: study notes, detailed mindmaps, exam-style flashcards
 - **Make study notes (new):** "✨ Make notes" on the subject page turns a note, a lecture file (a page range for long ones) or a public web page into tidy notes (headings, one-sentence points, key terms), saved as a new note that works with flashcards, the mindmap, quizzes and chat. Every point is checked against the passage it came from. Web pages are read on the server with strict link rules (public addresses only, checked at connect time; 4 redirects; 10 s; 2 MB; HTML or text). 5 a day per student. Spec `docs/design/screens/make-notes.md`.
 - **Mindmaps with details:** every topic carries a short detail from its passage (definition, how it works, key numbers), shown on the map, in the outline and at the top of the passage panel; "Hide/Show details on map"; up to 50 topics. Unsupported details are left out. Maps now use `openai/gpt-oss-120b` (12,000 characters per map).
