@@ -28,6 +28,7 @@ type Save = "idle" | "saving" | "saved" | "error";
 
 const VIEW_KEY = "studynest.mindmapView";
 const HINT_KEY = "studynest.mindmapTouchHint";
+const DETAILS_KEY = "studynest.mindmapDetails";
 const LINES = ["Reading your notes…", "Finding the big ideas…", "Drawing branches…"];
 
 const MESSAGES: Record<Problem, string> = {
@@ -51,6 +52,7 @@ export function MindmapScreen({ subject, initial, quota: initialQuota, options, 
   const [view, setView] = useState(initial);
   const [quota, setQuota] = useState(initialQuota);
   const [mode, setMode] = useState<"map" | "outline">("map");
+  const [details, setDetails] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [confirm, setConfirm] = useState(false);
@@ -96,6 +98,7 @@ export function MindmapScreen({ subject, initial, quota: initialQuota, options, 
       const v = localStorage.getItem(VIEW_KEY);
       // eslint-disable-next-line react-hooks/set-state-in-effect
       if (v === "outline" || v === "map") setMode(v);
+      if (localStorage.getItem(DETAILS_KEY) === "off") setDetails(false);
       if (window.matchMedia("(pointer: coarse)").matches && !localStorage.getItem(HINT_KEY)) setHint(true);
     } catch {}
   }, []);
@@ -105,6 +108,13 @@ export function MindmapScreen({ subject, initial, quota: initialQuota, options, 
     const t = setInterval(() => setLine((l) => (l + 1) % LINES.length), 3000);
     return () => clearInterval(t);
   }, [generating]);
+
+  const toggleDetails = () => {
+    const next = !details;
+    setDetails(next);
+    try { localStorage.setItem(DETAILS_KEY, next ? "on" : "off"); } catch {}
+    toast.show(next ? "Details shown on the map" : "Details hidden on the map");
+  };
 
   const chooseMode = (m: "map" | "outline") => {
     play("click");
@@ -208,7 +218,7 @@ export function MindmapScreen({ subject, initial, quota: initialQuota, options, 
     if (!n) return;
     play("click");
     lastNode.current = id;
-    setPanel({ id: n.id, label: n.label, chunkId: n.chunkId });
+    setPanel({ id: n.id, label: n.label, chunkId: n.chunkId, detail: n.detail ?? null });
   }, [view, play]);
   const closePanel = () => {
     setPanel(null);
@@ -282,6 +292,7 @@ export function MindmapScreen({ subject, initial, quota: initialQuota, options, 
                 <RowMenu
                   label="More mindmap actions"
                   items={[
+                    ...(view.graph.nodes.some((n) => n.detail) && mode === "map" ? [{ label: details ? "Hide details on map" : "Show details on map", onSelect: toggleDetails }] : []),
                     { label: "Reset layout", onSelect: () => void resetLayout() },
                     { label: "Choose sources", onSelect: () => setChoosing(true) },
                   ]}
@@ -306,8 +317,7 @@ export function MindmapScreen({ subject, initial, quota: initialQuota, options, 
 
       {view?.changed && !generating && (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border-2 border-ink bg-highlight px-3 py-2 text-[var(--on-colour)]" role="status">
-          <span className="min-w-0 flex-1 font-bold">Your notes changed since this map was made.</span>
-          <Button size="sm" sound={null} onClick={onRegenerate}>Regenerate</Button>
+          <span className="min-w-0 flex-1 font-bold">Your notes changed since this map was made. Tap ↻ above to update it.</span>
         </div>
       )}
 
@@ -319,7 +329,7 @@ export function MindmapScreen({ subject, initial, quota: initialQuota, options, 
             <div className="flex flex-col items-center gap-4 p-6 text-center">
               <div className="mm-node mm-root border-dashed"><span role="img" aria-label={subject.name}>{subject.emoji}</span></div>
               <p className="font-display text-2xl">No mindmap yet</p>
-              <p>We&apos;ll turn your notes into a map of the big ideas.</p>
+              <p>We&apos;ll turn your notes into a map of the big ideas, with the key facts under each one.</p>
               <div className="flex flex-wrap items-center justify-center gap-2">
                 <Button variant="primary" sound={null}
                   aria-disabled={quota.left === 0 || undefined}
@@ -342,7 +352,7 @@ export function MindmapScreen({ subject, initial, quota: initialQuota, options, 
           <div className={`h-full ${generating ? "mm-dim" : ""}`} inert={generating}>
             <MindmapCanvas
               graph={view.graph} subjectName={subject.name} emoji={subject.emoji}
-              animate={animate} layoutKey={layoutKey} onOpen={openNode} onMoved={onMoved}
+              animate={animate} layoutKey={layoutKey} details={details} onOpen={openNode} onMoved={onMoved}
             />
           </div>
           {generating && <div className="absolute inset-0 flex items-center justify-center">{generatingArt}</div>}

@@ -8,7 +8,7 @@ Owner: Bradley. Phase 1 MVP only. Phase 2 (dashboard, exam countdown, OCR, podca
 ## Stack
 - Next.js 16 (App Router, `src/proxy.ts` instead of middleware) + TypeScript + Tailwind CSS v4 + own sticker-style UI primitives; Framer Motion from Step 2
 - Supabase: Postgres, Auth, Storage, pgvector; RLS on every table
-- AI: free Groq API, server-side only (`openai/gpt-oss-20b` for flashcards/mindmaps, `openai/gpt-oss-120b` for quizzes and chat), Cloudflare Workers AI free plan as fallback. **No paid services: everything must be free (Bradley's rule).** See docs/PLAN.md 3b.
+- AI: free Groq API, server-side only (`openai/gpt-oss-20b` for flashcards, `openai/gpt-oss-120b` for quizzes, chat, mindmaps and study notes), Cloudflare Workers AI free plan as fallback. **No paid services: everything must be free (Bradley's rule).** See docs/PLAN.md 3b.
 - React Flow (mindmap), FSRS via `ts-fsrs` (spaced repetition), Web Speech API (read-aloud), Web Audio API (sounds)
 - Vitest (unit), Playwright (e2e), Vercel (preview deploys), PWA
 
@@ -32,6 +32,7 @@ docs/                   PLAN.md, CHANGELOG.md, design/, qa/, security/
 - TypeScript strict. Server actions validate input with zod. No `any`.
 - Data access only through `src/server/`; client components never call Supabase with elevated keys.
 - AI calls only in server code under `src/lib/ai/`; outputs validated with zod; cached by content hash. Every generation goes through `runAiTask()` and reserves quota first (`repo.reserveAi`), then settles it (refunded on failure). The model cites passage refs, never ids; the server maps refs to the student's own chunk ids.
+- Web pages a student links (study notes) are fetched only through `readWebPage()` in `src/server/web-page.ts` (public addresses only, checked at connect time). Never `fetch()` a student's URL directly.
 - Links to a source passage (cards, mindmap topics, later quiz and chat citations) are built with `passageHref()` in `src/server/cards.ts`.
 - Every table has `user_id uuid not null references auth.users` and RLS `user_id = auth.uid()`.
 - Components use design tokens from `src/app/globals.css`; no hard-coded colours. Component classes live in `@layer components` so Tailwind utilities can override them.

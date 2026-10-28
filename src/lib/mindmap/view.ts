@@ -13,12 +13,13 @@ export function edgeSides(parent: { x: number; y: number }, child: { x: number; 
   return { source, target: OPPOSITE[source] };
 }
 
-/** "Photosynthesis, topic, 3 subtopics, has a source passage" (mindmap.md Accessibility). */
-export function nodeLabel(label: string, depth: number, childCount: number, hasPassage: boolean): string {
+/** "Photosynthesis, topic, 3 subtopics, has a source passage. Detail." (mindmap.md Accessibility). */
+export function nodeLabel(label: string, depth: number, childCount: number, hasPassage: boolean, detail?: string | null): string {
   const parts = [label, depth === 0 ? "main subject" : depth === 1 ? "topic" : "subtopic"];
   if (childCount > 0) parts.push(`${childCount} ${childCount === 1 ? "subtopic" : "subtopics"}`);
   if (hasPassage) parts.push("has a source passage");
-  return parts.join(", ");
+  const line = parts.join(", ");
+  return detail ? `${line}. ${detail}` : line;
 }
 
 /** "Made from 4 notes and 2 files". */

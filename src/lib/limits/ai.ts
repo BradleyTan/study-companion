@@ -1,23 +1,23 @@
 // Free-plan AI limits. docs/PLAN.md sections 3b and 4.
 
-export type AiKind = "flashcards" | "mindmap" | "quiz" | "chat";
+export type AiKind = "flashcards" | "mindmap" | "quiz" | "chat" | "notes";
 
 /** Successful, non-cached generations per student per local day. */
-export const DAILY_LIMITS: Record<AiKind, number> = { flashcards: 15, mindmap: 3, quiz: 3, chat: 20 };
+export const DAILY_LIMITS: Record<AiKind, number> = { flashcards: 15, mindmap: 3, quiz: 3, chat: 20, notes: 5 };
 
 /**
  * Tries per student per local day, failed ones included. A failed generation gives the go
  * back, but it still used the shared allowance, so retries can't be endless.
  */
-export const DAILY_ATTEMPTS: Record<AiKind, number> = { flashcards: 45, mindmap: 9, quiz: 9, chat: 60 };
+export const DAILY_ATTEMPTS: Record<AiKind, number> = { flashcards: 45, mindmap: 9, quiz: 9, chat: 60, notes: 15 };
 
 /**
  * App-wide daily budget per model, kept below the free plan's limits so students get a
  * friendly "try tomorrow" instead of errors. Groq free plan: ~1,000 requests and
  * 200,000 tokens a day per model. Cloudflare Workers AI: 10,000 neurons a day.
  * Each model is counted on its own (`ai_app_usage` is keyed by day and model), so
- * `openai/gpt-oss-120b` (quizzes, chat) has its own budget beside `openai/gpt-oss-20b`
- * (flashcards, mindmaps); see `appBudgetFor`.
+ * `openai/gpt-oss-120b` (quizzes, chat, mindmaps, study notes) has its own budget beside
+ * `openai/gpt-oss-20b` (flashcards); see `appBudgetFor`.
  */
 export const APP_BUDGET: Record<"groq" | "cloudflare", { requests: number; tokens: number }> = {
   groq: { requests: 900, tokens: 180_000 },
@@ -67,6 +67,13 @@ export function quotaFrom(kind: AiKind, used: number, appAllowanceLeft: boolean)
  * its rules and a reply of up to 1,200 tokens fit gpt-oss-120b's 8,000 tokens a minute.
  */
 export const CHAT_MAX_CHARS = 7_200;
+
+/**
+ * Make study notes (make-notes.md): passages per request. A set of notes is the longest reply
+ * (headings, points and key terms, up to 4,000 tokens), so the passages stay around 2,500 tokens
+ * to fit gpt-oss-120b's 8,000 tokens a minute.
+ */
+export const NOTES_MAX_CHARS = 10_000;
 
 /** Chip text, always a full sentence ("3 of 5 left today"). */
 export function quotaLabel(q: Pick<Quota, "left" | "limit">): string {

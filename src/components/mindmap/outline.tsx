@@ -46,6 +46,7 @@ export function MindmapOutline({ graph, emoji, onOpen }: { graph: MindmapGraph; 
             </button>
           ) : null}
           <span className={`min-w-0 flex-1 break-words ${depth <= 2 ? "font-bold" : ""} ${depth === 2 ? "text-lg" : ""}`}>{b.node.label}</span>
+          {b.node.detail && <p className="w-full basis-full text-sm" data-testid="outline-detail">{b.node.detail}</p>}
           {b.node.chunkId && (
             <button type="button" data-outline-node={b.node.id} className="btn btn-sm min-h-11" aria-label={`Show passage: ${b.node.label}`} onClick={() => { play("click"); onOpen(b.node.id); }}>
               Show passage

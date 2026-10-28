@@ -21,6 +21,7 @@ AI output limits the developer validates with zod: at most 40 nodes, depth ≤ 3
 - **Root node:** subject-colour sticker, emoji + subject name in Permanent Marker 20 px, 4 px offset shadow, rotated -1° (0° under reduced motion).
 - **Level 1 nodes:** `--card` sticker, 2.5 px ink outline, 6 px left band in `--subject`, 16 px bold text, max width 220 px (text wraps, never truncates).
 - **Level 2–3 nodes:** `--card`, 2 px outline, 14 px text, max width 200 px, no shadow.
+- **Details (2026-10-28, student test: "mindmap useless without details"):** every topic with a passage carries a one- or two-sentence detail (what it is, how it works, why it matters, key numbers) under its label in 12 px body text, at most 240 px wide. Level 3 nodes hold the specific facts (definitions, steps, examples, numbers, formulas). Details are checked against the cited passage like flashcard answers; an unsupported detail is left out and the node stays. Rings spread further apart when details show so outer topics don't overlap. "⋯" gets "Hide details on map" / "Show details on map" (remembered per device; default shown). Up to 50 nodes (was 40).
 - Nodes that have a source passage show a small "quote" icon (decorative; the accessible name says it, see below). Grouping nodes without a passage have no icon.
 - **Edges:** smooth bezier, 2 px `--ink`, no arrowheads.
 - **Selected node:** 3 px `--focus` ring, shadow grows to 6 px.
@@ -29,7 +30,7 @@ AI output limits the developer validates with zod: at most 40 nodes, depth ≤ 3
 
 **Initial layout:** the AI returns only the tree; the client lays it out radially (root in the centre, level-1 nodes evenly around it, children fanned outward) using `d3-hierarchy` (free, ISC) or an equivalent small function. If saved positions exist they win.
 
-**Outline view:** the same tree as a nested list (`<ul>` with `role="tree"` / `treeitem`, expandable groups), sticker cards per level-1 topic. Each item with a passage has "Show passage". This is the fully accessible, screen-reader and keyboard-first version, and the easiest way to read the map on a small phone. The Map/Outline choice is remembered in `localStorage` per device. Default: Map on all widths.
+**Outline view:** each topic's detail shows under its name (14 px). The same tree as a nested list (`<ul>` with `role="tree"` / `treeitem`, expandable groups), sticker cards per level-1 topic. Each item with a passage has "Show passage". This is the fully accessible, screen-reader and keyboard-first version, and the easiest way to read the map on a small phone. The Map/Outline choice is remembered in `localStorage` per device. Default: Map on all widths.
 
 ## Interactions
 - **Pan:** drag the background (mouse or one finger). **Zoom:** wheel/trackpad pinch, two-finger pinch on touch, or the buttons. Page itself never scrolls while the pointer is on the canvas.
@@ -45,7 +46,7 @@ AI output limits the developer validates with zod: at most 40 nodes, depth ≤ 3
   - Sources changed: "Make a new map from your latest notes? Moved topics will go back to their places. Uses 1 of today's 3."
   - Sources unchanged: "Your notes haven't changed. Make a fresh version anyway? Uses 1 of today's 3." (the developer bypasses the cache for this; see hand-off notes).
   - Buttons "Make new map" (primary), "Cancel". The old map stays on screen (dimmed, non-interactive) until the new one arrives; if generation fails, the old map comes back untouched.
-- **Sources changed hint:** when the map is older than the notes, a slim highlight banner over the map: "Your notes changed since this map was made." + "Regenerate".
+- **Sources changed hint:** when the map is older than the notes, a slim highlight banner over the map: "Your notes changed since this map was made. Tap ↻ above to update it." No button of its own: the header's ↻ Regenerate ("New map" on phones) does it (Bradley, 2026-10-28: two Regenerate buttons looked doubled).
 - **Reset layout:** puts every node back to the auto layout, saves, toast "Layout reset".
 - **Choose sources:** dialog with checkboxes for notes and ready files (default all). If the selection is too long for one map (over `MINDMAP_MAX_CHARS`, the developer sets it from the model's token budget), a hint appears under the list: "That's a lot of reading! Untick a few so the map stays clear." and the primary button is disabled.
 
@@ -79,3 +80,6 @@ AI output limits the developer validates with zod: at most 40 nodes, depth ≤ 3
 - Outline view is the equivalent for screen readers; the Map | Outline toggle is the first control after the title.
 - Text contrast: `--ink` on `--card` in all nodes, `--on-colour` on the subject-colour root. Selected state uses the focus ring, not colour alone.
 - Bottom sheet / side panel: `role="dialog"`, labelled by the node label, focus trapped (sheet) or moved into the panel (side panel), returns to the node on close.
+
+## Changelog
+- 2026-10-28: Details on every topic (map, outline, passage panel, where the detail leads the panel as a bold sticker line above the passage); "Hide/Show details on map"; up to 50 nodes; maps made on `openai/gpt-oss-120b` with 12,000 characters of notes per map (was 16,000) so the longer reply fits the free plan's per-minute limit. Empty-state copy: "We'll turn your notes into a map of the big ideas, with the key facts under each one."

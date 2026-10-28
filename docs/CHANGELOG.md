@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-10-28 · Student test feedback: study notes, detailed mindmaps, exam-style flashcards
+- **Make study notes (new):** "✨ Make notes" on the subject page turns a note, a lecture file (a page range for long ones) or a public web page into tidy notes (headings, one-sentence points, key terms), saved as a new note that works with flashcards, the mindmap, quizzes and chat. Every point is checked against the passage it came from. Web pages are read on the server with strict link rules (public addresses only, checked at connect time; 4 redirects; 10 s; 2 MB; HTML or text). 5 a day per student. Spec `docs/design/screens/make-notes.md`.
+- **Mindmaps with details:** every topic carries a short detail from its passage (definition, how it works, key numbers), shown on the map, in the outline and at the top of the passage panel; "Hide/Show details on map"; up to 50 topics. Unsupported details are left out. Maps now use `openai/gpt-oss-120b` (12,000 characters per map).
+- **Exam-style flashcards:** the card maker writes like the professor setting the exam: why/how/compare/steps questions, no more than a third plain definitions, model answers. Yes/no cards and cards about the lecture itself are dropped; "according to the notes" wording is removed. Old cached sets aren't reused.
+- **Mindmap:** the "notes changed" banner no longer has its own Regenerate button (it doubled the header one); it points to ↻ above.
+- **Read aloud:** with an online voice, the voice picker no longer collapses under the "Online voices…" hint on wide screens; the hint wraps onto its own line.
+- **Download a note:** "⬇️ Download" in the note editor saves the note as a PDF (print window, note only, black on white) or a Word file made on the device with the free `docx` library (9.11.0, pinned). Spec in `note-editor.md`.
+- **Fix: headings made with the toolbar** were sent to the server as a client reference when saving, which broke the note page in demo mode. The editor now sends plain JSON.
+- **Database:** `20261028000001_study_notes_quota.sql` (adds `notes` to `ai_usage.kind`).
+- **Tests:** `src/lib/ai/feedback.test.ts`, `src/server/web-page.test.ts`, `src/server/actions/study-notes.test.ts`; e2e `e2e/feedback.spec.ts`.
+
 ## 2026-10-20 · Polish pass security review
 - **Open a file:** only http(s) addresses are ever opened, in a new tab or in the same-tab fallback.
 - **Headers:** a baseline Content-Security-Policy (`base-uri 'self'; object-src 'none'; frame-ancestors 'none'`) on every page.

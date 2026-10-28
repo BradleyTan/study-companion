@@ -37,11 +37,19 @@ export default function PrivacyPage() {
 
         <h2>AI and your notes</h2>
         <p>
-          When you ask for flashcards, quizzes, mindmaps or answers from your notes, the relevant passages are sent to Groq, which runs the AI
+          When you ask for flashcards, quizzes, mindmaps, study notes or answers from your notes, the relevant passages are sent to Groq, which runs the AI
           model (or to Cloudflare if Groq is busy). For &ldquo;Ask your notes&rdquo;, your question and the last few messages of that
           subject&apos;s chat go with them, so follow-up questions make sense. Neither keeps your text to train models; Groq may hold it for up to 30 days only to
           investigate abuse. We chose these providers because they don&apos;t use your notes for training. AI only runs when you ask for it.
         </p>
+        <h2>Study notes from a web page</h2>
+        <p>
+          If you paste a link into &ldquo;Make study notes&rdquo;, our server opens that public page once, as StudyNest, reads its
+          text and sends passages of it to the AI as above. The website sees a visit from our server, not from you. We keep only
+          the notes made from it, with the link on their first line; the page itself isn&apos;t stored. Pages behind a sign-in and
+          addresses inside private networks are never opened.
+        </p>
+
         <h2>Read aloud</h2>
         <p>
           Read aloud uses the voices built into your device, so by default the text never leaves it. Some browsers also offer online
@@ -58,7 +66,7 @@ export default function PrivacyPage() {
         <h2>Timetable import and calendar link</h2>
         <p>
           An imported timetable file is read on our server to find your classes and then thrown away; we keep only the slots you add.
-          We never fetch a web address for you. Your calendar link lets the calendar app you add it to (Google, Apple or Outlook)
+          We never fetch a timetable from a web address. Your calendar link lets the calendar app you add it to (Google, Apple or Outlook)
           read your timetable slots: their titles with the subject&apos;s emoji, rooms and times. Nothing else, such as notes or study
           history, is in it. Anyone who has the link can see those slots, so keep it to yourself; if it gets out, reset it in the
           timetable or in Settings and the old link stops working at once. A calendar app keeps its own copy of the slots it

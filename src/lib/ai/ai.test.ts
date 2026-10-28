@@ -175,14 +175,14 @@ describe("mindmap output validation", () => {
 });
 
 describe("flashcard prompt: quality and accuracy rules", () => {
-  it("asks for accurate, grounded, one-fact cards and never padding", () => {
+  it("asks for accurate, grounded, one-idea cards and never padding", () => {
     const [system] = flashcardMessages(passages, 15);
     expect(system.content).toContain(FLASHCARD_QUALITY_RULES);
     expect(system.content).toContain("Every answer must come only from the passages: no outside knowledge");
     expect(system.content).toContain("Keep numbers, units, names and technical terms exactly as written");
     expect(system.content).toContain("If a passage is ambiguous or incomplete, skip it rather than guess.");
     expect(system.content).toContain("Prefer key concepts, definitions, processes and cause-and-effect over trivia");
-    expect(system.content).toContain("One fact per card.");
+    expect(system.content).toContain("One idea per card.");
     expect(system.content).toContain('never "see above"');
     expect(system.content).toContain("Never pad with weak cards.");
     // Injection defences stay: rules in the system prompt, student text only in the user message.
