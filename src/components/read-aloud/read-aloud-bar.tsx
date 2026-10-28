@@ -78,7 +78,7 @@ export function ReadAloudBar({ owner, getSegments, onClose, empty }: {
         <span className="min-w-0 flex-1 truncate text-sm font-bold sm:flex-none" data-testid="read-aloud-status">{status}</span>
         <Button variant="ghost" size="sm" sound={null} className="icon-btn ml-auto min-h-11 sm:hidden" aria-label="Close read aloud" onClick={() => { play("click", { duringSpeech: true }); speech.stopIf(owner); onClose(); }}>✕</Button>
       </div>
-      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-1 sm:items-center">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:min-w-0 sm:flex-1 sm:flex-wrap sm:items-center">
         <label className="flex flex-col text-sm font-bold sm:flex-row sm:items-center sm:gap-1" htmlFor={`${uid}-rate`}>
           Speed
           <select id={`${uid}-rate`} className="input min-h-11 py-1" value={rate}
@@ -86,9 +86,9 @@ export function ReadAloudBar({ owner, getSegments, onClose, empty }: {
             {RATES.map((r) => <option key={r} value={r}>{r}×</option>)}
           </select>
         </label>
-        <label className="flex min-w-0 flex-col text-sm font-bold sm:flex-1 sm:flex-row sm:items-center sm:gap-1" htmlFor={`${uid}-voice`}>
+        <label className="flex min-w-0 flex-col text-sm font-bold sm:min-w-56 sm:flex-1 sm:flex-row sm:items-center sm:gap-1" htmlFor={`${uid}-voice`}>
           Voice
-          <select id={`${uid}-voice`} className="input min-h-11 min-w-0 py-1" value={selected} disabled={loading || voices.length === 0} aria-describedby={online.length ? `${uid}-online` : undefined}
+          <select id={`${uid}-voice`} className="input min-h-11 min-w-0 py-1 sm:flex-1" value={selected} disabled={loading || voices.length === 0} aria-describedby={online.length ? `${uid}-online` : undefined}
             onChange={(e) => { play("click", { duringSpeech: true }); setVoiceURI(e.target.value); writePrefs({ voiceURI: e.target.value }); }}>
             {loading && voices.length === 0 ? <option value="">Loading voices…</option> : null}
             {onDevice.length > 0 && (

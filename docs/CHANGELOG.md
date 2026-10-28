@@ -5,6 +5,7 @@
 - **Mindmaps with details:** every topic carries a short detail from its passage (definition, how it works, key numbers), shown on the map, in the outline and at the top of the passage panel; "Hide/Show details on map"; up to 50 topics. Unsupported details are left out. Maps now use `openai/gpt-oss-120b` (12,000 characters per map).
 - **Exam-style flashcards:** the card maker writes like the professor setting the exam: why/how/compare/steps questions, no more than a third plain definitions, model answers. Yes/no cards and cards about the lecture itself are dropped; "according to the notes" wording is removed. Old cached sets aren't reused.
 - **Mindmap:** the "notes changed" banner no longer has its own Regenerate button (it doubled the header one); it points to ↻ above.
+- **Read aloud:** with an online voice, the voice picker no longer collapses under the "Online voices…" hint on wide screens; the hint wraps onto its own line.
 - **Database:** `20261028000001_study_notes_quota.sql` (adds `notes` to `ai_usage.kind`).
 - **Tests:** `src/lib/ai/feedback.test.ts`, `src/server/web-page.test.ts`, `src/server/actions/study-notes.test.ts`; e2e `e2e/feedback.spec.ts`.
 

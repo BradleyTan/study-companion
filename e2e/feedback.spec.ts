@@ -86,3 +86,28 @@ test("the mindmap shows each topic's detail on the map, in the outline and in th
   await expect(page.getByTestId("panel-detail")).toBeVisible();
   await expectNoA11yViolations(page);
 });
+
+test("read aloud: the voice picker and the online-voice hint never overlap", async ({ page }) => {
+  // Bradley's screenshot (2026-10-28): with an online voice the hint squeezed the voice picker to nothing.
+  await page.addInitScript(() => {
+    const voices = [
+      { name: "Microsoft Ava Online (Natural) - English (United States)", lang: "en-US", voiceURI: "ava", localService: false, default: true },
+      { name: "Google UK English Female", lang: "en-GB", voiceURI: "uk", localService: true, default: false },
+    ];
+    const synth = { speaking: false, paused: false, pending: false, getVoices: () => voices, speak: () => {}, cancel: () => {}, pause: () => {}, resume: () => {}, addEventListener: () => {}, removeEventListener: () => {} };
+    Object.defineProperty(window, "speechSynthesis", { value: synth, configurable: true });
+    Object.defineProperty(window, "SpeechSynthesisUtterance", { value: class { constructor(public text: string) {} }, configurable: true });
+  });
+  await subjectWithNote(page, "Networking");
+  await page.getByRole("link", { name: /Membrane transport/ }).click();
+  await page.getByRole("button", { name: "Read aloud" }).click();
+  const bar = page.getByRole("region", { name: "Read aloud" });
+  const voice = bar.getByLabel("Voice");
+  const hint = bar.getByText("Online voices send the text");
+  await expect(hint).toBeVisible();
+  const [v, h] = [(await voice.boundingBox())!, (await hint.boundingBox())!];
+  expect(v.width).toBeGreaterThan(150);
+  const overlaps = v.x < h.x + h.width && h.x < v.x + v.width && v.y < h.y + h.height && h.y < v.y + v.height;
+  expect(overlaps).toBe(false);
+  await expectNoHorizontalScroll(page);
+});
