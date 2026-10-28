@@ -6,6 +6,8 @@
 - **Exam-style flashcards:** the card maker writes like the professor setting the exam: why/how/compare/steps questions, no more than a third plain definitions, model answers. Yes/no cards and cards about the lecture itself are dropped; "according to the notes" wording is removed. Old cached sets aren't reused.
 - **Mindmap:** the "notes changed" banner no longer has its own Regenerate button (it doubled the header one); it points to ↻ above.
 - **Read aloud:** with an online voice, the voice picker no longer collapses under the "Online voices…" hint on wide screens; the hint wraps onto its own line.
+- **Download a note:** "⬇️ Download" in the note editor saves the note as a PDF (print window, note only, black on white) or a Word file made on the device with the free `docx` library (9.11.0, pinned). Spec in `note-editor.md`.
+- **Fix: headings made with the toolbar** were sent to the server as a client reference when saving, which broke the note page in demo mode. The editor now sends plain JSON.
 - **Database:** `20261028000001_study_notes_quota.sql` (adds `notes` to `ai_usage.kind`).
 - **Tests:** `src/lib/ai/feedback.test.ts`, `src/server/web-page.test.ts`, `src/server/actions/study-notes.test.ts`; e2e `e2e/feedback.spec.ts`.
 

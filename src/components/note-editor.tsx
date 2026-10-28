@@ -44,6 +44,7 @@ export function NoteEditor(props: {
   const [state, setState] = useState<SaveState>("saved");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [downloadOpen, setDownloadOpen] = useState(false);
   const [deleting, startDelete] = useTransition();
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retries = useRef(0);
@@ -61,7 +62,10 @@ export function NoteEditor(props: {
     const ed = editorRef.current;
     if (!ed) return false;
     setState("saving");
-    const res = await saveNote({ id: note.id, title: titleRef.current, contentJson: ed.getJSON(), contentText: ed.getText({ blockSeparator: "\n\n" }) }).catch(() => null);
+    // A JSON round trip gives plain objects: Tiptap's node attrs (headings) aren't, and a server action
+    // sends a non-plain object as a client reference, which the server can't read.
+    const contentJson = JSON.parse(JSON.stringify(ed.getJSON())) as Record<string, unknown>;
+    const res = await saveNote({ id: note.id, title: titleRef.current, contentJson, contentText: ed.getText({ blockSeparator: "\n\n" }) }).catch(() => null);
     if (res?.ok) {
       retries.current = 0;
       setErrorMsg(null);
@@ -175,12 +179,13 @@ export function NoteEditor(props: {
 
   return (
     <div className="flex flex-col gap-4" style={subjectStyle(subject.colour)}>
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3 print:hidden">
         <Link href={`/subjects/${subject.id}`} className="inline-flex min-h-11 items-center font-bold underline-offset-4 hover:underline [overflow-wrap:anywhere]" onClick={() => play("click")}>← {subject.name}</Link>
         <SubjectChip name={subject.name} emoji={subject.emoji} colour={subject.colour} />
         <Button size="sm" className="order-last w-full sm:order-none sm:w-auto" disabled={preparing} onClick={() => void openMake()}>
           <span aria-hidden="true">🗂️</span> {preparing ? "Saving your note first…" : "Make flashcards"}
         </Button>
+        <Button size="sm" className="min-h-11" aria-label="Download" title="Download" onClick={() => setDownloadOpen(true)}><span aria-hidden="true">⬇️</span><span className="hidden sm:inline">Download</span></Button>
         <span
           role="status" data-testid="save-state"
           className={`chip ml-auto ${state === "saved" ? "bg-highlight on-colour" : state === "error" ? "chip-bad" : ""}`}
@@ -188,9 +193,9 @@ export function NoteEditor(props: {
           {label}
         </span>
       </div>
-      {state === "error" && errorMsg && <p role="alert" className="error-text">{errorMsg}</p>}
+      {state === "error" && errorMsg && <p role="alert" className="error-text print:hidden">{errorMsg}</p>}
       {passageMissing && (
-        <div role="status" className="sticker-flat flex flex-col gap-2 bg-highlight p-3 text-[var(--on-colour)]">
+        <div role="status" className="sticker-flat flex flex-col gap-2 bg-highlight p-3 text-[var(--on-colour)] print:hidden">
           <p className="font-bold">This passage has changed since the card was made.</p>
           {passage?.quote && <blockquote className="border-l-4 border-ink pl-3 italic">{passage.quote}</blockquote>}
         </div>
@@ -199,26 +204,30 @@ export function NoteEditor(props: {
       <input
         id="note-title" value={title} maxLength={200} placeholder="Untitled note"
         onChange={(e) => { setTitle(e.target.value); titleRef.current = e.target.value; schedule(); }}
-        className="min-h-11 w-full rounded-md border-2 border-transparent bg-transparent px-1 text-3xl font-bold focus:border-ink focus:bg-card"
+        className="min-h-11 w-full rounded-md border-2 border-transparent bg-transparent px-1 text-3xl font-bold focus:border-ink focus:bg-card print:hidden"
       />
       <Toolbar editor={editor} readOpen={readOpen} onRead={() => setReadOpen((o) => { if (o) speech.stopIf(speechOwner); return !o; })} />
       {readOpen && (
-        <ReadAloudBar
+        <div className="print:hidden"><ReadAloudBar
           owner={speechOwner}
           empty={!editor || editor.isEmpty}
           getSegments={readSegments}
           onClose={() => { setReadOpen(false); requestAnimationFrame(() => document.getElementById("read-aloud-btn")?.focus()); }}
-        />
+        /></div>
       )}
-      <div className="paper-sheet px-4 py-3 sm:px-8 sm:py-5" onClick={() => editor?.commands.focus()}>
-        <EditorContent editor={editor} />
+      <div className="print-note">
+        <h1 className="hidden print:block">{title || "Untitled note"}</h1>
+        <div className="paper-sheet px-4 py-3 sm:px-8 sm:py-5" onClick={() => editor?.commands.focus()}>
+          <EditorContent editor={editor} />
+        </div>
       </div>
-      <div className="flex justify-end">
+      <div className="flex justify-end print:hidden">
         <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(true)}>Delete note</Button>
       </div>
       {everMade && (
         <MakeFlashcardsDialog subjectId={subject.id} subjectName={subject.name} open={making} onClose={() => setMaking(false)} preset={{ type: "note", id: note.id }} />
       )}
+      <DownloadDialog open={downloadOpen} onClose={() => setDownloadOpen(false)} title={title} editor={editor} />
       <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Delete this note?">
         <p>&ldquo;{title || "Untitled note"}&rdquo; will be gone for good. Flashcards and quizzes made from it stay, with their quotes.</p>
         <div className="flex flex-wrap justify-end gap-2">
@@ -261,7 +270,7 @@ function Toolbar({ editor, readOpen, onRead }: { editor: Editor | null; readOpen
     { label: "Redo", text: "↷", run: () => c().redo().run(), disabled: !s.canRedo },
   ];
   return (
-    <div role="toolbar" aria-label="Formatting" className="sticky top-[calc(env(safe-area-inset-top,0px)+58px)] z-20 flex flex-wrap gap-1.5 rounded-lg border-[2.5px] border-ink bg-card p-1.5">
+    <div role="toolbar" aria-label="Formatting" className="print:hidden sticky top-[calc(env(safe-area-inset-top,0px)+58px)] z-20 flex flex-wrap gap-1.5 rounded-lg border-[2.5px] border-ink bg-card p-1.5">
       {tools.map((t) => (
         <Button
           key={t.label} size="sm" className={`icon-btn ${t.label === "Bold" ? "font-black" : t.label === "Italic" ? "italic" : ""}`}
@@ -277,5 +286,61 @@ function Toolbar({ editor, readOpen, onRead }: { editor: Editor | null; readOpen
         <SpeakerIcon /><span className="hidden sm:inline">Read aloud</span>
       </Button>
     </div>
+  );
+}
+
+/** Download the note as it is on screen (saved or not): PDF through the browser's print window, Word made on this device. */
+function DownloadDialog({ open, onClose, title, editor }: { open: boolean; onClose: () => void; title: string; editor: Editor | null }) {
+  const { play } = useSound();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
+  const close = () => { setError(false); onClose(); };
+
+  function pdf() {
+    close();
+    // Let the dialog close before the print window takes a picture of the page.
+    setTimeout(() => window.print(), 100);
+  }
+
+  async function word() {
+    if (!editor) return;
+    setBusy(true);
+    setError(false);
+    try {
+      const { noteDocxBlob, noteFileName } = await import("@/lib/notes/docx");
+      const blob = await noteDocxBlob(title, editor.getJSON());
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = noteFileName(title, "docx");
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      play("pop");
+      close();
+    } catch {
+      play("boop");
+      setError(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onClose={close} title="Download this note">
+      <p>Get a copy of &ldquo;{title || "Untitled note"}&rdquo; to print, share or keep.</p>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Button className="flex-1" disabled={busy} onClick={pdf}><span aria-hidden="true">📄</span> PDF</Button>
+        <Button className="flex-1" disabled={busy || !editor} sound={null} onClick={() => { play("click"); void word(); }}>
+          <span aria-hidden="true">📝</span> {busy ? "Making your file…" : "Word (.docx)"}
+        </Button>
+      </div>
+      <p className="hint">For PDF, choose &ldquo;Save as PDF&rdquo; in the print window. The Word file is made on this device; nothing is sent anywhere.</p>
+      {error && <p role="alert" className="error-text">Couldn&apos;t make the Word file. Try again.</p>}
+      <div className="flex justify-end">
+        <Button variant="ghost" onClick={close}>Close</Button>
+      </div>
+    </Dialog>
   );
 }

@@ -39,7 +39,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       studyBlocks={studyBlocksSoon(slots, now)}
     >
       <ProfileSync {...profile} />
-      <header className="sticky top-[env(safe-area-inset-top,0px)] z-30 border-b-[2.5px] border-ink bg-paper">
+      <header className="sticky top-[env(safe-area-inset-top,0px)] z-30 border-b-[2.5px] border-ink bg-paper print:hidden">
         <nav aria-label="Main" className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-2">
           <Link href="/subjects" className="font-display inline-flex min-h-11 shrink-0 -rotate-2 items-center rounded-md bg-highlight px-2 py-0.5 text-xl text-[var(--on-colour)]">
             StudyNest

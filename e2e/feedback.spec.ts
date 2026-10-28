@@ -1,4 +1,6 @@
+import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
+import JSZip from "jszip";
 import { createSubject, expectNoA11yViolations, expectNoHorizontalScroll, startDemo } from "./helpers";
 
 // Student test feedback (2026-10-28): study notes, detailed mindmaps. Demo mode has no AI key,
@@ -110,4 +112,52 @@ test("read aloud: the voice picker and the online-voice hint never overlap", asy
   const overlaps = v.x < h.x + h.width && h.x < v.x + v.width && v.y < h.y + h.height && h.y < v.y + v.height;
   expect(overlaps).toBe(false);
   await expectNoHorizontalScroll(page);
+});
+
+test("download a note as Word or PDF", async ({ page }) => {
+  await page.addInitScript(() => { (window as unknown as { __printed: number }).__printed = 0; window.print = () => { (window as unknown as { __printed: number }).__printed++; }; });
+  await subjectWithNote(page, "Networking");
+  await page.getByRole("link", { name: /Membrane transport/ }).click();
+  await page.getByRole("button", { name: "Download" }).click();
+  const dialog = page.locator("dialog[open]");
+  await expect(dialog.getByRole("heading", { name: "Download this note" })).toBeVisible();
+  await expectNoA11yViolations(page);
+  await expectNoHorizontalScroll(page);
+
+  const [download] = await Promise.all([page.waitForEvent("download"), dialog.getByRole("button", { name: /Word/ }).click()]);
+  expect(download.suggestedFilename()).toBe("Membrane transport.docx");
+  const zip = await JSZip.loadAsync(await readFile((await download.path())!));
+  const xml = await zip.file("word/document.xml")!.async("string");
+  expect(xml).toContain("Membrane transport");
+  expect(xml).toContain("Osmosis is the movement of water");
+  await expect(page.locator("dialog[open]")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Download" }).click();
+  await page.locator("dialog[open]").getByRole("button", { name: /PDF/ }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __printed: number }).__printed)).toBe(1);
+  // The printed page is only the title and the note.
+  await page.emulateMedia({ media: "print" });
+  await expect(page.locator(".print-note h1")).toHaveText("Membrane transport");
+  await expect(page.getByRole("toolbar", { name: "Formatting" })).toBeHidden();
+  await expect(page.getByRole("navigation", { name: "Main" })).toBeHidden();
+  await expect(page.getByRole("textbox", { name: "Note text" })).toContainText("Osmosis is the movement of water");
+});
+
+test("a heading made with the toolbar saves and survives a reload", async ({ page }) => {
+  // Found while testing downloads (2026-10-28): heading attrs reached the server as a client reference.
+  await startDemo(page);
+  await createSubject(page, "History");
+  await page.getByRole("link", { name: /History/ }).click();
+  await page.getByRole("button", { name: "+ Write a note" }).first().click();
+  await expect(page).toHaveURL(/\/notes\//);
+  await page.getByLabel("Title").fill("Causes of the war");
+  await page.getByRole("textbox", { name: "Note text" }).click();
+  await page.getByRole("button", { name: "Heading" }).click();
+  await page.keyboard.insertText("Long-term causes");
+  await page.keyboard.press("Enter");
+  await page.keyboard.insertText("Alliances tied the great powers together.");
+  await expect(page.getByTestId("save-state")).toHaveText("Saved ✓", { timeout: 10_000 });
+  await page.reload();
+  await expect(page.getByRole("textbox", { name: "Note text" }).locator("h2")).toHaveText("Long-term causes");
+  await expect(page.getByText("Something went wrong")).toHaveCount(0);
 });

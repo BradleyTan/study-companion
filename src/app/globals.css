@@ -517,3 +517,18 @@ dialog.form-sheet[open] { animation: slide-in-up 250ms ease-out; }
   .lift:hover { transform: none; }
   [style*="--r"] { rotate: 0deg !important; }
 }
+
+/* Note download as PDF (note-editor.md): print only the note, black on white, whatever the theme. */
+@media print {
+  @page { margin: 18mm 16mm; }
+  html, body { background: white !important; color: black !important; }
+  body * { visibility: hidden; }
+  .print-note, .print-note * { visibility: visible; color: black !important; background: none !important; }
+  .print-note { position: absolute; top: 0; left: 0; width: 100%; }
+  .print-note h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 0.75rem; }
+  .print-note .paper-sheet { border: 0; padding: 0; }
+  .print-note .tiptap { min-height: 0; max-width: none; line-height: 1.5; }
+  .print-note .tiptap h2, .print-note .tiptap h3 { margin-top: 0.75rem; line-height: 1.3; break-after: avoid; }
+  .print-note .tiptap li, .print-note .tiptap pre { break-inside: avoid; }
+  .print-note .tiptap blockquote { border-left-color: black; }
+}
