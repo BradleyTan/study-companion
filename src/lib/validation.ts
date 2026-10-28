@@ -86,6 +86,20 @@ export const reviewInput = z.object({
   clientKey: z.uuid(),
 });
 
+/** Most pages in one set of study notes (make-notes.md, same as flashcards). */
+export const MAX_NOTES_PAGES = 50;
+export const WEB_URL_MAX = 2000;
+
+export const makeStudyNotesInput = z.object({
+  subjectId: id,
+  source: z.discriminatedUnion("type", [
+    z.object({ type: z.literal("note"), id }),
+    fileSource(MAX_NOTES_PAGES),
+    z.object({ type: z.literal("web"), url: z.string().trim().min(1, "Paste a link to a web page.").max(WEB_URL_MAX, "That link is too long.") }),
+  ]),
+});
+export type MakeStudyNotesInput = z.infer<typeof makeStudyNotesInput>;
+
 export const makeMindmapInput = z.object({
   subjectId: id,
   selection: z.object({ all: z.boolean(), noteIds: z.array(id).max(500), sourceIds: z.array(id).max(500) }),

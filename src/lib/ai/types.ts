@@ -14,6 +14,8 @@ export type MindmapNode = {
   label: string;
   parentId: string | null;
   chunkId: string | null;
+  /** One or two sentences of detail from the cited passage (definition, how it works, key numbers). Older maps have none. */
+  detail?: string | null;
   position?: { x: number; y: number };
 };
 export type MindmapGraph = { version: 1; nodes: MindmapNode[] };

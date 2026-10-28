@@ -9,7 +9,7 @@ import { positionsFor, treeOrder } from "@/lib/mindmap/layout";
 import { edgeSides, entranceOrder, nodeLabel, nudge, type Side } from "@/lib/mindmap/view";
 import { usePhone } from "../ui/use-media";
 
-type Data = { label: string; depth: number; hasPassage: boolean; emoji: string; order: number; animate: boolean };
+type Data = { label: string; detail: string | null; depth: number; hasPassage: boolean; emoji: string; order: number; animate: boolean };
 type MmNode = Node<Data, "mm">;
 
 const SIDES: Record<Side, Position> = { top: Position.Top, right: Position.Right, bottom: Position.Bottom, left: Position.Left };
@@ -23,7 +23,7 @@ function QuoteIcon() {
 }
 
 function MindmapNodeView({ data }: NodeProps<MmNode>) {
-  const cls = data.depth === 0 ? "mm-node mm-root" : data.depth === 1 ? "mm-node mm-1" : "mm-node";
+  const cls = `${data.depth === 0 ? "mm-node mm-root" : data.depth === 1 ? "mm-node mm-1" : "mm-node"}${data.detail ? " mm-has-detail" : ""}`;
   return (
     <>
       {(Object.keys(SIDES) as Side[]).map((s) => (
@@ -36,6 +36,7 @@ function MindmapNodeView({ data }: NodeProps<MmNode>) {
         {data.depth === 0 && <span aria-hidden="true">{data.emoji} </span>}
         {data.label}
         {data.hasPassage && <QuoteIcon />}
+        {data.detail && <span className="mm-detail">{data.detail}</span>}
       </div>
       {(Object.keys(SIDES) as Side[]).map((s) => (
         <Handle key={`s-${s}`} id={`s-${s}`} type="source" position={SIDES[s]} isConnectable={false} />
@@ -50,15 +51,15 @@ const FIT = { padding: "24px" } as const;
 /** Phones: never smaller than 0.7, so the root and level-1 topics stay readable (polish.md P2-9). */
 const FIT_PHONE = { padding: "24px", minZoom: 0.7 } as const;
 
-function buildNodes(graph: MindmapGraph, emoji: string, animate: boolean): MmNode[] {
-  const pos = positionsFor(graph);
+function buildNodes(graph: MindmapGraph, emoji: string, animate: boolean, details: boolean): MmNode[] {
+  const pos = positionsFor(graph, details);
   const order = entranceOrder(graph);
   return treeOrder(graph).map(({ node, depth, childCount }) => ({
     id: node.id,
     type: "mm",
     position: pos.get(node.id) ?? { x: 0, y: 0 },
-    ariaLabel: nodeLabel(node.label, depth, childCount, !!node.chunkId),
-    data: { label: node.label, depth, hasPassage: !!node.chunkId, emoji, order: order.get(node.id) ?? 0, animate },
+    ariaLabel: nodeLabel(node.label, depth, childCount, !!node.chunkId, details ? node.detail : null),
+    data: { label: node.label, detail: details ? node.detail ?? null : null, depth, hasPassage: !!node.chunkId, emoji, order: order.get(node.id) ?? 0, animate },
   }));
 }
 
@@ -70,13 +71,15 @@ export type CanvasProps = {
   animate: boolean;
   /** Bumped by "Reset layout" so every node jumps back to the auto layout. */
   layoutKey: number;
+  /** Show each topic's detail on the map (mindmap.md "Details"); the outline always shows them. */
+  details: boolean;
   onOpen: (nodeId: string) => void;
   /** All current positions after a drag or keyboard move. */
   onMoved: (positions: { id: string; x: number; y: number }[]) => void;
 };
 
-function Canvas({ graph, subjectName, emoji, animate, layoutKey, onOpen, onMoved }: CanvasProps) {
-  const [nodes, setNodes, onNodesChange] = useNodesState<MmNode>(buildNodes(graph, emoji, animate));
+function Canvas({ graph, subjectName, emoji, animate, layoutKey, details, onOpen, onMoved }: CanvasProps) {
+  const [nodes, setNodes, onNodesChange] = useNodesState<MmNode>(buildNodes(graph, emoji, animate, details));
   const flow = useReactFlow<MmNode>();
   const firstLayout = useRef(layoutKey);
   const phone = usePhone();
@@ -93,10 +96,10 @@ function Canvas({ graph, subjectName, emoji, animate, layoutKey, onOpen, onMoved
 
   // A new map (or a reset layout) replaces every node.
   useEffect(() => {
-    setNodes(buildNodes(graph, emoji, animate && firstLayout.current === layoutKey));
+    setNodes(buildNodes(graph, emoji, animate && firstLayout.current === layoutKey, details));
     requestAnimationFrame(fit);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph, layoutKey]);
+  }, [graph, layoutKey, details]);
   // Once the nodes have their sizes (the first fit can run before they do).
   useEffect(() => { if (measured) fit(); }, [measured, fit]);
 

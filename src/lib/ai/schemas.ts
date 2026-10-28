@@ -8,9 +8,10 @@ import type { GeneratedCard, MindmapGraph, MindmapNode, Passage } from "./types"
 export const CARD_FRONT_MAX = 500;
 export const CARD_BACK_MAX = 1500;
 export const QUOTE_MAX = 300;
-export const MINDMAP_MAX_NODES = 40;
+export const MINDMAP_MAX_NODES = 50;
 export const MINDMAP_MAX_DEPTH = 3;
 export const MINDMAP_LABEL_MAX = 60;
+export const MINDMAP_DETAIL_MAX = 240;
 
 const ref = z.union([z.string(), z.number()]).transform(String);
 
@@ -29,6 +30,7 @@ export const rawMindmap = z.object({
     label: z.string(),
     parent: ref.nullish(),
     passage: ref.nullish(),
+    detail: z.string().nullish(),
   })).max(300),
 });
 
@@ -68,10 +70,31 @@ export const GROUNDING_MIN = 0.5;
 
 const IMPERATIVE = /^\s*(?:define|name|explain|describe|list|state|give|outline|compare|contrast|identify|calculate|write|label|summarise|summarize)\b/i;
 
+// Exam-quality checks (student test feedback, 2026-10-28): no yes/no cards, nothing about the lecture itself.
+const YES_NO_FRONT = /^\s*(?:is|are|was|were|does|do|did|can|could|has|have|had|will|would|should|must|may)\b/i;
+const YES_NO_BACK = /^\s*(?:yes|no)\b/i;
+const ABOUT_THE_LECTURE = new RegExp([
+  "\\b(?:lecture|slide|week)\\s+(?:\\d+|[ivx]+)\\b",
+  "\\b(?:title|heading|name)\\s+of\\s+(?:this|the)\\s+(?:lecture|slide|presentation|section|chapter|module|course|unit)\\b",
+  "\\blearning\\s+(?:outcomes?|objectives?)\\b",
+  "\\bwho\\s+(?:is|was)\\s+the\\s+(?:lecturer|presenter|tutor|instructor)\\b",
+].join("|"), "i");
+// "According to the notes, what is X?" / "What is X, as stated in the passage?"
+const SOURCE_PREFIX = /^\s*(?:according to|based on|as (?:stated|described|mentioned|explained) in)\s+(?:the|these|your|this)\s+(?:passages?|notes?|text|lecture|slides?|reading|material)\s*,\s*/i;
+const SOURCE_SUFFIX = /,?\s+(?:according to|as (?:stated|described|mentioned|explained) in)\s+(?:the|these|your|this)\s+(?:passages?|notes?|text|lecture|slides?|reading|material)\s*([?.!]?)\s*$/i;
+
+/** Drops "according to the notes" wording: an exam question stands on its own. */
+export function examFront(front: string): string {
+  const out = front.replace(SOURCE_PREFIX, "").replace(SOURCE_SUFFIX, "$1").trim();
+  return out === front.trim() ? front.trim() : out.charAt(0).toUpperCase() + out.slice(1);
+}
+
 /** Why a card fails the quality bar, or null when it's fine (Bradley: quality as important as quantity). */
-export function cardQualityIssue(front: string, back: string): "short" | "not_a_question" | "repeats_front" | null {
+export function cardQualityIssue(front: string, back: string): "short" | "not_a_question" | "repeats_front" | "yes_no" | "about_the_lecture" | null {
   const noSpaces = NO_SPACES.test(front);
   if (front.length < (noSpaces ? FRONT_MIN_NO_SPACES : FRONT_MIN)) return "short";
+  if (YES_NO_FRONT.test(front) && YES_NO_BACK.test(back)) return "yes_no";
+  if (ABOUT_THE_LECTURE.test(front)) return "about_the_lecture";
   const tokens = front.match(/[\p{L}\p{N}]+/gu) ?? [];
   // Short imperatives are real prompts too ("Define osmosis", "Name the enzyme").
   if (!/[?？¿؟]/u.test(front) && tokens.length < 3 && !noSpaces && !IMPERATIVE.test(front)) return "not_a_question";
@@ -238,7 +261,7 @@ export function normaliseFlashcardsWithStats(json: unknown, passages: Passage[],
   let dropped = 0;
   for (const c of parsed.data.cards) {
     if (out.length >= max) break;
-    const front = clip(c.front, CARD_FRONT_MAX);
+    const front = clip(examFront(clip(c.front, CARD_FRONT_MAX)), CARD_FRONT_MAX);
     const back = clip(c.back, CARD_BACK_MAX);
     if (!front || !back || cardQualityIssue(front, back)) { dropped++; continue; }
     const key = normaliseFront(front);
@@ -268,8 +291,19 @@ export function normaliseFlashcardsWithStats(json: unknown, passages: Passage[],
 }
 
 /**
+ * A node's detail, kept only when the passage it cites supports it (the same grounding check as a
+ * flashcard answer) and it says more than the label. Dropped details leave the node itself in place.
+ */
+export function nodeDetail(label: string, raw: string | null | undefined, passageText: string): string | null {
+  const detail = raw ? clip(raw, MINDMAP_DETAIL_MAX) : "";
+  if (detail.length < 12) return null;
+  if (normaliseFront(detail) === normaliseFront(label)) return null;
+  return isGrounded(detail, passageText) && groundedNearQuote(label, detail, passageText, null) ? detail : null;
+}
+
+/**
  * Validates the model's mindmap into a tree: one root labelled `rootLabel`, at most
- * 40 nodes, depth ≤ 3 below the root, labels ≤ 60 characters. Nodes whose parent is
+ * 50 nodes, depth ≤ 3 below the root, labels ≤ 60 characters, details checked by `nodeDetail`. Nodes whose parent is
  * unknown hang off the root; cycles and anything deeper are dropped.
  */
 export function normaliseMindmap(json: unknown, passages: Passage[], rootLabel: string): MindmapGraph | null {
@@ -302,7 +336,9 @@ export function normaliseMindmap(json: unknown, passages: Passage[], rootLabel: 
       const n = byId.get(cid)!;
       const id = `n${nodes.length}`;
       newId.set(cid, id);
-      nodes.push({ id, label: n.label, parentId: newId.get(pid)!, chunkId: resolvePassage(n.passage, passages)?.chunkId ?? null });
+      const passage = resolvePassage(n.passage, passages);
+      const detail = passage ? nodeDetail(n.label, n.detail, passage.text) : null;
+      nodes.push({ id, label: n.label, parentId: newId.get(pid)!, chunkId: passage?.chunkId ?? null, ...(detail ? { detail } : {}) });
       queue.push({ raw: cid, depth: depth + 1 });
     }
   }
@@ -318,6 +354,7 @@ export const mindmapGraph = z.object({
     label: z.string().max(MINDMAP_LABEL_MAX + 10),
     parentId: z.string().max(20).nullable(),
     chunkId: z.uuid().nullable(),
+    detail: z.string().max(MINDMAP_DETAIL_MAX + 10).nullish(),
     position: z.object({ x: z.number().finite(), y: z.number().finite() }).optional(),
   })).max(MINDMAP_MAX_NODES),
 });

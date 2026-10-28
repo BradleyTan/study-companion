@@ -244,6 +244,8 @@ dialog.side-panel::backdrop { background: transparent; }
 @media (max-width: 639px) { .mindmap-frame { margin-inline: -16px; border-left: 0; border-right: 0; border-radius: 0; } }
 .mm-node { background: var(--card); color: var(--ink); border: 2px solid var(--ink); border-radius: 8px; padding: 0.4rem 0.6rem; font-size: 14px; max-width: 200px; overflow-wrap: anywhere; cursor: pointer; }
 .mm-node.mm-1 { border-width: 2.5px; border-left: 6px solid var(--subject); font-size: 16px; font-weight: 700; max-width: 220px; box-shadow: 3px 3px 0 var(--shadow); }
+.mm-node.mm-has-detail { max-width: 240px; }
+.mm-detail { display: block; margin-top: 0.2rem; font-family: var(--font-body), system-ui, sans-serif; font-size: 12px; font-weight: 400; line-height: 1.3; opacity: 0.9; }
 .mm-node.mm-root { background: var(--subject); color: var(--on-colour); border-width: 3px; font-family: var(--font-marker), cursive; font-size: 20px; box-shadow: 4px 4px 0 var(--shadow); rotate: -1deg; max-width: 260px; }
 .react-flow__node.selected .mm-node, .react-flow__node:focus-visible .mm-node { outline: 3px solid var(--focus); outline-offset: 2px; box-shadow: 6px 6px 0 var(--shadow); }
 .react-flow__node:focus-visible { outline: none; }

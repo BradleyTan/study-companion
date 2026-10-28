@@ -42,17 +42,18 @@ function label(s: string): string {
 }
 
 export function fakeMindmap(passages: Passage[], subjectName: string) {
-  const nodes: { id: string; label: string; parent: string | null; passage: string | null }[] = [
-    { id: "n0", label: subjectName, parent: null, passage: null },
+  const nodes: { id: string; label: string; parent: string | null; passage: string | null; detail: string | null }[] = [
+    { id: "n0", label: subjectName, parent: null, passage: null, detail: null },
   ];
+  // Each sentence is its own node's detail, so the stand-in shows details the way the real map does.
   for (const p of passages.slice(0, 8)) {
     const list = sentences(p.text);
     if (!list.length) continue;
     const topic = `n${nodes.length}`;
-    nodes.push({ id: topic, label: label(list[0]), parent: "n0", passage: p.ref });
+    nodes.push({ id: topic, label: label(list[0]), parent: "n0", passage: p.ref, detail: clip(list[0], 200) });
     for (const s of list.slice(1, 4)) {
       if (nodes.length >= 40) break;
-      nodes.push({ id: `n${nodes.length}`, label: label(s), parent: topic, passage: p.ref });
+      nodes.push({ id: `n${nodes.length}`, label: label(s), parent: topic, passage: p.ref, detail: clip(s, 200) });
     }
   }
   return { nodes };
@@ -151,4 +152,25 @@ export function fakeChat(passages: Passage[], question: string, quiz: boolean) {
   const best = scored.sort((a, b) => b.score - a.score || a.at - b.at).slice(0, 2).sort((a, b) => a.at - b.at);
   if (!best.length) return { covered: false, answer: "", reveal: null };
   return { covered: true, answer: best.map((b) => `${b.s.replace(/[.!?]+$/, "")} [${b.ref}].`).join(" "), reveal: null };
+}
+
+// ---- study notes --------------------------------------------------------------
+
+/**
+ * Deterministic study notes: one section per passage (up to 8), headed by its first sentence's
+ * opening words, with its sentences as points; "X is Y" sentences also become key terms.
+ */
+export function fakeNotes(passages: Passage[], title: string) {
+  const sections: { heading: string; points: { text: string; passage: string }[] }[] = [];
+  const terms: { term: string; definition: string; passage: string }[] = [];
+  for (const p of passages.slice(0, 8)) {
+    const list = sentences(p.text).filter((s) => s.length >= 25 && s.length <= 300);
+    if (!list.length) continue;
+    sections.push({ heading: label(list[0]), points: list.slice(0, 6).map((s) => ({ text: s, passage: p.ref })) });
+    for (const s of list) {
+      const def = DEFINITION.exec(s.replace(/[.!?]+$/, ""));
+      if (def && terms.length < 10) terms.push({ term: clip(def[1].replace(/^(the|a|an)\s+/i, ""), 60), definition: clip(s, 300), passage: p.ref });
+    }
+  }
+  return { title, sections, terms };
 }

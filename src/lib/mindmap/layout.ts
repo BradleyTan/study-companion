@@ -20,15 +20,29 @@ function toTree(graph: MindmapGraph): TreeDatum | null {
   return build(root);
 }
 
+/** Room each outer topic needs on its ring when details are shown (a detailed node is ~240 px wide). */
+export const DETAIL_ARC = 230;
+export const RING_GAP_MAX = 700;
+
+/**
+ * Gap between rings: RING_GAP, or wider when details are shown, so the outer ring is long enough
+ * for its topics to sit side by side without overlapping.
+ */
+export function ringGap(graph: MindmapGraph, details: boolean, leaves: number, depth: number): number {
+  if (!details || !graph.nodes.some((n) => n.detail)) return RING_GAP;
+  return Math.min(RING_GAP_MAX, Math.max(RING_GAP, Math.ceil((leaves * DETAIL_ARC) / (2 * Math.PI * depth))));
+}
+
 /** Automatic position (centre of each node) for every node in the tree. */
-export function radialLayout(graph: MindmapGraph): Map<string, { x: number; y: number }> {
+export function radialLayout(graph: MindmapGraph, details = false): Map<string, { x: number; y: number }> {
   const out = new Map<string, { x: number; y: number }>();
   const data = toTree(graph);
   if (!data) return out;
   const root = hierarchy(data, (d) => d.children);
   const depth = Math.max(1, root.height);
+  const gap = ringGap(graph, details, root.leaves().length, depth);
   tree<TreeDatum>()
-    .size([2 * Math.PI, depth * RING_GAP])
+    .size([2 * Math.PI, depth * gap])
     .separation((a, b) => (a.parent === b.parent ? 1 : 2) / Math.max(1, a.depth))(root);
   root.each((n) => {
     const angle = (n.x ?? 0) - Math.PI / 2;
@@ -39,8 +53,8 @@ export function radialLayout(graph: MindmapGraph): Map<string, { x: number; y: n
 }
 
 /** Position to draw each node at: the student's saved one, else the automatic one. */
-export function positionsFor(graph: MindmapGraph): Map<string, { x: number; y: number }> {
-  const auto = radialLayout(graph);
+export function positionsFor(graph: MindmapGraph, details = false): Map<string, { x: number; y: number }> {
+  const auto = radialLayout(graph, details);
   for (const n of graph.nodes) if (n.position) auto.set(n.id, n.position);
   return auto;
 }

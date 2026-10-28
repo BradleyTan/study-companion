@@ -8,7 +8,7 @@ import { speech } from "../read-aloud/speech";
 import { useSound } from "../sound-provider";
 import { Button } from "../ui/button";
 
-export type PanelNode = { id: string; label: string; chunkId: string | null };
+export type PanelNode = { id: string; label: string; chunkId: string | null; detail?: string | null };
 type Load = { kind: "loading" } | { kind: "ready"; passage: PassageView } | { kind: "gone" } | { kind: "error"; text: string } | { kind: "group" };
 
 const OWNER = "mindmap-passage";
@@ -86,6 +86,7 @@ export function PassagePanel({ node, onClose }: { node: PanelNode | null; onClos
             <Button ref={closeRef} size="sm" variant="ghost" className="min-h-11" onClick={close}>Close</Button>
           </div>
           <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+            {node.detail && <p className="sticker-flat p-3 font-bold" data-testid="panel-detail">{node.detail}</p>}
             {load.kind === "loading" && <div aria-busy="true" className="flex flex-col gap-2"><div className="skeleton h-6 w-40" /><div className="skeleton h-28" /></div>}
             {load.kind === "group" && <p>This topic groups the ideas below it. Tap one of them to see where it came from.</p>}
             {load.kind === "gone" && <p>The note or file this came from was deleted.</p>}

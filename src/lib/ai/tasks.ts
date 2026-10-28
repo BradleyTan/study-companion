@@ -1,6 +1,7 @@
-// The generations (Step 2 flashcards and mindmaps, Step 3 quizzes), as tasks for runAiTask.
+// The generations (Step 2 flashcards and mindmaps, Step 3 quizzes, study notes), as tasks for runAiTask.
 import { normaliseChatReply, type ChatReply } from "../chat/answer";
-import { fakeChat, fakeFlashcards, fakeMindmap, fakeQuiz } from "./fake";
+import { fakeChat, fakeFlashcards, fakeMindmap, fakeNotes, fakeQuiz } from "./fake";
+import { normaliseNotes, notesMessages, type StudyNotes } from "./notes";
 import { chatMessages, flashcardMessages, mindmapMessages, quizMessages, type ChatTurn } from "./prompts";
 import { GROQ_MODELS } from "./providers";
 import type { AiTask } from "./run";
@@ -11,8 +12,11 @@ import type { QuizKind } from "../quiz/order";
 
 // Flashcard budgets live in limits/ai.ts so the dialog can use them too (page-range hints).
 export { FLASHCARDS_MAX_CHARS, MIN_SOURCE_CHARS } from "../limits/ai";
-/** See FLASHCARDS_MAX_CHARS. */
-export const MINDMAP_MAX_CHARS = 16_000;
+/**
+ * See FLASHCARDS_MAX_CHARS. A detailed map's reply is long (up to 45 nodes with a detail each,
+ * ~3,500 tokens), so the passages stay around 3,000 tokens to fit gpt-oss-120b's 8,000 a minute.
+ */
+export const MINDMAP_MAX_CHARS = 12_000;
 export const MIN_MINDMAP_CHARS = 200;
 export const CARD_COUNTS = [10, 15, 20] as const;
 export type CardCount = (typeof CARD_COUNTS)[number];
@@ -36,7 +40,7 @@ export function mindmapTask(passages: Passage[], subjectName: string): AiTask<Mi
   return {
     groqModel: GROQ_MODELS.mindmap,
     messages: mindmapMessages(passages, subjectName),
-    maxTokens: 3000,
+    maxTokens: 4000,
     parse: (json) => normaliseMindmap(json, passages, subjectName),
     fake: () => fakeMindmap(passages, subjectName),
   };
@@ -76,5 +80,19 @@ export function chatTask(passages: Passage[], question: string, history: ChatTur
     parse: (json) => normaliseChatReply(json, passages, { quiz: opts.quiz }),
     // The local stand-in has no memory of the conversation, so a follow-up is matched with the question before it.
     fake: () => fakeChat(passages, [history.filter((t) => t.role === "student").at(-1)?.text ?? "", question].join(" "), opts.quiz),
+  };
+}
+
+/**
+ * Make study notes (make-notes.md): Groq gpt-oss-120b. Never padded: points and key terms that
+ * fail the grounding checks are dropped; fewer than MIN_NOTE_POINTS left counts as unusable.
+ */
+export function notesTask(passages: Passage[], fallbackTitle: string): AiTask<StudyNotes> {
+  return {
+    groqModel: GROQ_MODELS.notes,
+    messages: notesMessages(passages),
+    maxTokens: 4000,
+    parse: (json) => normaliseNotes(json, passages, fallbackTitle),
+    fake: () => fakeNotes(passages, fallbackTitle),
   };
 }

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { NewNoteButton } from "@/components/new-note-button";
+import { MakeNotesButton } from "@/components/notes/make-notes-dialog";
 import { NoteRow } from "@/components/note-row";
 import { WeakStrip } from "@/components/quiz/weak-strip";
 import { StudyTools } from "@/components/study-tools";
@@ -59,12 +60,20 @@ export default async function SubjectPage({ params }: PageProps<"/subjects/[id]"
         <section aria-labelledby="notes-h" className="flex min-w-0 flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 id="notes-h" className="text-2xl font-bold">Notes</h2>
-            {notes.length > 0 && <NewNoteButton subjectId={id} />}
+            {notes.length > 0 && (
+              <div className="flex flex-wrap items-start gap-2">
+                <MakeNotesButton subjectId={id} subjectName={subject.name} />
+                <NewNoteButton subjectId={id} />
+              </div>
+            )}
           </div>
           {notes.length === 0 ? (
             <div className="flex flex-col items-start gap-3 rounded-lg border-[2.5px] border-dashed border-ink bg-card/70 p-5">
-              <p>No notes yet. Type your first one.</p>
-              <NewNoteButton subjectId={id} label="Write a note" />
+              <p>No notes yet. Type your first one, or let us make notes from your lecture files or a web page.</p>
+              <div className="flex flex-wrap items-start gap-2">
+                <NewNoteButton subjectId={id} label="Write a note" />
+                <MakeNotesButton subjectId={id} subjectName={subject.name} />
+              </div>
             </div>
           ) : (
             <ul className="flex flex-col gap-3" role="list">

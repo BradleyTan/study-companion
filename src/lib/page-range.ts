@@ -106,7 +106,7 @@ export type RangeHint =
   | { kind: "sampled"; text: string; snap: PageRange | null };
 
 /** What a set is made of, for the hint wording ("Cards will be spread…", "Questions will be spread…"). */
-export type RangeNoun = "Cards" | "Questions";
+export type RangeNoun = "Cards" | "Questions" | "Notes";
 
 /** The coverage hint under the page fields. Never a warning: a wide range is a quick sample. */
 export function rangeHint(pageChars: number[] | null, looseChars: number, range: PageRange, unit: PageUnit = "page", budget: number = FLASHCARDS_MAX_CHARS, noun: RangeNoun = "Cards"): RangeHint {
