@@ -74,19 +74,22 @@ const IMPERATIVE = /^\s*(?:define|name|explain|describe|list|state|give|outline|
 const YES_NO_FRONT = /^\s*(?:is|are|was|were|does|do|did|can|could|has|have|had|will|would|should|must|may)\b/i;
 const YES_NO_BACK = /^\s*(?:yes|no)\b/i;
 const ABOUT_THE_LECTURE = new RegExp([
-  "\\b(?:lecture|slide|week)\\s+(?:\\d+|[ivx]+)\\b",
+  // Asking where something was taught ("What is covered in Lecture 3?", "Which slide shows…"), not text that merely mentions a lecture.
+  "\\b(?:in|on|from|during|of|for)\\s+(?:(?:this|the|today's)\\s+)?(?:lecture|slide|week)(?:\\s(?:\\d+|[ivx]+))?\\??$|\\b(?:in|on|from|during)\\s+(?:lecture|slide|week)\\s+(?:\\d+|[ivx]+)\\b|^\\s*(?:which|what)\\s+(?:lecture|slide|week)\\b",
   "\\b(?:title|heading|name)\\s+of\\s+(?:this|the)\\s+(?:lecture|slide|presentation|section|chapter|module|course|unit)\\b",
   "\\blearning\\s+(?:outcomes?|objectives?)\\b",
   "\\bwho\\s+(?:is|was)\\s+the\\s+(?:lecturer|presenter|tutor|instructor)\\b",
 ].join("|"), "i");
 // "According to the notes, what is X?" / "What is X, as stated in the passage?"
 const SOURCE_PREFIX = /^\s*(?:according to|based on|as (?:stated|described|mentioned|explained) in)\s+(?:the|these|your|this)\s+(?:passages?|notes?|text|lecture|slides?|reading|material)\s*,\s*/i;
-const SOURCE_SUFFIX = /,?\s+(?:according to|as (?:stated|described|mentioned|explained) in)\s+(?:the|these|your|this)\s+(?:passages?|notes?|text|lecture|slides?|reading|material)\s*([?.!]?)\s*$/i;
+const SOURCE_SUFFIX = /,?\s+(?:according to|as (?:stated|described|mentioned|explained) in)\s+(?:the|these|your|this)\s+(?:passages?|notes?|text|lecture|slides?|reading|material)\s*([?.!]?)$/i;
 
 /** Drops "according to the notes" wording: an exam question stands on its own. */
 export function examFront(front: string): string {
-  const out = front.replace(SOURCE_PREFIX, "").replace(SOURCE_SUFFIX, "$1").trim();
-  return out === front.trim() ? front.trim() : out.charAt(0).toUpperCase() + out.slice(1);
+  // Trimmed first so SOURCE_SUFFIX needs no trailing `\s*` (two `\s*` around an optional made it cubic: security review FB-3).
+  const trimmed = front.trim();
+  const out = trimmed.replace(SOURCE_PREFIX, "").replace(SOURCE_SUFFIX, "$1").trim();
+  return out === trimmed ? trimmed : out.charAt(0).toUpperCase() + out.slice(1);
 }
 
 /** Why a card fails the quality bar, or null when it's fine (Bradley: quality as important as quantity). */

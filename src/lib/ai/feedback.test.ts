@@ -36,6 +36,10 @@ describe("exam-quality flashcards", () => {
     expect(cardQualityIssue("What is covered in Lecture 3?", "Cell membranes and transport.")).toBe("about_the_lecture");
     expect(cardQualityIssue("What is the title of this lecture?", "Cell transport.")).toBe("about_the_lecture");
     expect(cardQualityIssue("What are the learning outcomes for this week?", "To understand osmosis.")).toBe("about_the_lecture");
+    expect(cardQualityIssue("Which slide shows the Krebs cycle?", "Slide 12.")).toBe("about_the_lecture");
+    expect(cardQualityIssue("What topics are discussed in this lecture?", "Osmosis and diffusion.")).toBe("about_the_lecture");
+    // Text that only mentions a lecture (a slide header quoted in a fill-in) isn't a question about it.
+    expect(cardQualityIssue("Fill in the blank: Lecture 5, page 15: Osmosis is a key _____ students should explain", "idea")).toBeNull();
     // A chapter or page number can be real content.
     expect(cardQualityIssue("What does Chapter 11 bankruptcy allow a company to do?", "Reorganise its debts while it keeps trading.")).toBeNull();
   });
@@ -64,6 +68,16 @@ describe("exam-quality flashcards", () => {
     const t = Date.now();
     examFront(`What${" ".repeat(5000)}x`);
     expect(Date.now() - t).toBeLessThan(200);
+  });
+
+  it("stays fast when spaces surround 'according to the notes' before a non-final '?' (security review FB-3)", () => {
+    // Was cubic: every start in the first run times both `\s*` around the optional '?' in the second.
+    const hostile = [`a${" \t".repeat(240)}according to the notes${" ".repeat(200)}?x`, `a${" ".repeat(2500)}according to the notes${" ".repeat(2500)}?x`];
+    const t = Date.now();
+    for (let i = 0; i < 50; i++) examFront(hostile[0]);
+    examFront(hostile[1]);
+    expect(Date.now() - t).toBeLessThan(300);
+    expect(examFront("What is osmosis, according to the notes ?")).toBe("What is osmosis?");
   });
 });
 

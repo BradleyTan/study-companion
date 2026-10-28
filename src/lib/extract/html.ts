@@ -59,7 +59,8 @@ export type PageText = { title: string; text: string };
 
 /** The page's title and readable text (main content when it has enough), at most WEB_TEXT_MAX characters. */
 export function htmlToText(html: string): PageText {
-  const lower = html.toLowerCase();
+  // ASCII-only lower case, so indexes match `html` ("İ".toLowerCase() is two characters: security review FB-4).
+  const lower = html.replace(/[A-Z]+/g, (m) => m.toLowerCase());
   const all: string[] = [];
   const main: string[] = [];
   let title = "";

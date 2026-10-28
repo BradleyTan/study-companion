@@ -109,21 +109,27 @@ function requestOnce(url: URL, allowed: Checker, deadline: number): Promise<Raw>
       const location = typeof res.headers.location === "string" ? res.headers.location : null;
       const contentType = String(res.headers["content-type"] ?? "").toLowerCase();
       if ((status >= 300 && status < 400) || status >= 400 || !/^(?:text\/html|application\/xhtml\+xml|text\/plain)\b/.test(contentType)) {
-        res.resume();
+        // No body wanted: close the connection rather than drain a body that may never end.
+        res.on("error", () => {});
         resolve({ status, location, contentType, body: Buffer.alloc(0) });
+        req.destroy();
         return;
       }
       const enc = String(res.headers["content-encoding"] ?? "").toLowerCase().trim();
-      const stream = enc === "gzip" || enc === "x-gzip" ? res.pipe(zlib.createGunzip())
-        : enc === "deflate" ? res.pipe(zlib.createInflate())
-        : enc === "br" ? res.pipe(zlib.createBrotliDecompress())
-        : res;
+      const unzip = enc === "gzip" || enc === "x-gzip" ? zlib.createGunzip()
+        : enc === "deflate" ? zlib.createInflate()
+        : enc === "br" ? zlib.createBrotliDecompress()
+        : null;
+      const stream = unzip ? res.pipe(unzip) : res;
       const parts: Buffer[] = [];
       let size = 0;
       let done = false;
       const finish = () => {
         if (done) return;
         done = true;
+        // Stop the decompressor too: a few KB of brotli can unpack to gigabytes, and it would keep
+        // going in the background on the input it already holds (security review FB-1).
+        if (unzip) { res.unpipe(unzip); unzip.destroy(); }
         req.destroy();
         resolve({ status, location, contentType, body: Buffer.concat(parts) });
       };
@@ -136,7 +142,7 @@ function requestOnce(url: URL, allowed: Checker, deadline: number): Promise<Raw>
         if (size >= WEB_MAX_BYTES) finish();
       });
       stream.on("end", finish);
-      stream.on("error", () => { if (!done) { done = true; reject(new WebPageError("unreachable")); } });
+      stream.on("error", () => { if (!done) { done = true; req.destroy(); reject(new WebPageError("unreachable")); } });
       res.on("error", (e) => { if (!done) { done = true; reject(e instanceof WebPageError ? e : new WebPageError("unreachable")); } });
     });
     // A hard stop for the whole fetch, not just an idle socket (a page sent a byte at a time).

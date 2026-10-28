@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { gzipSync } from "node:zlib";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import zlib, { brotliCompressSync, constants as zc, gzipSync } from "node:zlib";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { decodeEntities, htmlToText } from "@/lib/extract/html";
 import { isPublicAddress, parseWebUrl, readWebPage, WEB_MAX_BYTES, WebPageError } from "./web-page";
 
@@ -39,6 +39,10 @@ describe("readable text from a web page", () => {
     expect(htmlToText(`<p>One<p>Two <b>bold`).text).toBe("One\nTwo bold");
     expect(htmlToText(`<p>Ends inside a tag <a href="x`).text).toBe("Ends inside a tag");
     expect(htmlToText(`a < b and c > d`).text).toBe("a < b and c > d");
+  });
+
+  it("keeps the text after a script when the page has characters whose lower case is longer (FB-4)", () => {
+    expect(htmlToText(`<p>${"İ".repeat(40)}</p><script>var secret = 1;</script><p>Visible text after the script</p>`).text).toBe(`${"İ".repeat(40)}\n\nVisible text after the script`);
   });
 
   it("decodes entities, keeping unknown ones as written", () => {
@@ -88,9 +92,19 @@ describe("reading a page", () => {
   let server: Server;
   let base = "";
   const allowAll = () => true;
+  // Security review FB-1: 64 MB of text as ~12 KB of brotli; FB-2: a redirect whose body never ends.
+  const bomb = brotliCompressSync(Buffer.alloc(64 * 1024 * 1024, 0x61), { params: { [zc.BROTLI_PARAM_QUALITY]: 1 } });
+  let endlessClosed: Promise<void> = Promise.resolve();
   beforeAll(async () => {
     server = createServer((req, res) => {
       const u = req.url ?? "/";
+      if (u === "/bomb") { res.writeHead(200, { "content-type": "text/html", "content-encoding": "br" }); res.end(bomb); return; }
+      if (u === "/redirect-endless") {
+        res.writeHead(302, { location: "/page" });
+        const tick = setInterval(() => res.write(Buffer.alloc(65_536)), 5);
+        endlessClosed = new Promise((r) => res.on("close", () => { clearInterval(tick); r(); }));
+        return;
+      }
       if (u === "/page") { res.writeHead(200, { "content-type": "text/html; charset=utf-8" }); res.end("<title>T</title><p>Osmosis moves water.</p>"); }
       else if (u === "/gzip") { res.writeHead(200, { "content-type": "text/html", "content-encoding": "gzip" }); res.end(gzipSync("<p>Zipped text.</p>")); }
       else if (u === "/latin1") { res.writeHead(200, { "content-type": "text/html; charset=iso-8859-1" }); res.end(Buffer.from("<p>caf\xe9</p>", "latin1")); }
@@ -140,5 +154,32 @@ describe("reading a page", () => {
   it("stops at 2 MB", async () => {
     expect((await read("/huge")).text.length).toBeLessThanOrEqual(60_000);
   });
-});
 
+  it("stops unpacking a compression bomb at the cap, also in the background (FB-1)", async () => {
+    let unpacked = 0;
+    const real = zlib.createBrotliDecompress;
+    const spy = vi.spyOn(zlib, "createBrotliDecompress").mockImplementation((o) => {
+      const d = real(o);
+      d.on("data", (c: Buffer) => { unpacked += c.length; });
+      return d;
+    });
+    try {
+      expect((await read("/bomb")).text.length).toBeLessThanOrEqual(60_000);
+      await new Promise((r) => setTimeout(r, 500));
+      expect(bomb.length).toBeLessThan(40_000);
+      expect(unpacked).toBeLessThan(WEB_MAX_BYTES + 1_000_000);
+    } finally { spy.mockRestore(); }
+  });
+
+  it("closes a redirect's connection instead of reading its body (FB-2)", async () => {
+    expect((await read("/redirect-endless")).text).toBe("Osmosis moves water.");
+    const closed = await Promise.race([endlessClosed.then(() => true), new Promise((r) => setTimeout(() => r(false), 1000))]);
+    expect(closed).toBe(true);
+  });
+
+  it("checks the addresses a name resolves to, not just the link (lookup path)", async () => {
+    const port = new URL(base).port;
+    // "localhost" resolves to 127.0.0.1 / ::1: the guarded lookup refuses it (with Happy Eyeballs on, Node asks for all addresses).
+    expect(await asyncCode(readWebPage(`http://localhost:${port}/page`, { allowed: isPublicAddress, parse: (s) => new URL(s) }))).toBe("blocked");
+  });
+});
