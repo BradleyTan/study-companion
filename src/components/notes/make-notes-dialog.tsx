@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useId, useRef, useState } from "react";
 import { NOTES_MAX_CHARS } from "@/lib/limits/ai";
 import { defaultRange, modeOf, pagesSpoken, pagesText, rangeError, type PageRange, type PageUnit, type RefitMode } from "@/lib/page-range";
 import { timeAgo } from "@/lib/time";
@@ -311,13 +311,32 @@ export function MakeNotesDialog({ subjectId, subjectName, open, onClose }: { sub
   );
 }
 
-/** The "✨ Make notes" button on the subject page, with its dialog. */
+/** Opens the subject's one Make notes dialog (see MakeNotesHost). */
+const OpenNotesDialog = createContext<(() => void) | null>(null);
+
+/**
+ * Holds the Make notes dialog at a fixed place in the subject page's Notes section. The buttons
+ * move (empty box → header) when the first note appears, and a dialog inside them was unmounted
+ * mid-way: the ready step and the toast were lost on a subject's first notes (QA feedback B1).
+ */
+export function MakeNotesHost({ subjectId, subjectName, children }: { subjectId: string; subjectName: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <OpenNotesDialog.Provider value={() => setOpen(true)}>
+      {children}
+      <MakeNotesDialog subjectId={subjectId} subjectName={subjectName} open={open} onClose={() => setOpen(false)} />
+    </OpenNotesDialog.Provider>
+  );
+}
+
+/** The "✨ Make notes" button on the subject page; uses the host's dialog, or its own outside one. */
 export function MakeNotesButton({ subjectId, subjectName, label = "Make notes" }: { subjectId: string; subjectName: string; label?: string }) {
+  const host = useContext(OpenNotesDialog);
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button onClick={() => setOpen(true)} data-testid="make-notes"><span aria-hidden="true">✨ </span>{label}</Button>
-      <MakeNotesDialog subjectId={subjectId} subjectName={subjectName} open={open} onClose={() => setOpen(false)} />
+      <Button onClick={() => (host ? host() : setOpen(true))} data-testid="make-notes"><span aria-hidden="true">✨ </span>{label}</Button>
+      {!host && <MakeNotesDialog subjectId={subjectId} subjectName={subjectName} open={open} onClose={() => setOpen(false)} />}
     </>
   );
 }

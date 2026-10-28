@@ -75,7 +75,7 @@ const YES_NO_FRONT = /^\s*(?:is|are|was|were|does|do|did|can|could|has|have|had|
 const YES_NO_BACK = /^\s*(?:yes|no)\b/i;
 const ABOUT_THE_LECTURE = new RegExp([
   // Asking where something was taught ("What is covered in Lecture 3?", "Which slide shows…"), not text that merely mentions a lecture.
-  "\\b(?:in|on|from|during|of|for)\\s+(?:(?:this|the|today's)\\s+)?(?:lecture|slide|week)(?:\\s(?:\\d+|[ivx]+))?\\??$|\\b(?:in|on|from|during)\\s+(?:lecture|slide|week)\\s+(?:\\d+|[ivx]+)\\b|^\\s*(?:which|what)\\s+(?:lecture|slide|week)\\b",
+  "\\b(?:in|on|from|during|of|for)\\s+(?:(?:this|the|today's)\\s+)?(?:lecture|slide|week)(?:\\s(?:\\d+|[ivx]+))?\\??$|\\b(?:in|on|from|during)\\s+(?:lecture|slide|week)\\s+(?:\\d+|[ivx]+)\\b(?!\\s+of\\s+(?!(?:this|the)\\s+(?:course|module|unit|term|semester)\\b))|^\\s*(?:which|what)\\s+(?:lecture|slide|week)\\b",
   "\\b(?:title|heading|name)\\s+of\\s+(?:this|the)\\s+(?:lecture|slide|presentation|section|chapter|module|course|unit)\\b",
   "\\blearning\\s+(?:outcomes?|objectives?)\\b",
   "\\bwho\\s+(?:is|was)\\s+the\\s+(?:lecturer|presenter|tutor|instructor)\\b",
@@ -89,14 +89,17 @@ export function examFront(front: string): string {
   // Trimmed first so SOURCE_SUFFIX needs no trailing `\s*` (two `\s*` around an optional made it cubic: security review FB-3).
   const trimmed = front.trim();
   const out = trimmed.replace(SOURCE_PREFIX, "").replace(SOURCE_SUFFIX, "$1").trim();
-  return out === trimmed ? trimmed : out.charAt(0).toUpperCase() + out.slice(1);
+  if (out === trimmed) return trimmed;
+  // Capitalise a plain lower-case first word only: "what" → "What", but pH, mRNA, p53 and α-helix stay as written (QA feedback).
+  return /^[a-z]+(?![\p{L}\p{N}])/u.test(out) ? out.charAt(0).toUpperCase() + out.slice(1) : out;
 }
 
 /** Why a card fails the quality bar, or null when it's fine (Bradley: quality as important as quantity). */
 export function cardQualityIssue(front: string, back: string): "short" | "not_a_question" | "repeats_front" | "yes_no" | "about_the_lecture" | null {
   const noSpaces = NO_SPACES.test(front);
   if (front.length < (noSpaces ? FRONT_MIN_NO_SPACES : FRONT_MIN)) return "short";
-  if (YES_NO_FRONT.test(front) && YES_NO_BACK.test(back)) return "yes_no";
+  // "Does osmosis need ATP, and why?" asks for a reason, so a "No: …" answer is fine.
+  if (YES_NO_FRONT.test(front) && YES_NO_BACK.test(back) && !/\b(?:why|how|explain)\b/i.test(front)) return "yes_no";
   if (ABOUT_THE_LECTURE.test(front)) return "about_the_lecture";
   const tokens = front.match(/[\p{L}\p{N}]+/gu) ?? [];
   // Short imperatives are real prompts too ("Define osmosis", "Name the enzyme").
@@ -299,7 +302,8 @@ export function normaliseFlashcardsWithStats(json: unknown, passages: Passage[],
  */
 export function nodeDetail(label: string, raw: string | null | undefined, passageText: string): string | null {
   const detail = raw ? clip(raw, MINDMAP_DETAIL_MAX) : "";
-  if (detail.length < 12) return null;
+  // Scripts without spaces say a lot in few characters (浸透は水の拡散である。).
+  if (detail.length < (NO_SPACES.test(detail) ? 6 : 12)) return null;
   if (normaliseFront(detail) === normaliseFront(label)) return null;
   return isGrounded(detail, passageText) && groundedNearQuote(label, detail, passageText, null) ? detail : null;
 }

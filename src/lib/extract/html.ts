@@ -3,6 +3,7 @@
 // It keeps the page's study text and drops scripts, styles, menus, footers and forms; when the
 // page marks its main content (<main>, <article>, role="main") and that holds enough text, only
 // that part is used.
+import { SUB, SUP, toScript } from "./scripts";
 
 /** Elements whose content is never shown as text (raw text: skipped to their closing tag). */
 const RAW = new Set(["script", "style", "textarea", "title", "xmp", "noscript", "template", "iframe", "noembed", "noframes"]);
@@ -57,10 +58,21 @@ function tagEnd(html: string, from: number): number {
 
 export type PageText = { title: string; text: string };
 
+/** Longest <sup>/<sub> run turned into Unicode characters; longer ones are kept as plain text. */
+const SCRIPT_MAX = 40;
+
 /** The page's title and readable text (main content when it has enough), at most WEB_TEXT_MAX characters. */
 export function htmlToText(html: string): PageText {
   // ASCII-only lower case, so indexes match `html` ("İ".toLowerCase() is two characters: security review FB-4).
   const lower = html.replace(/[A-Z]+/g, (m) => m.toLowerCase());
+  const strict = scanPage(html, lower, true);
+  // Some sites (ASP.NET, SharePoint) wrap the whole page in one <form>: read it again with forms kept (QA feedback).
+  if (strict.text.length >= MAIN_MIN || !lower.includes("<form")) return strict;
+  const loose = scanPage(html, lower, false);
+  return loose.text.length > strict.text.length ? loose : strict;
+}
+
+function scanPage(html: string, lower: string, skipForms: boolean): PageText {
   const all: string[] = [];
   const main: string[] = [];
   let title = "";
@@ -69,11 +81,32 @@ export function htmlToText(html: string): PageText {
   let mainTag = "";
   let mainDepth = 0;
   let mainDone = false;
+  // Inside <sup>/<sub>: the text is held back, then written as Unicode ("10<sup>8</sup>" is 10⁸, not 108).
+  let script = "";
+  let scriptBuf: string[] = [];
+  let scriptLen = 0;
   const push = (t: string) => {
     if (furniture) return;
+    if (script) {
+      scriptBuf.push(t);
+      scriptLen += t.length;
+      if (scriptLen > SCRIPT_MAX) endScript(false);
+      return;
+    }
     all.push(t);
     if (mainDepth > 0) main.push(t);
   };
+  function endScript(convert: boolean) {
+    const raw = scriptBuf.join("");
+    const name = script;
+    script = "";
+    scriptBuf = [];
+    scriptLen = 0;
+    const plain = decodeEntities(raw).trim();
+    const out = convert ? toScript(plain, name === "sup" ? SUP : SUB) : plain;
+    // Unchanged (a citation like [3], or letters): the raw text, decoded once later like the rest.
+    push(convert && out !== plain ? out : raw);
+  }
   let i = 0;
   while (i < html.length) {
     const lt = html.indexOf("<", i);
@@ -105,12 +138,19 @@ export function htmlToText(html: string): PageText {
       i = closeEnd === -1 ? html.length : closeEnd + 1;
       continue;
     }
-    if (FURNITURE.has(name)) {
+    // <body> ends the head even when </head> was left out (it's optional in HTML).
+    if (name === "body") { if (!closing) furniture = 0; continue; }
+    if (FURNITURE.has(name) && (skipForms || name !== "form")) {
       if (closing) furniture = Math.max(0, furniture - 1);
       else if (!attrs.trimEnd().endsWith("/")) furniture++;
       continue;
     }
     if (furniture) continue;
+    if (name === "sup" || name === "sub") {
+      if (!closing && !script) { script = name; scriptBuf = []; scriptLen = 0; }
+      else if (closing && script === name) endScript(true);
+      continue;
+    }
     const isMain = name === "main" || name === "article" || /\brole\s*=\s*["']?main\b/i.test(attrs);
     if (!closing && !mainDone && (mainDepth === 0 ? isMain : name === mainTag)) {
       if (mainDepth === 0) mainTag = name;
@@ -124,6 +164,7 @@ export function htmlToText(html: string): PageText {
     else if (name === "td" || name === "th") push(" ");
     else if (BLOCK.has(name)) push("\n");
   }
+  if (script) endScript(false);
   const tidy = (parts: string[]) => decodeEntities(parts.join(""))
     .replace(/[ \t\f\v ]+/g, " ")
     .replace(/ *\n */g, "\n")

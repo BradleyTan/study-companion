@@ -79,6 +79,16 @@ describe("make study notes", () => {
     expect(await used()).toBe(0);
   });
 
+  it("QA: a long single sentence (over the length floor) says 'too short', not 'muddled', and gives the go back", async () => {
+    const { subjectId } = await setup();
+    const { id } = await repo.createNote(subjectId);
+    const one = "Osmosis is the movement of water across a partially permeable membrane from a dilute solution into a concentrated solution, and it needs no energy from the cell because it is a passive process driven by the water potential gradient alone.";
+    await repo.updateNote(id, { title: "One line", contentJson: {}, contentText: one });
+    const r = await makeStudyNotes({ subjectId, source: { type: "note", id } });
+    expect(r.ok && r.result.status === "too_short" && r.result.sourceType).toBe("note");
+    expect(await used()).toBe(0);
+  });
+
   it("another student's note or subject is not found", async () => {
     const { noteId } = await setup();
     const mine = repo;

@@ -1,10 +1,11 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { inputHash } from "@/lib/ai/cache";
-import { normaliseNotes } from "@/lib/ai/notes";
+import { MIN_NOTE_POINTS, normaliseNotes } from "@/lib/ai/notes";
 import { fitPassages } from "@/lib/ai/prompts";
 import { aiMode } from "@/lib/ai/providers";
 import { runAiTask } from "@/lib/ai/run";
+import { passageSentences } from "@/lib/ai/schemas";
 import { notesTask, toPassages } from "@/lib/ai/tasks";
 import type { Passage } from "@/lib/ai/types";
 import { chunkPages } from "@/lib/extract/chunk";
@@ -117,7 +118,11 @@ export async function makeStudyNotes(raw: unknown): Promise<ActionResult<{ resul
       }
     }
     const out = await runAiTask(notesTask(passages, name), appBudget(repo));
-    if (!out.ok) return { ok: true, result: { status: out.reason, quota: await quota() } };
+    if (!out.ok) {
+      // A paragraph of one or two sentences can't give three points: say it's short, not "muddled", so the student doesn't keep retrying (QA feedback).
+      if (out.reason === "failed" && sentenceCount(passages) < MIN_NOTE_POINTS) return { ok: true, result: { status: "too_short", sourceType: source.type, quota: await quota() } };
+      return { ok: true, result: { status: out.reason, quota: await quota() } };
+    }
     tokens = { input: out.inputTokens, output: out.outputTokens };
     const noteId = await saveNotes(subjectId, out.value, from);
     ok = true;
@@ -151,5 +156,6 @@ export async function makeStudyNotes(raw: unknown): Promise<ActionResult<{ resul
   }
 }
 
+const sentenceCount = (ps: Passage[]) => ps.reduce((n, p) => n + passageSentences(p.text).length, 0);
 const noteTitle = (t: string) => `Study notes: ${t}`.slice(0, 200);
 const countPoints = (n: { sections: { points: unknown[] }[] }) => n.sections.reduce((k, s) => k + s.points.length, 0);

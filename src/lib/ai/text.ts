@@ -135,6 +135,8 @@ export function numbersIn(s: string): string[] {
  * Same as numbersIn, also saying when the minus is a hyphen after a word ("type-2", "L-1"), so
  * an answer may write the number without it ("type 2 diabetes").
  */
+const glued = (c: string) => /[\p{L}\p{N}]/u.test(c) && !NO_SPACES.test(c);
+
 export function scanNumbers(s: string): { value: string; hyphen: boolean }[] {
   const c = canonical(s).replace(GLUED_UNIT, "$1 $2");
   const out: { value: string; hyphen: boolean }[] = [];
@@ -142,7 +144,8 @@ export function scanNumbers(s: string): { value: string; hyphen: boolean }[] {
     const i = m.index;
     const before = c[i - 1] ?? "";
     const after = c[i + m[0].length] ?? "";
-    if (/[\p{L}\p{N}]/u.test(before) || /[\p{L}\p{N}]/u.test(after)) continue;
+    // Part of a word ("CO2", "p53"), except in scripts without spaces, where a number sits between characters ("把3个": QA feedback).
+    if (glued(before) || glued(after)) continue;
     // A minus sign, not a range ("7.35-7.45"); after a letter ("l-1" in mol·L-1) it is kept too.
     const prev = c[i - 2] ?? "";
     const signed = before === "-" && !/[\p{N}.,)\]]/u.test(prev);

@@ -6,7 +6,7 @@ import { z } from "zod";
 import { contradictsPassage } from "./contradict";
 import { DATA_RULES, passagesBlock } from "./prompts";
 import { groundedNearQuote, isGrounded, resolvePassage } from "./schemas";
-import { clip, containsLoose, normaliseFront, overlap } from "./text";
+import { clip, containsLoose, NO_SPACES, normaliseFront, overlap } from "./text";
 import type { ChatMessage, Passage } from "./types";
 
 export const NOTES_TITLE_MAX = 80;
@@ -98,7 +98,7 @@ export function normaliseNotes(json: unknown, passages: Passage[], fallbackTitle
     for (const raw of s.points) {
       const item = typeof raw === "string" ? { text: raw, passage: null } : raw;
       const t = clip(item.text, NOTES_POINT_MAX);
-      if (t.length < 12) { dropped++; continue; }
+      if (t.length < (NO_SPACES.test(t) ? 6 : 12)) { dropped++; continue; }
       const key = normaliseFront(t);
       if (seen.has(key)) { dropped++; continue; }
       const passage = passageFor(item.passage, t, passages);
